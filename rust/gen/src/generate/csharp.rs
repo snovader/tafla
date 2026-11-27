@@ -406,6 +406,9 @@ impl Generator<'_> {
                 format!("_reader.FieldOffset(_position, {index})")
             };
             let value = match field.field_type {
+                FieldType::StringVector => {
+                    todo!("[string] in this target")
+                }
                 FieldType::Scalar(Scalar::Bool) => format!("_reader.GetUInt8({offset}) != 0"),
                 FieldType::Scalar(scalar) => to_enum(
                     self.enum_name(field),
@@ -843,6 +846,9 @@ impl Generator<'_> {
         for field in &definition.fields {
             let value = member(&field.name, &definition.name);
             let call = match field.field_type {
+                FieldType::StringVector => {
+                    todo!("[string] in this target")
+                }
                 FieldType::Scalar(scalar) => format!("sizer.Add{}();", method_name(scalar)),
                 FieldType::Array(scalar) => {
                     format!("sizer.Add{}Array({value}.Length);", method_name(scalar))
@@ -894,6 +900,9 @@ impl Generator<'_> {
         for (index, field) in definition.fields.iter().enumerate() {
             let value = member(&field.name, &definition.name);
             let call = match field.field_type {
+                FieldType::StringVector => {
+                    todo!("[string] in this target")
+                }
                 FieldType::Scalar(Scalar::Bool) => {
                     format!("writer.SetUInt8({index}, {value} ? (byte)1 : (byte)0);")
                 }
@@ -1247,6 +1256,9 @@ impl Generator<'_> {
     /// their integer type, in place, as an array of that type does.
     fn value_type(&self, field: &Field) -> String {
         match field.field_type {
+            FieldType::StringVector => {
+                todo!("[string] in this target")
+            }
             FieldType::Scalar(scalar) => self
                 .enum_name(field)
                 .unwrap_or(scalar_type(scalar))

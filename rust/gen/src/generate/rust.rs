@@ -984,6 +984,9 @@ impl Generator<'_> {
         for (field, generic) in definition.fields.iter().zip(generic) {
             let value = format!("self.{}", identifier(&field.name));
             let (method, arguments) = match field.field_type {
+                FieldType::StringVector => {
+                    todo!("[string] in this target")
+                }
                 FieldType::Scalar(scalar) => (format!("add_{}", method_type(scalar)), vec![]),
                 FieldType::Array(scalar) => (
                     format!("add_{}_array", scalar_type(scalar)),
@@ -1067,6 +1070,9 @@ impl Generator<'_> {
             let value = format!("self.{}", identifier(&field.name));
             let position = text(integer(&index));
             let (method, arguments) = match field.field_type {
+                FieldType::StringVector => {
+                    todo!("[string] in this target")
+                }
                 FieldType::Scalar(Scalar::Bool) => (
                     "set_u8".to_owned(),
                     vec![position, text(format!("u8::from({value})"))],
@@ -1176,6 +1182,9 @@ impl Generator<'_> {
             writer.line(reader);
             writer.line(format!("let position = {offset};"));
             match field.field_type {
+                FieldType::StringVector => {
+                    todo!("[string] in this target")
+                }
                 FieldType::Scalar(Scalar::Bool) => writer.line("Ok(reader.get_u8(position)? != 0)"),
                 FieldType::Scalar(scalar) => {
                     let read = format!("get_{}(position)", scalar_type(scalar));
@@ -1326,6 +1335,9 @@ impl Generator<'_> {
 
     fn value_type(&self, field: &Field) -> String {
         match field.field_type {
+            FieldType::StringVector => {
+                todo!("[string] in this target")
+            }
             FieldType::Scalar(scalar) => self.scalar_field_type(field, scalar),
             FieldType::Array(Scalar::Uint8) => "&'a [u8]".to_owned(),
             FieldType::Array(scalar) => format!("ArrayView<'a, {}>", scalar_type(scalar)),
@@ -1343,6 +1355,9 @@ impl Generator<'_> {
         let fields = |index: usize| self.fields_type(index, "'a");
 
         match field.field_type {
+            FieldType::StringVector => {
+                todo!("[string] in this target")
+            }
             FieldType::Scalar(scalar) => self.scalar_field_type(field, scalar),
             FieldType::Array(scalar) => format!("&'a [{}]", scalar_type(scalar)),
             FieldType::String => "&'a str".to_owned(),
@@ -1583,6 +1598,9 @@ fn borrowing(schema: &Schema) -> Vec<bool> {
                 .fields
                 .iter()
                 .any(|field| match field.field_type {
+                    FieldType::StringVector => {
+                        todo!("[string] in this target")
+                    }
                     FieldType::Scalar(_) | FieldType::Struct(_) => false,
                     FieldType::Array(_)
                     | FieldType::String

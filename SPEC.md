@@ -59,6 +59,7 @@ readers ignore them.
 | `bool`                                  | One byte, 0 for false, written as 0 or 1 and true if not 0     |
 | Array of an integer or float type       | A count `n`, then `n` elements                                 |
 | String                                  | A count `n`, then `n` bytes of UTF-8                           |
+| Vector of strings                       | A count `n`, then the end of each string, then the `n` strings |
 | Struct                                  | Its scalars, one after another                                 |
 | Array of structs                        | A count `n`, then `n` structs                                  |
 | Nested table                            | The table's bytes, with no length prefix                       |
@@ -93,6 +94,13 @@ Counts, lengths and item ends are of the offset type, as offsets are.
   item `i - 1` ends, and item 0 right after the last end, so readers find any
   item from at most two ends, without reading the items before it. Items
   aren't padded, so their arrays may be unaligned.
+- **Vectors of strings** are vectors whose items are strings rather than
+  tables: each item is a string's UTF-8, without a count or a terminator of
+  its own, since its ends delimit it. Their count and ends lie as a vector
+  of tables' do, so readers find any string from at most two ends, and the
+  strings follow one another without padding, so that all of them are one
+  run of bytes from the end of the ends to the last string's end. Each must
+  be valid UTF-8 on its own, as a string must be.
 
 ### Reading nested tables
 
@@ -139,7 +147,12 @@ Readers decode untrusted bytes. An implementation:
   would leave them, rather than reading other memory or allocating for a
   count that the bytes can't hold. A vector item must start no later than it
   ends.
-- Rejects strings that aren't valid UTF-8 with its decode error.
+- Rejects strings that aren't valid UTF-8 with its decode error, and each
+  string of a vector of strings that isn't, when it reads that string. Each
+  string is checked on its own, from its own ends: an end that splits a
+  character leaves both strings around it invalid, even though their bytes
+  together are valid UTF-8. A reader that decodes several strings of a vector
+  at once returns what decoding each would, and fails where any would.
 - Reports every failure to decode as its decode error, and doesn't crash,
   panic or hang on any input.
 
@@ -148,13 +161,13 @@ offset that points at another field, or one of a vector item's offsets that
 points past the item's end, at bytes that the item reads in place.
 
 Nor do readers check that a vector item lies after the vector's count and
-ends. Item `i` is found from the ends of items `i - 1` and `i` alone, so when
-the end of item `i - 1` points into the count and ends, item `i` starts there
-and reads them as its bytes. An item before it fails to read, since the ends
-can't lead back from item 0's start without one of them ending before it
-starts. Every implementation reads such an item alike, within the bytes it
-was given, so checking it would cost every item read without making any read
-safer.
+ends, or that a string of a vector of strings does. Item `i` is found from the
+ends of items `i - 1` and `i` alone, so when the end of item `i - 1` points
+into the count and ends, item `i` starts there and reads them as its bytes. An
+item before it fails to read, since the ends can't lead back from item 0's
+start without one of them ending before it starts. Every implementation reads
+such an item alike, within the bytes it was given, so checking it would cost
+every item read without making any read safer.
 
 Such an item can hold itself. When item `i` starts at the count, its offset
 `i` is the end of item `i - 1`, which is 0, so it leads back to the item's

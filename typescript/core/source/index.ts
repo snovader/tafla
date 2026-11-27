@@ -3,6 +3,7 @@ export { DecodeError } from './errors.ts';
 export { TableLayout, type TableLayoutOptions } from './layout.ts';
 export { TableBuilder, type TableItem } from './table-builder.ts';
 export { TableSizer, TableWriter } from './table-writer.ts';
+export { StringVector } from './string-vector.ts';
 export { StructWriter } from './struct-writer.ts';
 export { SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64 } from './constants.ts';
 export type { OffsetSize, OffsetType } from './types.ts';

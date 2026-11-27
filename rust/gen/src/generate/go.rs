@@ -491,6 +491,9 @@ impl<'a> Generator<'a> {
             find_field(writer, &offset, &zero_value(field.field_type, &value_type));
 
             match field.field_type {
+                FieldType::StringVector => {
+                    todo!("[string] in this target")
+                }
                 FieldType::Scalar(Scalar::Bool) => {
                     writer.line("value, err := reader.GetUint8(position)");
                     writer.line("return value != 0, err");
@@ -795,6 +798,9 @@ impl<'a> Generator<'a> {
         let member = format!("fields.{}", exported(&field.name));
 
         match field.field_type {
+            FieldType::StringVector => {
+                todo!("[string] in this target")
+            }
             FieldType::Scalar(Scalar::Bool) => {
                 if !*declared_boolean {
                     writer.line("var boolean uint8");
@@ -1154,6 +1160,9 @@ impl<'a> Generator<'a> {
         for field in &definition.fields[plan.fixed..] {
             let value = format!("{FIELDS}.{}", exported(&field.name));
             match field.field_type {
+                FieldType::StringVector => {
+                    todo!("[string] in this target")
+                }
                 FieldType::Scalar(scalar) => {
                     writer.line(format!("sizer.Add{}()", method(scalar.stored())));
                 }
@@ -1213,6 +1222,9 @@ impl<'a> Generator<'a> {
         for (index, field) in definition.fields.iter().enumerate().skip(plan.fixed) {
             let value = format!("{FIELDS}.{}", exported(&field.name));
             match field.field_type {
+                FieldType::StringVector => {
+                    todo!("[string] in this target")
+                }
                 FieldType::Scalar(Scalar::Bool) => {
                     if declared_boolean {
                         writer.line("boolean = 0");
@@ -1314,6 +1326,9 @@ impl<'a> Generator<'a> {
     /// of their integer type, as it lies in the bytes.
     fn value_type(&self, field: &Field) -> String {
         match field.field_type {
+            FieldType::StringVector => {
+                todo!("[string] in this target")
+            }
             FieldType::Scalar(scalar) => self.scalar_field_type(field, scalar).to_owned(),
             FieldType::Array(Scalar::Uint8) => "[]byte".to_owned(),
             FieldType::Array(scalar) => format!("tafla.ArrayView[{}]", scalar_type(scalar)),
@@ -1330,6 +1345,9 @@ impl<'a> Generator<'a> {
     /// is a slice of their integer type, which is written in bulk.
     fn input_type(&self, field: &Field) -> String {
         match field.field_type {
+            FieldType::StringVector => {
+                todo!("[string] in this target")
+            }
             FieldType::Scalar(scalar) => self.scalar_field_type(field, scalar).to_owned(),
             FieldType::Array(Scalar::Uint8) => "[]byte".to_owned(),
             FieldType::Array(scalar) => format!("[]{}", scalar_type(scalar)),
@@ -1431,6 +1449,9 @@ fn readable_whole(schema: &Schema) -> Vec<bool> {
             .fields
             .iter()
             .all(|field| match field.field_type {
+                FieldType::StringVector => {
+                    todo!("[string] in this target")
+                }
                 FieldType::Scalar(_)
                 | FieldType::String
                 | FieldType::Array(Scalar::Uint8)
@@ -1931,6 +1952,9 @@ fn layout_expression(layout: Layout, name: &str) -> String {
 /// which it returns with an error. An enum's is its integer type's.
 fn zero_value(field_type: FieldType, value_type: &str) -> String {
     match field_type {
+        FieldType::StringVector => {
+            todo!("[string] in this target")
+        }
         FieldType::Scalar(Scalar::Bool) => "false".to_owned(),
         FieldType::Scalar(_) => "0".to_owned(),
         FieldType::String => "\"\"".to_owned(),

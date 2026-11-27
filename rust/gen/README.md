@@ -61,6 +61,7 @@ Each field is `name: type;`, of one of these types:
 | `bool`                                                                   | A bool, in one byte       |
 | `[int8]` … `[float64]`                                                   | An array of a scalar type |
 | `string`                                                                 | A UTF-8 string            |
+| `[string]`                                                               | A vector of strings       |
 | A struct's name                                                          | A struct, in place        |
 | `[` a struct's name `]`                                                  | An array of structs       |
 | A table's name                                                           | A nested table            |
@@ -74,6 +75,14 @@ TypeScript, JavaScript and Java, `bool` in Python, Rust, Go, C++ and C#, and
 `Bool` in Swift, and the generated code reads and writes it with the runtime's
 `uint8` getters and setters. It's a scalar, in structs too, but has no arrays: a `[uint8]` of 0
 and 1 holds bools in the meantime.
+
+A `[string]` is a vector of strings: a count, the end of each string and
+the strings' UTF-8, one after another, as `SPEC.md` lays it out. Its
+getter returns the runtime's view of the strings, which reads one string
+from its ends, without reading the others, or every string, and the
+generated code writes it from a list of strings:
+
+<!-- STRING_VECTOR_TABLE -->
 
 An enum gives its integer type after its name, and an integer to each of
 its values:
@@ -190,8 +199,7 @@ or read its tables, or a target couldn't generate its code:
   readers read a nested table's offsets as of its message's offset type, and
   tables have `uint32` offsets.
 - Structs hold scalars and structs only, and a struct can't contain itself,
-  even within another struct. Arrays of strings and of bools aren't
-  supported.
+  even within another struct. Arrays of bools aren't supported.
 - A definition's fields fit in a Java constructor, which takes at most 254
   slots of parameters, since the generated Java reads a struct into a record
   of its fields and writes a message or table from a record of them. A
@@ -1096,7 +1104,8 @@ Run the commands of `rust/README.md` from `rust/`. The tests are:
 - `tests/benchmarks.rs`: the code generated from each language's comparison
   suite's `workloads.tafla` matches the files in the suite, and the suites'
   copies of the schema are the same. So do the code generated from each
-  strings suite's `strings.tafla` and the copies of that schema.
+  strings suite's `strings.tafla` and the copies of that schema, and from
+  each lists suite's `lists.tafla`.
 - `tests/diagnostics.rs`: each invalid schema in `tests/diagnostics/` fails
   with the errors in the `.stderr` file beside it, chains of 10,000 tables or
   structs fail with an error on the WebAssembly module's stack, structs whose
@@ -1169,6 +1178,12 @@ and `STRINGS_SCHEMAS` lists where:
 | ---------- | ------------------------------------------------------------------------------------------------------------------------ |
 | TypeScript | `typescript/benchmarks/strings/strings.tafla`, `typescript/benchmarks/strings/generated/tafla/`                          |
 | Java       | `java/benchmarks/src/main/tafla/strings.tafla`, `…/src/main/java/io/github/snovader/tafla/benchmarks/generated/strings/` |
+
+The suites of lists of strings, which compare vectors of strings with
+vectors of tables of one string each, have a schema of their own too, and
+`LISTS_SCHEMAS` lists where:
+
+<!-- LISTS_SCHEMA_TABLE -->
 
 After a change to the generator or the schemas, rewrite the golden files,
 the suites' generated code and the expected errors, review their diff, and

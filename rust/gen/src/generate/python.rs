@@ -1330,6 +1330,9 @@ fn writes(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, fir
         let value = format!("fields[\"{}\"]", identifier(&field.name));
         let position = text(index.to_string());
         let (method, arguments) = match field.field_type {
+            FieldType::StringVector => {
+                todo!("[string] in this target")
+            }
             FieldType::Scalar(Scalar::Bool) => (
                 "set_uint8".to_owned(),
                 vec![position, text(format!("1 if {value} else 0"))],
@@ -1486,6 +1489,9 @@ fn fixed_count(schema: &Schema, field_type: FieldType, budget: usize) -> Option<
     }
 
     match field_type {
+        FieldType::StringVector => {
+            todo!("[string] in this target")
+        }
         FieldType::Scalar(_) | FieldType::Struct(_) => Some(1),
         FieldType::Table(index) => {
             let mut count = 1;
@@ -1514,6 +1520,9 @@ fn fixed_description(
     let mut string = false;
     for field in &definition.fields[..count] {
         arguments.push(match field.field_type {
+            FieldType::StringVector => {
+                todo!("[string] in this target")
+            }
             FieldType::Scalar(scalar) => text(format!("\"{}\"", struct_code(scalar))),
             FieldType::Struct(index) => text(format!(
                 "\"{}s\"",
@@ -1595,6 +1604,9 @@ fn push_fixed_values(
     for field in &definition.fields[..count] {
         let value = format!("{fields}[\"{}\"]", identifier(&field.name));
         match field.field_type {
+            FieldType::StringVector => {
+                todo!("[string] in this target")
+            }
             FieldType::Scalar(_) => values.push(value),
             FieldType::Struct(_) => values.push(format!("{value}.serialize()")),
             FieldType::Table(index) => {
@@ -1624,6 +1636,9 @@ fn has_serialize_values(schema: &Schema, index: usize) -> bool {
             .fields
             .iter()
             .all(|field| match field.field_type {
+                FieldType::StringVector => {
+                    todo!("[string] in this target")
+                }
                 FieldType::Scalar(_) | FieldType::String | FieldType::Array(_) => true,
                 FieldType::Vector(item) => {
                     let table = schema.definition(item);
@@ -1849,6 +1864,9 @@ impl<'a> Reads<'a> {
             };
 
             let read = match field.field_type {
+                FieldType::StringVector => {
+                    todo!("[string] in this target")
+                }
                 FieldType::Scalar(Scalar::Bool) => text(format!(
                     "{} != 0",
                     call("reader.get_uint8", vec![offset]).flat()
@@ -2578,6 +2596,9 @@ fn serialize_values(writer: &mut CodeWriter, schema: &Schema, index: usize) {
         let value = names[index].clone();
         let position = text(index.to_string());
         let (method, arguments) = match field.field_type {
+            FieldType::StringVector => {
+                todo!("[string] in this target")
+            }
             FieldType::Scalar(Scalar::Bool) => (
                 "set_uint8".to_owned(),
                 vec![position, text(format!("1 if {value} else 0"))],
@@ -2956,6 +2977,9 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
         docstring(writer, &field.docs);
 
         match field.field_type {
+            FieldType::StringVector => {
+                todo!("[string] in this target")
+            }
             FieldType::Scalar(Scalar::Bool) => {
                 return_bool(writer, &call("self._reader.get_uint8", vec![offset]));
             }
@@ -3073,6 +3097,9 @@ fn identifier(name: &str) -> String {
 
 fn value_type(field_type: FieldType, schema: &Schema) -> String {
     match field_type {
+        FieldType::StringVector => {
+            todo!("[string] in this target")
+        }
         FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
         FieldType::Array(scalar) => format!("memoryview[{}]", scalar_type(scalar)),
         FieldType::String => "str".to_owned(),
@@ -3085,6 +3112,9 @@ fn value_type(field_type: FieldType, schema: &Schema) -> String {
 
 fn input_type(field_type: FieldType, schema: &Schema) -> String {
     match field_type {
+        FieldType::StringVector => {
+            todo!("[string] in this target")
+        }
         FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
         FieldType::Array(scalar) => format!("Buffer | Iterable[{}]", scalar_type(scalar)),
         FieldType::String => "str".to_owned(),

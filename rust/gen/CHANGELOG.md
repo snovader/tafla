@@ -64,6 +64,10 @@ first commits, for code built from its source before the release.
   each value fits the type and has a name and an integer of its own, and
   that an enum has no more values than the constant pool of its Java class
   holds.
+- `[string]`, a vector of strings, which `SPEC.md` adds to the format, in
+  every target. Its getter returns the runtime's view of the strings, which
+  reads one string from its ends or every string, and the code writes it
+  from a list of strings. The checker rejected it before.
 - A static `versionOf()` on every versioned message that tafla-gen generates
   (`version_of()` in Python and Rust), which reads the version in the header
   so that an application can choose the reader of that version.

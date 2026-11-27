@@ -1,9 +1,9 @@
-// Every type of field: each scalar alone and as an array, strings, nested
-// tables, vectors of tables, structs alone, as fields, in arrays and
-// within other structs, and enums of every integer type, as fields, in
-// arrays, in structs and in the tables of a vector, with doc comments on each
-// kind of declaration and field names that are keywords in some target
-// language.
+// Every type of field: each scalar alone and as an array, strings, vectors
+// of strings, nested tables, vectors of tables, structs alone, as fields, in
+// arrays and within other structs, and enums of every integer type, as
+// fields, in arrays, in structs and in the tables of a vector, with doc
+// comments on each kind of declaration and field names that are keywords in
+// some target language.
 
 /// A field of every scalar type, and a bool
 message Scalars {
@@ -74,6 +74,34 @@ table Keywords {
 /// A message that nests the table of keywords, so that it's written
 message Reserved {
     keywords: Keywords;
+}
+
+/// Vectors of strings beside other fields, in a nested table and in the
+/// items of a vector
+message StringVectors {
+    id: uint32;
+    /// A vector of strings, whose getter reads each string when it's asked
+    /// for
+    tags: [string];
+    labels: Labels;
+    entries: [Entry];
+}
+
+/// A nested table whose only field is a vector of strings
+table Labels {
+    values: [string];
+}
+
+/// An item of a vector, which holds a string and a vector of strings
+table Entry {
+    key: string;
+    aliases: [string];
+}
+
+/// A vector of strings in a message of `uint16` offsets, before a scalar
+message NarrowStringVectors (offset_type: uint16) {
+    names: [string];
+    count: uint8;
 }
 
 /// Structs as fields, in place like scalars, and in arrays, which are aligned
