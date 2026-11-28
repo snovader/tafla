@@ -89,11 +89,11 @@ first commits, for code built from its source before the release.
   was, and `Bytes()` still returns new bytes of the table's exact length.
   Arrays, strings, the strings of a vector of strings, arrays of structs and
   `TableBytes` of 64 bytes or more are kept until `Bytes()`, as every one
-  was, and shorter ones are copied when they're set. A nested builder is copied into its parent when it's
-  set, with the long values that it kept, unless they'd take 128 bytes or
-  more to copy: then its parent keeps a copy of the builder, and writes its
-  table in `Bytes()`, so that nesting builders copies little however deep
-  they're nested. A builder that its caller doesn't keep, and calls neither
+  was, and shorter ones are copied when they're set. A nested builder is
+  copied into its parent when it's set, with the long values that it kept,
+  unless they'd take 128 bytes or more to copy: then its parent keeps a copy
+  of the builder, and writes its table in `Bytes()`, so that nesting
+  builders copies little however deep they're nested. A builder that its caller doesn't keep, and calls neither
   `SetTableFunc()` nor `SetVectorFunc()` on, stays on the caller's stack. The
   benchmarks' record takes about 40 ns rather than 87, in 1 allocation
   rather than 2, the document of 100 rows 204 ns rather than 284, and the
@@ -124,8 +124,9 @@ first commits, for code built from its source before the release.
     record per field past the fourth. A builder of many fields still
     allocates for them when it's created.
   - Arrays, strings, the strings of a vector of strings, arrays of structs
-    and `TableBytes` shorter than 64 bytes are copied when they're set. Longer ones are read when the table is
-    written, so their elements mustn't change until then, as before.
+    and `TableBytes` shorter than 64 bytes are copied when they're set.
+    Longer ones are read when the table is written, so their elements
+    mustn't change until then, as before.
   - A table longer than 128 bytes is written into a buffer on the heap that
     doubles as it grows. While it grows, and while `Bytes()` copies the table
     out of it, the builder holds up to about 3 times the table's length. A
