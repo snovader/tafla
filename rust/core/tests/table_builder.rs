@@ -180,6 +180,44 @@ proptest! {
         prop_assert_eq!(reused, expected);
     }
 
+    /// A table nested in place with an alignment given writes what its
+    /// builder, nested with `set_table_aligned()`, writes padded for the
+    /// alignment given or the one that its fields need, whichever is larger,
+    /// after any bytes before it
+    #[test]
+    fn test_a_table_in_place_given_an_alignment_is_padded_for_it_or_its_fields(
+        table in strategy::table(),
+        alignment in select(vec![
+            Alignment::One,
+            Alignment::Two,
+            Alignment::Four,
+            Alignment::Eight,
+        ]),
+        before in 0..=7_usize,
+    ) {
+        let table = Table {
+            layout: Layout::headerless(OffsetType::Uint32),
+            version: None,
+            fields: table.fields,
+        };
+        let builder = table.build();
+        prop_assume!(builder.is_ok());
+        let builder = builder?;
+        let padded = alignment.max(table.alignment());
+
+        let in_place = parent_with(before, |parent| {
+            parent.set_table_with_alignment(table.fields.len(), alignment, |nested| {
+                let in_place = Some(OffsetType::Uint32);
+                table
+                    .fields
+                    .iter()
+                    .try_for_each(|field| field.set_in_place(nested, in_place))
+            })
+        });
+        let aligned = parent_with(before, |parent| parent.set_table_aligned(&builder, padded));
+        prop_assert_eq!(in_place, aligned);
+    }
+
     /// Tables nested from builders and written in place, with
     /// `set_table_with()` and `set_vector_with()`, write the bytes that their
     /// builders write, and fail as they fail, for tables of any offset type
@@ -231,6 +269,18 @@ fn fails_before_its_items(
 
     let same_field = index == builder_index && offset_type == builder_offset_type;
     !same_field || length < builder_length
+}
+
+/// A parent of `before` bytes in a `uint8[]` and the table that `set` sets
+fn parent_with(
+    before: usize,
+    set: impl FnOnce(&mut TableBuilder) -> Result<(), BuildError>,
+) -> Result<Vec<u8>, BuildError> {
+    let mut parent = TableBuilder::new(2, TableLayout::DEFAULT)?;
+    parent.set_u8_array(vec![0; before])?;
+    set(&mut parent)?;
+
+    parent.to_bytes()
 }
 
 /// A parent of `before` bytes in a `uint8[]`, the table at alignment 8, and a
@@ -1306,4 +1356,111 @@ fn test_a_reset_that_fails_leaves_the_builder_as_it_was() {
     reused.set_u8(1).unwrap();
     reused.set_u8(2).unwrap();
     assert_eq!(reused.into_bytes(), Ok(vec![2, 3, 1, 2]));
+}
+
+/// A table of a uint8 and the table that `set` sets, nested from a builder of
+/// a uint8 and a float64 array, or one of a uint8 array, or in place
+fn table_after_a_uint8(
+    set: impl FnOnce(&mut TableBuilder) -> Result<(), BuildError>,
+) -> TableBuilder {
+    let mut parent = TableBuilder::new(2, TableLayout::DEFAULT).unwrap();
+    parent.set_u8(1).unwrap();
+    set(&mut parent).unwrap();
+    parent
+}
+
+/// The nested table of a float64 array, which needs an alignment of 8, and
+/// of a uint8 array, which needs none
+fn set_wide(table: &mut InPlaceTable<'_>) -> Result<(), BuildError> {
+    table.set_f64_array(&[0.5, -1.5])
+}
+
+fn set_narrow(table: &mut InPlaceTable<'_>) -> Result<(), BuildError> {
+    table.set_u8_array(&[7, 8, 9])
+}
+
+/// An alignment given to a table in place that's smaller than its fields
+/// need, or as large, writes what `set_table_with()` writes: the table is
+/// moved by the padding that it lacks once its fields are set, or padded
+/// before them. A larger one pads it more, as `set_table_aligned()` pads a
+/// builder, and counts as the table's alignment, so its parent is padded
+/// for it in turn when it's nested.
+#[test]
+fn test_an_alignment_given_too_small_or_too_large() {
+    let unaligned = table_after_a_uint8(|parent| parent.set_table_with(1, set_wide));
+    let unaligned = unaligned.to_bytes().unwrap();
+    for alignment in [Alignment::One, Alignment::Four, Alignment::Eight] {
+        let given =
+            table_after_a_uint8(|parent| parent.set_table_with_alignment(1, alignment, set_wide));
+        assert_eq!(given.to_bytes().as_ref(), Ok(&unaligned), "{alignment:?}");
+    }
+    // The header's 2 offsets and the uint8, then the table at 16, where its
+    // array's elements lie at 24
+    let reader = TableReader::new(&unaligned, TableLayout::DEFAULT);
+    assert_eq!(reader.root_offset(1), Ok(16));
+
+    let mut narrow = TableBuilder::new(1, TableLayout::DEFAULT).unwrap();
+    narrow.set_u8_array(&[7, 8, 9]).unwrap();
+    let too_large = table_after_a_uint8(|parent| {
+        parent.set_table_with_alignment(1, Alignment::Eight, set_narrow)
+    });
+    let aligned = table_after_a_uint8(|parent| parent.set_table_aligned(&narrow, Alignment::Eight));
+    let mut unpadded = table_after_a_uint8(|parent| parent.set_table_with(1, set_narrow));
+    assert_eq!(too_large.to_bytes(), aligned.to_bytes());
+    assert_ne!(too_large.to_bytes(), unpadded.to_bytes());
+    let reader = TableReader::new(unpadded.finish().unwrap(), TableLayout::DEFAULT);
+    assert_eq!(reader.root_offset(1), Ok(9));
+
+    // Nested in turn after a uint8, at 8 rather than 1
+    let nested = |table: &TableBuilder| {
+        let mut root = TableBuilder::new(2, TableLayout::DEFAULT).unwrap();
+        root.set_u8(0).unwrap();
+        root.set_table(table).unwrap();
+        root.to_bytes().unwrap()
+    };
+    assert_eq!(nested(&too_large), nested(&aligned));
+    let reader = TableReader::new(&nested(&too_large), TableLayout::DEFAULT).root_offset(1);
+    assert_eq!(reader, Ok(16));
+    let reader = TableReader::new(&nested(&unpadded), TableLayout::DEFAULT).root_offset(1);
+    assert_eq!(reader, Ok(9));
+}
+
+/// A table in place given an alignment whose fill fails leaves the builder
+/// as it was, without the padding written before the fill
+#[test]
+fn test_a_table_given_an_alignment_that_fails_leaves_no_padding() {
+    let mut builder = TableBuilder::new(2, TableLayout::DEFAULT).unwrap();
+    builder.set_u8(1).unwrap();
+    let error = builder.set_table_with_alignment(1, Alignment::Eight, |table| {
+        table.set_f64_array(&[0.5])?;
+        Err(CallerError::Caller)
+    });
+    assert_eq!(error, Err(CallerError::Caller));
+    builder.set_u8(2).unwrap();
+
+    let mut expected = TableBuilder::new(2, TableLayout::DEFAULT).unwrap();
+    expected.set_u8(1).unwrap();
+    expected.set_u8(2).unwrap();
+    assert_eq!(builder.finish(), expected.finish());
+}
+
+/// A buffer given with room keeps it, more or less than `new()` allocates,
+/// and grows as the table needs
+#[test]
+fn test_a_buffer_with_room_keeps_it() {
+    let mut small =
+        TableBuilder::with_buffer(Vec::with_capacity(16), 1, TableLayout::DEFAULT).unwrap();
+    small.set_u8(1).unwrap();
+    let small = small.into_bytes().unwrap();
+    assert_eq!(
+        (small.as_slice(), small.capacity()),
+        (&[4, 0, 0, 0, 1][..], 16)
+    );
+
+    let mut grown =
+        TableBuilder::with_buffer(Vec::with_capacity(16), 1, TableLayout::DEFAULT).unwrap();
+    grown.set_u8_array(&[7; 100]).unwrap();
+    let grown = grown.into_bytes().unwrap();
+    assert_eq!(grown.len(), 4 + 4 + 100);
+    assert!(grown.capacity() >= grown.len());
 }

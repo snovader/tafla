@@ -136,15 +136,19 @@ repository's conformance suite, which covers the whole format.
   can change, or be dropped, once it's set. Each value is copied once, but
   for the bytes written before it that the buffer copies when it grows.
 - **The table is the buffer.** `finish()` writes a sized header's length
-  and lends the table's bytes, `into_bytes()` hands over the buffer as a
-  `Vec`, with the room that it had beyond the table, and `to_bytes()`
-  copies the table into a `Vec` of its exact length. The buffer starts with
+  and lends the table's bytes, and `into_bytes()` hands over the buffer as
+  a `Vec`, with the room that it had beyond the table, so neither copies
+  the table. `to_bytes()` is the copying convenience: a `Vec` of the
+  table's exact length, which leaves the builder as it was. The buffer starts with
   room for 64 bytes a field beyond the header, up to 64 KiB, and grows
   fourfold while it's under 64 KiB and twofold after.
 - **Reuse the buffer.** `with_buffer()` starts a builder in the caller's
   `Vec`, keeping its capacity, and `reset()` starts the next table in the
   builder's own, so a loop that writes many tables allocates once. A
-  buffer from `Vec::with_capacity()` gives a large table its room up front.
+  buffer from `Vec::with_capacity()` gives a table the room that the
+  caller expects it to need, more or less than a new builder's. Their
+  errors come from the field count and layout alone, and `with_buffer()`'s
+  drop the buffer.
 
   ```rust
   # use tafla::{BuildError, TableBuilder, TableLayout};
@@ -173,9 +177,13 @@ repository's conformance suite, which covers the whole format.
   was. A table written in place is moved forward by the padding that its
   arrays need once its fields are set, and again with each table in place
   that holds it, as each is padded, so a table many levels deep, under
-  tables that each need padding, is copied once for each of them. A table
-  nested from a builder or bytes, with `set_table()` and `set_vector()`, is
-  still what a table built elsewhere, or reused, needs.
+  tables that each need padding, is copied once for each of them.
+  `set_table_with_alignment()` takes the alignment that the table's fields
+  need, which its type fixes, and pads it before they're set, so that
+  nothing is moved: a smaller one costs the move, and a larger one pads it
+  more, as `set_table_aligned()` would. A table nested from a builder or
+  bytes, with `set_table()` and `set_vector()`, is still what a table built
+  elsewhere, or reused, needs.
 
   ```rust
   # use tafla::{BuildError, TableBuilder, TableLayout};

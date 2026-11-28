@@ -136,9 +136,12 @@ first commits, for code built from its source before the release.
   a `TableWriter` in `to_bytes()`. The buffer then holds the table:
   `finish()` lends it, `into_bytes()` returns the buffer itself, and
   `to_bytes()` still returns a copy of its exact length. `with_buffer()`
-  starts a builder in the caller's `Vec`, and `reset()` starts the next
-  table in the same buffer, so a loop that writes many tables allocates
-  once. Since the builder borrows nothing, `TableBuilder` has no lifetime
+  starts a builder in the caller's `Vec`, keeping the room that it has,
+  and `reset()` starts the next table in the same buffer, so a loop that
+  writes many tables allocates once. `set_table_with_alignment()` writes a
+  table in place padded before its fields are set, for the alignment that
+  they need, rather than moving it once they're set, as
+  `set_table_with()` does. Since the builder borrows nothing, `TableBuilder` has no lifetime
   parameter, and `InPlaceTable` has only its builder's; the setters take
   the same values as before, and a value can change once it's set. The
   bytes and errors are unchanged, and a setter that fails still leaves the

@@ -157,11 +157,13 @@ impl TableBuilder {
     }
 
     /// Starts a table as [`TableBuilder::new()`] does, in `buffer`, whose
-    /// bytes it clears, and whose capacity it keeps, adding room only if it
-    /// has less than `new()` would allocate. So a buffer that holds a table
-    /// already written is reused, and one made with `Vec::with_capacity()`
-    /// gives the room that a large table needs. The table's bytes are then
-    /// the buffer's, which [`TableBuilder::into_bytes()`] returns.
+    /// bytes it clears and whose capacity it keeps. A buffer without capacity
+    /// gets the room that `new()` allocates, and one with some keeps it,
+    /// growing as the table needs: a buffer that held a table already is
+    /// reused, and one from `Vec::with_capacity()` gives a table the room
+    /// that the caller expects it to need, more or less than `new()`'s. The
+    /// table's bytes are then the buffer's, which
+    /// [`TableBuilder::into_bytes()`] returns.
     ///
     /// ```
     /// use tafla::{BuildError, TableBuilder, TableLayout};
@@ -178,7 +180,12 @@ impl TableBuilder {
     ///
     /// # Errors
     ///
-    /// The errors of [`TableBuilder::new()`], which drop the buffer.
+    /// The errors of [`TableBuilder::new()`], which drop the buffer. They
+    /// follow from `fields` and `layout` alone, so a caller can rule them
+    /// out: [`BuildError::VersionTooLarge`] for a version larger than the
+    /// offset type's largest value, and [`BuildError::HeaderTooLong`] for a
+    /// header, of `layout.header_size()` bytes and `fields` offsets of
+    /// `layout.offset_size()` bytes each, longer than that.
     #[inline]
     pub fn with_buffer<const VERSIONED: bool>(
         buffer: Vec<u8>,
@@ -592,7 +599,11 @@ impl TableBuilder {
     /// has no header and this table's offset type, and is padded as
     /// [`TableBuilder::set_table()`] pads a builder: to start at a multiple
     /// of the largest alignment of its fields. It's written where this table
-    /// ends, and moved forward by that padding once its fields are set.
+    /// ends, and moved forward by that padding once its fields are set,
+    /// which copies what they wrote, and again with each table nested in
+    /// place that holds it and is padded.
+    /// [`TableBuilder::set_table_with_alignment()`] pads it before its fields
+    /// are set instead.
     ///
     /// The builder is borrowed while `fill` runs, which sets the table's
     /// fields only through the `InPlaceTable`.
@@ -605,9 +616,68 @@ impl TableBuilder {
     /// `fill` leaves its fields unset, or an error of any setter, each
     /// converted into `E`, or the error that `fill` returns. Each leaves the
     /// builder as it was, as a panic in `fill` does.
-    #[allow(clippy::cast_possible_truncation)]
     #[inline(always)]
     pub fn set_table_with<E, F>(&mut self, fields: usize, fill: F) -> Result<(), E>
+    where
+        E: From<BuildError>,
+        F: FnOnce(&mut InPlaceTable<'_>) -> Result<(), E>,
+    {
+        self.set_table_with_alignment(fields, Alignment::One, fill)
+    }
+
+    /// Writes a table nested in place as [`TableBuilder::set_table_with()`]
+    /// does, padded before `fill` sets its fields to start at a multiple of
+    /// `alignment`, which is then the least that it's padded to, so that
+    /// what its fields write isn't moved. The largest alignment that its
+    /// fields need follows from its type, since every field must be set: 8
+    /// for an array of 64-bit elements or a table that holds one, and so on,
+    /// and 1 for a table of scalars, strings and vectors alone.
+    ///
+    /// - An `alignment` as large as its fields need writes the bytes that
+    ///   `set_table_with()` writes, without moving them.
+    /// - A smaller `alignment` writes those bytes too: once the fields are
+    ///   set, the table is moved forward by the padding that it lacks, as
+    ///   `set_table_with()` moves it.
+    /// - A larger `alignment` pads the table to it, as
+    ///   [`TableBuilder::set_table_aligned()`] pads a builder given it, and
+    ///   counts it as the table's alignment, which pads this table too when
+    ///   it's nested in turn. The bytes are valid, and padded more than
+    ///   `set_table_with()` pads them.
+    ///
+    /// ```
+    /// use tafla::{Alignment, BuildError, TableBuilder, TableLayout};
+    ///
+    /// let columns = [[0.5_f64, 1.5], [2.5, 3.5]];
+    ///
+    /// let mut builder = TableBuilder::new(2, TableLayout::DEFAULT)?;
+    /// builder.set_str("columns")?;
+    /// builder.set_table_with_alignment(2, Alignment::Eight, |table| {
+    ///     table.set_f64_array(&columns[0])?;
+    ///     table.set_f64_array(&columns[1])
+    /// })?;
+    /// # let declared = builder.to_bytes()?;
+    /// # let mut moved = TableBuilder::new(2, TableLayout::DEFAULT)?;
+    /// # moved.set_str("columns")?;
+    /// # moved.set_table_with(2, |table| {
+    /// #     table.set_f64_array(&columns[0])?;
+    /// #     table.set_f64_array(&columns[1])
+    /// # })?;
+    /// # assert_eq!(declared, moved.to_bytes()?);
+    /// # Ok::<(), BuildError>(())
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// The errors of [`TableBuilder::set_table_with()`], which leave the
+    /// builder as it was, without the padding.
+    #[allow(clippy::cast_possible_truncation)]
+    #[inline(always)]
+    pub fn set_table_with_alignment<E, F>(
+        &mut self,
+        fields: usize,
+        alignment: Alignment,
+        fill: F,
+    ) -> Result<(), E>
     where
         E: From<BuildError>,
         F: FnOnce(&mut InPlaceTable<'_>) -> Result<(), E>,
@@ -618,17 +688,24 @@ impl TableBuilder {
 
         let checkpoint = Checkpoint::new(self);
         let builder = &mut *checkpoint.builder;
+        // Padded from this table's start, as a nested builder is, for the
+        // alignment given, before the fields are written
+        let start = builder.table_length();
+        let declared = alignment.padding(start);
+        builder.bytes.push_zeros(declared);
         // The header holds an offset of at least a byte per field
         builder.start_in_place(fields as u32, header);
+        builder.current.alignment = alignment;
         fill(&mut InPlaceTable {
             builder: &mut *builder,
         })?;
         builder.check_complete()?;
 
-        // Padded from this table's start, as a nested builder is
+        // Moved forward by the padding that the fields need beyond it, which
+        // a larger alignment pads by at least as much as a smaller one
         let table = builder.current;
         builder.current = checkpoint.saved.counters;
-        let padding = table.alignment.padding(table.table - builder.current.table);
+        let padding = table.alignment.padding(start) - declared;
         builder.check_field(padding as u64)?;
         if padding != 0 {
             builder.move_by(padding, table.table);
@@ -1095,6 +1172,27 @@ impl InPlaceTable<'_> {
         F: FnOnce(&mut InPlaceTable<'_>) -> Result<(), E>,
     {
         self.builder.set_table_with(fields, fill)
+    }
+
+    /// Writes a table nested in this one in place, as
+    /// [`TableBuilder::set_table_with_alignment()`] does
+    ///
+    /// # Errors
+    ///
+    /// The errors of [`TableBuilder::set_table_with_alignment()`].
+    #[inline(always)]
+    pub fn set_table_with_alignment<E, F>(
+        &mut self,
+        fields: usize,
+        alignment: Alignment,
+        fill: F,
+    ) -> Result<(), E>
+    where
+        E: From<BuildError>,
+        F: FnOnce(&mut InPlaceTable<'_>) -> Result<(), E>,
+    {
+        self.builder
+            .set_table_with_alignment(fields, alignment, fill)
     }
 
     /// Writes a vector of tables in place, as

@@ -41,6 +41,9 @@ struct Plan {
     /// The root's fields beyond the description's: -1, 0 or 1
     extra_fields: isize,
     in_place: bool,
+    /// Whether a table in place is given the alignment that its fields
+    /// need, and padded before they're set, rather than moved after
+    aligned: bool,
     owned: bool,
     failure: Option<Failure>,
 }
@@ -211,9 +214,13 @@ macro_rules! set_field {
                 alignment: None,
             } if $context.in_place(nested, $offset_type) => {
                 let fields = &nested.table.fields;
-                $target.set_table_with(fields.len(), |table| {
-                    fill(table, $offset_type, fields, $context)
-                })
+                let set =
+                    |table: &mut InPlaceTable<'_>| fill(table, $offset_type, fields, $context);
+                if $context.plan.aligned {
+                    $target.set_table_with_alignment(fields.len(), nested.table.alignment(), set)
+                } else {
+                    $target.set_table_with(fields.len(), set)
+                }
             }
             Field::Table { nested, alignment } => {
                 let table = nest(nested, $context)?;
@@ -424,11 +431,13 @@ fn plan() -> impl Strategy<Value = Plan> {
         -1..=1_isize,
         any::<bool>(),
         any::<bool>(),
+        any::<bool>(),
         option::of(failure),
     )
-        .prop_map(|(extra_fields, in_place, owned, failure)| Plan {
+        .prop_map(|(extra_fields, in_place, aligned, owned, failure)| Plan {
             extra_fields,
             in_place,
+            aligned,
             owned,
             failure,
         })
@@ -444,9 +453,10 @@ fn in_place_plan() -> impl Strategy<Value = Plan> {
     )
         .prop_map(|(fill, before, how)| Failure { fill, before, how });
 
-    (any::<bool>(), option::of(failure)).prop_map(|(owned, failure)| Plan {
+    (any::<bool>(), any::<bool>(), option::of(failure)).prop_map(|(aligned, owned, failure)| Plan {
         extra_fields: 0,
         in_place: true,
+        aligned,
         owned,
         failure,
     })
@@ -589,6 +599,7 @@ proptest! {
         let in_place = Plan {
             extra_fields: 0,
             in_place: true,
+            aligned: false,
             owned: false,
             failure: None,
         };

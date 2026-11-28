@@ -46,17 +46,18 @@ impl Bytes {
     }
 
     /// Clears the bytes, and makes room for a table of `fields` fields after
-    /// a header of `header` bytes, unless they have it already
+    /// a header of `header` bytes when they have none. Bytes with room keep
+    /// it, whether it's a reused buffer's or room that the caller chose.
     #[inline(always)]
     pub fn start_table(&mut self, header: usize, fields: usize) {
         self.vec.clear();
 
-        let room = fields
-            .saturating_mul(ROOM_FOR_A_FIELD)
-            .min(MOST_ROOM_FOR_FIELDS);
-        let capacity = FIRST_CAPACITY.max(header.saturating_add(room));
-        if capacity > self.vec.capacity() {
-            self.vec.reserve_exact(capacity);
+        if self.vec.capacity() == 0 {
+            let room = fields
+                .saturating_mul(ROOM_FOR_A_FIELD)
+                .min(MOST_ROOM_FOR_FIELDS);
+            self.vec
+                .reserve_exact(FIRST_CAPACITY.max(header.saturating_add(room)));
         }
     }
 
