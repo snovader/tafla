@@ -8,6 +8,7 @@ pub struct Strings<'a> {
     bytes: &'a [u8],
 }
 
+#[allow(clippy::inline_always)]
 impl<'a> Strings<'a> {
     const LAYOUT: TableLayout = TableLayout::DEFAULT;
 
@@ -19,6 +20,7 @@ impl<'a> Strings<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    #[inline(always)]
     pub fn s0(&self) -> Result<&'a str, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(0)?;
@@ -28,6 +30,7 @@ impl<'a> Strings<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    #[inline(always)]
     pub fn s1(&self) -> Result<&'a str, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(1)?;
@@ -37,6 +40,7 @@ impl<'a> Strings<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    #[inline(always)]
     pub fn s2(&self) -> Result<&'a str, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(2)?;
@@ -46,6 +50,7 @@ impl<'a> Strings<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    #[inline(always)]
     pub fn s3(&self) -> Result<&'a str, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(3)?;
@@ -55,6 +60,7 @@ impl<'a> Strings<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    #[inline(always)]
     pub fn s4(&self) -> Result<&'a str, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(4)?;
@@ -64,6 +70,7 @@ impl<'a> Strings<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    #[inline(always)]
     pub fn s5(&self) -> Result<&'a str, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(5)?;
@@ -73,6 +80,7 @@ impl<'a> Strings<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    #[inline(always)]
     pub fn s6(&self) -> Result<&'a str, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(6)?;
@@ -82,6 +90,7 @@ impl<'a> Strings<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    #[inline(always)]
     pub fn s7(&self) -> Result<&'a str, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(7)?;
@@ -91,6 +100,7 @@ impl<'a> Strings<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    #[inline(always)]
     pub fn s8(&self) -> Result<&'a str, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(8)?;
@@ -100,6 +110,7 @@ impl<'a> Strings<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    #[inline(always)]
     pub fn s9(&self) -> Result<&'a str, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(9)?;
@@ -109,6 +120,7 @@ impl<'a> Strings<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    #[inline(always)]
     pub fn s10(&self) -> Result<&'a str, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(10)?;
@@ -118,6 +130,7 @@ impl<'a> Strings<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    #[inline(always)]
     pub fn s11(&self) -> Result<&'a str, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(11)?;
@@ -127,6 +140,7 @@ impl<'a> Strings<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    #[inline(always)]
     pub fn s12(&self) -> Result<&'a str, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(12)?;
@@ -136,6 +150,7 @@ impl<'a> Strings<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    #[inline(always)]
     pub fn s13(&self) -> Result<&'a str, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(13)?;
@@ -145,6 +160,7 @@ impl<'a> Strings<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    #[inline(always)]
     pub fn s14(&self) -> Result<&'a str, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(14)?;
@@ -154,6 +170,7 @@ impl<'a> Strings<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    #[inline(always)]
     pub fn s15(&self) -> Result<&'a str, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(15)?;

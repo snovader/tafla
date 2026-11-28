@@ -642,6 +642,13 @@ var document = new Document(bytes); // checks the version
 ReadOnlySpan<float> a = document.Columns.A; // in place, on a little-endian host
 ```
 
+Rust's getters are `#[inline(always)]`, as the runtime's reads that they
+call are, so that a release build reads each field where its getter is
+called, as `TableReader`'s getters do by hand, rather than calling the getter
+and returning its `Result` through memory, as LLVM did with `#[inline]` where
+a function called several. Their `impl` blocks allow clippy's pedantic
+`inline_always`.
+
 C++'s namespace is the schema's file name, or `--package`'s, each of whose
 names takes a `_` for a run of other characters than ASCII letters and
 digits, starts with `schema_` when it doesn't start with a letter, and takes

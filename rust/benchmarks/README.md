@@ -584,11 +584,12 @@ of 31 to 33 characters sit on V8's limits, and are left out. The shapes that
 the C++ suite has too, such as 512 characters of 2 bytes, take its seeds, and
 hold its strings, and those of 22, 342 and 1,023 characters are Rust's alone.
 
-tafla's `get_str()` checks a string with `is_ascii()`, and then with
-`str::from_utf8()` if it isn't ASCII. On aarch64, `is_ascii()` tests 8 bytes
-at a time below 64 bytes and blocks of 64 bytes with NEON from 64, and
-`str::from_utf8()` skips ASCII two words at a time where they're aligned and
-checks every other character on its own. simdutf8, with which rkyv's
+tafla's `get_str()` checks whether a string is ASCII, and then checks it with
+`str::from_utf8()` if it isn't. It tests 8 bytes at a time below 64 bytes,
+as `is_ascii()` does, and calls `is_ascii()` from 64, which on aarch64 tests
+blocks of 64 bytes with NEON. `str::from_utf8()` skips ASCII two words at a
+time where they're aligned and checks every other character on its own.
+simdutf8, with which rkyv's
 bytecheck checks strings, checks blocks of 64 bytes with NEON, and strings
 shorter than 64 bytes with `str::from_utf8()`. So the shapes of 64 and 1,024
 bytes that aren't ASCII part a check character by character from one with

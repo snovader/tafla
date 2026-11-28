@@ -11,6 +11,7 @@ pub struct StringList<'a> {
     bytes: &'a [u8],
 }
 
+#[allow(clippy::inline_always)]
 impl<'a> StringList<'a> {
     const LAYOUT: TableLayout = TableLayout::DEFAULT;
 
@@ -25,6 +26,7 @@ impl<'a> StringList<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field, or the vector's count or the ends of its strings, lie outside the bytes.
+    #[inline(always)]
     pub fn items(&self) -> Result<StringVector<'a>, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(0)?;
@@ -61,6 +63,7 @@ pub struct NameList<'a> {
     bytes: &'a [u8],
 }
 
+#[allow(clippy::inline_always)]
 impl<'a> NameList<'a> {
     const LAYOUT: TableLayout = TableLayout::DEFAULT;
 
@@ -75,6 +78,7 @@ impl<'a> NameList<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field, or the vector's count or the ends of its items, lie outside the bytes.
+    #[inline(always)]
     pub fn items(&self) -> Result<NameVector<'a>, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(0)?;
@@ -126,6 +130,7 @@ pub struct Name<'a> {
     position: usize,
 }
 
+#[allow(clippy::inline_always)]
 impl<'a> Name<'a> {
     /// Reads the table at `position` in `bytes`, as its parent's getter finds it
     const fn new(bytes: &'a [u8], position: usize) -> Self {
@@ -135,6 +140,7 @@ impl<'a> Name<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    #[inline(always)]
     pub fn value(&self) -> Result<&'a str, DecodeError> {
         let reader = TableReader::new(self.bytes, TableLayout::DEFAULT);
         let position = reader.field_offset(self.position, 0)?;

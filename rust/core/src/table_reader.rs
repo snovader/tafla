@@ -391,12 +391,46 @@ pub fn decode_str(bytes: &[u8], position: usize) -> Result<&str, DecodeError> {
     // where `str::from_utf8()` checks a string's bytes one at a time but for
     // whole pairs of aligned words in it: the benchmarks' record, whose
     // 16-byte name isn't aligned, read in 6.3 ns rather than 11.8 ns
-    if bytes.is_ascii() {
+    if is_ascii(bytes) {
         // SAFETY: ASCII is valid UTF-8
         return Ok(unsafe { str::from_utf8_unchecked(bytes) });
     }
 
     str::from_utf8(bytes).map_err(|source| DecodeError::InvalidUtf8 { position, source })
+}
+
+/// The length from which [`is_ascii()`] calls the standard library's
+/// `is_ascii()`, which checks such bytes with SIMD on aarch64 and x86-64
+const SHORT_ASCII: usize = 64;
+
+/// Whether `bytes` are ASCII, checking those shorter than [`SHORT_ASCII`] a
+/// word at a time, as the standard library's `is_ascii()` does
+// Inlined into `decode_str()`'s callers. The standard library's
+// `is_ascii()` is a function of its own, which LLVM inlined into a getter
+// that it called out of line, but called out of line from larger callers,
+// such as a read of a record's fields, by hand or through tafla-gen's
+// getters: inlined, the benchmarks' record read in 5.0 ns rather than
+// 5.6 ns. A table of 16 strings of 64 bytes or more, through tafla-gen's
+// getters, took 1.05 to 1.10 times as long, its read grown by 16 inlined
+// checks, and calling `is_ascii()` through a function that's never inlined
+// made it slower still, and strings read by hand too.
+#[allow(clippy::inline_always)]
+#[inline(always)]
+fn is_ascii(bytes: &[u8]) -> bool {
+    const NON_ASCII: u64 = u64::from_ne_bytes([0x80; 8]);
+
+    if bytes.len() >= SHORT_ASCII {
+        return bytes.is_ascii();
+    }
+
+    let (words, rest) = bytes.as_chunks::<8>();
+    for word in words {
+        if u64::from_ne_bytes(*word) & NON_ASCII != 0 {
+            return false;
+        }
+    }
+
+    rest.iter().all(u8::is_ascii)
 }
 
 /// Reads a length, offset or header slot as wide as `offset_type` from the

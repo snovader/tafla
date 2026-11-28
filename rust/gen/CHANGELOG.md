@@ -281,6 +281,16 @@ first commits, for code built from its source before the release.
   into the bytes that the runtime's `TableWriter::table_bytes()` returns. The
   benchmarks' vector of 100 nested tables took 0.15 µs to write rather than
   0.83 µs, and the record 20 ns rather than 30 ns.
+- Generated Rust getters are `#[inline(always)]`, as the runtime's reads that
+  they call are, so that each compiles where it's called, to the read that
+  `TableReader`'s getters make by hand. LLVM called some out of line where a
+  function called several, returning each `Result` through memory. The
+  benchmarks' document of 100 rows read in 10.3 ns rather than 12.6 ns, a
+  table of 16 strings in 0.64 to 0.97 of the time, and a vector of tables of
+  a string each in 0.67 to 0.92. Reading the vector of 100 nested tables
+  into the workload's items took 296 ns rather than 277 ns. The record read
+  took 5.5 ns rather than 5.0 ns, as by hand, until the runtime checked
+  short strings for ASCII where it reads them, which brought both to 5.0 ns.
 - Generated TypeScript and JavaScript write a nested table whose fields'
   sizes the schema fixes whole, with its `writeAt()`, where its parent's
   writer reserves its `SIZE` bytes, and size a vector of them in one call, as
