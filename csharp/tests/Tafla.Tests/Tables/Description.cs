@@ -63,12 +63,19 @@ public sealed record Scalar(ScalarType Type, ulong Bits) : Field
 
 /// <summary>
 /// A bool, which the runtimes have no API for: it's written as the uint8 1 or 0, and read as true
-/// when its byte isn't 0. It's a field only, rather than a scalar of structs or arrays.
+/// when its byte isn't 0. It's a field only, rather than a scalar of structs, and an array of bools
+/// is a <see cref="BoolArray"/>.
 /// </summary>
 public sealed record Bool(bool Value) : Field;
 
 /// <summary>An array of scalars of a type, of their bits.</summary>
 public sealed record ArrayField(ScalarType Type, Seq<ulong> Bits) : Field;
+
+/// <summary>
+/// An array of bools, which the runtime writes as a uint8 array of 1 and 0 with SetBoolArray, and
+/// GetBoolArray reads as true where a byte isn't 0.
+/// </summary>
+public sealed record BoolArray(Seq<bool> Values) : Field;
 
 public sealed record StringField(string Value) : Field;
 

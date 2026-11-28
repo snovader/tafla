@@ -433,6 +433,7 @@ public class TableWriterTests
         {
             writer => writer.SetString(0, "abcd"),
             writer => writer.SetUInt32Array(0, [1, 2]),
+            writer => writer.SetBoolArray(0, [true, false, true, true]),
             writer => writer.SetFloat64(0, 1),
             writer => writer.SetStruct(0, new byte[6]),
             writer => writer.ReserveStructArray(0, 2, 1, 1),
@@ -505,6 +506,7 @@ public class TableWriterTests
             () => sizer.StartTable(-1),
             () => sizer.AddInt8Array(-1),
             () => sizer.AddFloat64Array(-1),
+            () => sizer.AddBoolArray(-1),
             () => sizer.AddVector(-1),
             () => sizer.AddStruct(-1),
             () => sizer.AddStructArray(-1, 4, 4),

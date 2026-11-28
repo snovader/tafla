@@ -163,6 +163,7 @@ impl<const V: bool> Reader<'_, V> {
             Field::U64Array(_) => Field::U64Array(reader.get_u64_array(position)?.to_vec()),
             Field::F32Array(_) => Field::F32Array(reader.get_f32_array(position)?.to_vec()),
             Field::F64Array(_) => Field::F64Array(reader.get_f64_array(position)?.to_vec()),
+            Field::BoolArray(_) => Field::BoolArray(reader.get_bool_array(position)?),
             Field::String(_) => Field::String(reader.get_str(position)?.to_owned()),
             Field::Struct(scalars) => {
                 let size = struct_size(struct_types(scalars));

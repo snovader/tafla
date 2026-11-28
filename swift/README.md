@@ -83,6 +83,8 @@ then the fields in the order they were set:
   start, and arrays of structs to the size of their largest scalar.
   `setTable()` aligns a nested table to the largest alignment of its arrays
   when given its builder, and to 4 bytes by default when given bytes.
+- An array of bools is a `uint8` array, which `setBoolArray()` writes as 1
+  for true and 0 for false, and whose bytes are true where they aren't 0.
 - A vector starts with its item count, then the end of each item, counted from
   the vector's start, and then the items, so `Vector.item(at:)` finds any item
   from two ends without reading the others. An item without a header and with
@@ -122,6 +124,10 @@ returns depend on the same bytes, so they can't outlive them either:
   `stringVector(at:)` returns a `StringVector`, a view of a vector of
   strings, whose subscript copies one string, and `Array(_:)` every string
   into an array of their own.
+- **Bools are copied.** `boolArray(at:)` reads an array of bools into a
+  `[Bool]` of its own, true where a byte isn't 0, since a byte other than 0
+  and 1 isn't a `Bool`. `uint8Array(at:)` reads its bytes in place, as the
+  getter of a generated array of bools does.
 - **The bytes come from their owner.** `Data.bytes` and `ArraySlice.span.bytes`
   are a `RawSpan` on every system that the package runs on, and
   `Array.span.bytes` from macOS 26 and iOS 26 on, and on Linux, so

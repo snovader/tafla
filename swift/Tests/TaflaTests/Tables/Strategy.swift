@@ -310,6 +310,7 @@ struct Draw: RandomNumberGenerator {
             (1, { .uint64Array($0.array(most: elements) { $0.integer() }) }),
             (1, { .float32Array(bits: $0.array(most: elements) { $0.float32() }) }),
             (1, { .float64Array(bits: $0.array(most: elements) { $0.float64() }) }),
+            (1, { .boolArray($0.array(most: elements) { $0.bool() }) }),
             // Each as likely as three types of number
             (3, { .string($0.string(most: limits.characters)) }),
             (3, { draw in .struct(draw.scalars(draw.structTypes())) }),
@@ -446,6 +447,7 @@ func longest(_ field: Field, width: UInt64) -> UInt64 {
     case .int64Array(let values): return array(values.count, 8)
     case .uint64Array(let values): return array(values.count, 8)
     case .float64Array(let bits): return array(bits.count, 8)
+    case .boolArray(let values): return array(values.count, 1)
     case .string(let utf8): return width + UInt64(utf8.count)
     case .struct(let scalars): return UInt64(structBytes(scalars).count)
     case .structArray(let types, let items):

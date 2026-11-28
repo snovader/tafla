@@ -393,11 +393,13 @@ impl Generator<'_> {
                     Read::Expression(format!("try {}", self.scalar_value(field, integer))),
                 )
             }
+            // An array of bools as its bytes in place, as a `uint8` array,
+            // since a byte other than 0 and 1 isn't a `Bool`
             FieldType::Array(scalar) => (
-                format!("ArrayView<{}>", swift_type(scalar)),
+                format!("ArrayView<{}>", swift_type(scalar.stored())),
                 Read::Expression(format!(
                     "try _reader.{}Array(at: {position})",
-                    scalar.name()
+                    scalar.stored().name()
                 )),
             ),
             FieldType::String => (
@@ -460,6 +462,11 @@ impl Generator<'_> {
                 ),
                 String::new(),
                 "Throws a `DecodeError` if the field, or its structs, lie outside the bytes.".to_owned(),
+            ],
+            FieldType::Array(Scalar::Bool) => vec![
+                "A byte for each bool, which is true where it isn't 0.".to_owned(),
+                String::new(),
+                "Throws a `DecodeError` if the field lies outside the bytes.".to_owned(),
             ],
             FieldType::StringVector => vec![
                 "A view of the strings, which reads each string when it's asked for, and throws then if"
@@ -627,6 +634,9 @@ impl Generator<'_> {
                 FieldType::Scalar(scalar) => {
                     writer.line(format!("sizer.add{}()", method(scalar.stored())));
                 }
+                FieldType::Array(Scalar::Bool) => {
+                    writer.line(format!("sizer.addBoolArray(count: self.{name}.count)"));
+                }
                 FieldType::Array(scalar) => {
                     writer.line(format!(
                         "sizer.add{}Array(count: self.{name}.count)",
@@ -681,6 +691,10 @@ impl Generator<'_> {
                         method(scalar),
                         scalar_integer(field)
                     ));
+                }
+                // Bools, which the writer writes as bytes of 1 and 0
+                FieldType::Array(Scalar::Bool) => {
+                    writer.line(format!("writer.setBoolArray({index}, self.{name})"));
                 }
                 FieldType::Array(scalar) => {
                     writer.line(format!(
@@ -1263,6 +1277,38 @@ mod tests {
             camel_case(value)
         );
         assert!(code.contains(&constant), "{code}");
+    }
+
+    /// An array of bools reads its bytes in place, as a `[uint8]` does,
+    /// after the field's own documentation, and is written from bools
+    #[test]
+    fn test_bool_arrays_read_their_bytes_and_write_bools() {
+        let source = "message Flags {\n    /// The flags\n    flags: [bool];\n}\n";
+        let schema = crate::parse(source).unwrap();
+        let code = &generate(&schema, "flags", "header", &Options::default())[0].contents;
+
+        let getter = "    \
+    /// The flags
+    ///
+    /// A byte for each bool, which is true where it isn't 0.
+    ///
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var flags: ArrayView<UInt8> {
+        @_lifetime(copy self)
+        get throws(DecodeError) { try _reader.uint8Array(at: _reader.rootOffset(0)) }
+    }
+";
+        assert!(code.contains(getter), "{code}");
+        assert!(code.contains("    public var flags: [Bool]\n"), "{code}");
+        assert!(
+            code.contains("sizer.addBoolArray(count: self.flags.count)\n"),
+            "{code}"
+        );
+        assert!(
+            code.contains("writer.setBoolArray(0, self.flags)\n"),
+            "{code}"
+        );
     }
 
     #[test]

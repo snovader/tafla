@@ -18,6 +18,7 @@ from hypothesis.strategies import (
     DrawFn,
     SearchStrategy,
     binary,
+    booleans,
     characters,
     composite,
     data,
@@ -53,6 +54,7 @@ from tests.tables import (
     comparable_table,
     create_builder,
     from_json,
+    is_typed_array,
     layout_of,
     offset_size_of,
     read_table,
@@ -191,14 +193,15 @@ class TestFormatRules(unittest.TestCase):
         self, table: Description
     ) -> None:
         """The alignment of an array of scalars is their size, and of an
-        array of structs the size of their largest scalar"""
+        array of structs the size of their largest scalar. Arrays of bools
+        are bytes, which need none."""
         for placement in placements_of(build_table(table).bytes(), table):
             field = placement.field
             kind = field["type"]
 
             if kind == "struct[]":
                 alignment = struct_alignment(field["fields"])
-            elif kind.endswith("[]") and kind != "string[]":
+            elif is_typed_array(kind):
                 alignment = ELEMENT_SIZES[kind.removesuffix("[]")]
             else:
                 continue
@@ -226,8 +229,9 @@ class TestFormatRules(unittest.TestCase):
 
     def assert_little_endian(self, placement: Placement) -> None:
         """Compares the bytes of a scalar, struct, array or string with the
-        ones that ``struct`` packs little-endian, and a vector's count and ends
-        with its items"""
+        ones that ``struct`` packs little-endian, an array of bools with a
+        byte of 1 or 0 for each, and a vector's count and ends with its
+        items"""
         data, position, size = placement.data, placement.position, placement.offset_size
         field = placement.field
         kind = field["type"]
@@ -247,6 +251,14 @@ class TestFormatRules(unittest.TestCase):
             start = position + size
             self.assertEqual(unsigned(data, position, size), len(field["items"]))
             self.assertEqual(bytes(data[start : start + len(structs)]), structs)
+        elif kind == "bool[]":
+            values = field["value"]
+            elements = bytes(1 if value else 0 for value in values)
+
+            # Unpadded, right after the count
+            start = position + size
+            self.assertEqual(unsigned(data, position, size), len(values))
+            self.assertEqual(bytes(data[start : start + len(elements)]), elements)
         elif kind == "string[]":
             # The count, then the end of each string from the vector's
             # position, then the strings' UTF-8, one after another
@@ -330,6 +342,7 @@ _GETTERS: dict[str, _Getter] = {
         for name in [
             *(f"get_{kind}" for kind in FORMATS),
             *(f"get_{kind}_array" for kind in FORMATS),
+            "get_bool_array",
             "get_string",
             "get_vector",
             "get_vector_offsets",
@@ -497,14 +510,15 @@ _GROWING_TABLES: dict[bool, SearchStrategy[Callable[[int], Description]]] = {
 
 @composite
 def growing_fields(draw: DrawFn, offset_type: OffsetType) -> GrowingField:
-    """Strings, alone and last in a vector of strings, arrays of scalars and
-    of structs, and tables nested with ``set_table()`` and in a vector that
-    end in a ``uint8[]``, which grow by a character, element or struct at a
-    time, and vectors of tables and of strings that grow by an empty item,
-    for tables of the offset type ``offset_type``. Nested tables have uint32
-    offsets, so that they fit any length that their parent does."""
+    """Strings, alone and last in a vector of strings, arrays of scalars, of
+    bools and of structs, and tables nested with ``set_table()`` and in a
+    vector that end in a ``uint8[]``, which grow by a character, element, bool
+    or struct at a time, and vectors of tables and of strings that grow by an
+    empty item, for tables of the offset type ``offset_type``. Nested tables
+    have uint32 offsets, so that they fit any length that their parent does."""
     kinds = [
         "array",
+        "bool array",
         "struct array",
         "string",
         "string vector item",
@@ -523,6 +537,12 @@ def growing_fields(draw: DrawFn, offset_type: OffsetType) -> GrowingField:
             return GrowingField(
                 lambda count: {"type": f"{element}[]", "value": [value] * count},
                 ELEMENT_SIZES[element],
+            )
+        case "bool array":
+            value = draw(booleans())
+
+            return GrowingField(
+                lambda count: {"type": "bool[]", "value": [value] * count}, 1
             )
         case "struct array":
             types = draw(STRUCT_TYPES)

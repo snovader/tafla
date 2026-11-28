@@ -200,6 +200,24 @@ def sequences(elements: SearchStrategy[Any], max_size: int) -> SearchStrategy[An
     )
 
 
+class Truthless:
+    """An object whose truth raises, as ``bool()`` takes it, and whose error
+    both writers raise for an array of bools that holds it"""
+
+    def __bool__(self) -> bool:
+        raise KeyError("no truth")
+
+    @override
+    def __repr__(self) -> str:
+        return "Truthless()"
+
+
+# Elements of the arrays of bools that callers pass: bools, which the native
+# writer converts itself, and anything else, which both convert as bool()
+# takes it, or raise its error for
+BOOL_ELEMENTS: SearchStrategy[Any] = one_of(booleans(), ELEMENTS, builds(Truthless))
+
+
 def convertible(kind: str) -> SearchStrategy[Any]:
     """Elements that ``array()`` converts to an array of ``kind``"""
     code = FORMATS[kind]
@@ -526,6 +544,32 @@ class TestImplementations(unittest.TestCase):
         if draw.draw(booleans()):
             calls.append(("hold_view", ()))
         calls.append((f"set_{kind}_array", (leading, values)))
+
+        self.assert_same_writes(arguments, leading + 1, None, (0, [], False), calls)
+
+    @given(data())
+    def test_write_the_same_arrays_of_bools_from_lists_and_tuples_of_any_values(
+        self, draw: DataObject
+    ) -> None:
+        """An exact list or tuple of bools is converted natively, and any
+        other values as ``bool()`` takes them: each writes the same bytes of 1
+        and 0, or raises the same error having written nothing, after fields
+        that pad it, and while a view of the bytes is held"""
+        arguments = draw.draw(layout_arguments())
+        values = draw.draw(
+            one_of(
+                sequences(booleans(), max_size=40),
+                sequences(BOOL_ELEMENTS, max_size=6),
+            )
+        )
+        leading = draw.draw(integers(0, 3))
+
+        calls: list[tuple[str, tuple[Any, ...]]] = [
+            ("set_uint8", (index, 1)) for index in range(leading)
+        ]
+        if draw.draw(booleans()):
+            calls.append(("hold_view", ()))
+        calls.append(("set_bool_array", (leading, values)))
 
         self.assert_same_writes(arguments, leading + 1, None, (0, [], False), calls)
 
@@ -1068,6 +1112,7 @@ ARRAY_READS = [f"get_{kind}_array" for kind in sorted(FORMATS)]
 READS = [
     *SCALAR_READS,
     *ARRAY_READS,
+    "get_bool_array",
     "get_string",
     "root_offset",
     "field_offset",
@@ -1093,6 +1138,7 @@ SIZES = one_of(integers(-2, 20), INTEGERS)
 
 READ_ARGUMENTS: dict[str, SearchStrategy[tuple[Any, ...]]] = {
     **{method: tuples(POSITIONS) for method in SCALAR_READS + ARRAY_READS},
+    "get_bool_array": tuples(POSITIONS),
     "get_string": tuples(POSITIONS),
     "root_offset": tuples(POSITIONS),
     "field_offset": tuples(POSITIONS, POSITIONS),
@@ -1156,6 +1202,15 @@ ARRAYS: SearchStrategy[Any] = one_of(
     binary(min_size=2, max_size=8).map(lambda data: memoryview(data)[::2]),
 )
 
+# What callers pass as an array of bools: sequences of any values, and other
+# iterables, of bytes and of ints, and an object that isn't iterable
+BOOL_ARRAYS: SearchStrategy[Any] = one_of(
+    sequences(BOOL_ELEMENTS, max_size=4),
+    binary(max_size=8),
+    builds(array, just("i"), lists(integers(-2, 2), max_size=4)),
+    none(),
+)
+
 STRUCTS: SearchStrategy[Any] = one_of(
     binary(max_size=12),
     binary(max_size=12).map(bytearray),
@@ -1192,6 +1247,7 @@ WRITES: SearchStrategy[tuple[str, tuple[Any, ...]]] = one_of(
         sampled_from([f"set_{kind}_array" for kind in sorted(FORMATS)]),
         tuples(INDICES, ARRAYS),
     ),
+    tuples(just("set_bool_array"), tuples(INDICES, BOOL_ARRAYS)),
     tuples(
         just("set_string"),
         tuples(

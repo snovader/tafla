@@ -122,6 +122,9 @@ and then the fields in the order they were set:
   without reading the items before it. `getVectorItemOffset()` finds it from
   the count that `getVectorLength()` returned, so that reading many items
   reads and checks the count once, as the generated views do.
+- An array of bools is a `uint8` array of 1 and 0, which `setBoolArray()`
+  writes from bools and `getBoolArray()` reads into bools, true where a byte
+  isn't 0. `getUint8Array()` reads its bytes in place.
 - A vector of strings lays out its count and ends as a vector of tables
   does, and then each string's UTF-8, without a count of its own.
   `setStringVector()` writes one from an array of strings,

@@ -1,5 +1,6 @@
 #include "common/strategy.hpp"
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <iterator>
@@ -84,6 +85,15 @@ rc::Gen<T> floats() {
 template <class T>
 rc::Gen<Field> fields_of(rc::Gen<T> values) {
     return rc::gen::map(std::move(values), [](T value) { return Field{std::move(value)}; });
+}
+
+/// Arrays of up to `max` bools, empty too
+rc::Gen<Field> bool_arrays(std::size_t max) {
+    return rc::gen::map(vectors(max, rc::gen::arbitrary<bool>()), [](const std::vector<bool>& values) {
+        Bools bools(values.size());
+        std::ranges::copy(values, bools.begin());
+        return Field{std::move(bools)};
+    });
 }
 
 /// Scalar fields of a type
@@ -206,19 +216,19 @@ rc::Gen<Field> value(Limits limits) {
         fields_of(vectors(elements, integers<std::int16_t>())), fields_of(vectors(elements, integers<std::uint16_t>())),
         fields_of(vectors(elements, integers<std::int32_t>())), fields_of(vectors(elements, integers<std::uint32_t>())),
         fields_of(vectors(elements, integers<std::int64_t>())), fields_of(vectors(elements, integers<std::uint64_t>())),
-        fields_of(vectors(elements, float32())), fields_of(vectors(elements, float64())));
+        fields_of(vectors(elements, float32())), fields_of(vectors(elements, float64())), bool_arrays(elements));
 
     // Vectors of strings, empty too, and of empty strings
     const auto string_vectors =
         rc::gen::map(vectors(limits.strings, strings(limits.characters)),
                      [](std::vector<std::string> strings) { return Field{StringVectorField{std::move(strings)}}; });
 
-    // Each type of scalar and of array as likely as any other, and strings,
-    // vectors of strings, structs and arrays of structs each as likely as
-    // three of them
+    // Each type of scalar and of array, bools among them, as likely as any
+    // other, and strings, vectors of strings, structs and arrays of structs
+    // each as likely as three of them
     return rc::gen::weightedOneOf<Field>({
         {10, scalars},
-        {10, arrays},
+        {11, arrays},
         {3, fields_of(strings(limits.characters))},
         {3, struct_field()},
         {3, struct_array(limits.structs)},

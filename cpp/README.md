@@ -48,6 +48,7 @@ type, offset size, vector, builder and decode error.
 | `errors.hpp`           | `Error`, and `DecodeError` and `BuildError`, which derive from it             |
 | `table_reader.hpp`      | `TableReader<Versioned>`, which reads a table                                  |
 | `array_view.hpp`       | `ArrayView<T>`, a random-access range of an array's elements                  |
+| `bools.hpp`            | `Bools`, the bools that `TableReader::get_bool_array()` reads                 |
 | `vector.hpp`           | `Vector`, a vector of tables, and its ranges of items                         |
 | `table_builder.hpp`    | `TableBuilder` and `NestedTable`, which write a table field by field          |
 | `table_writer.hpp`     | `TableSizer` and `TableWriter`, which the generated code writes tables with   |
@@ -116,6 +117,22 @@ type, offset size, vector, builder and decode error.
   tables, whose codec allocates the items' fields, and 2% for the document of
   1.2 MB, which copying its columns takes most of. A `serialize()` compiles
   to the same code as before.
+- **Arrays of bools are bytes, read into `Bools`.** An array of bools is a
+  `uint8` array of 1 for true and 0 for false, which a reader reads as true
+  wherever a byte isn't 0. A byte other than 0 or 1 isn't a `bool`, so no
+  reader views the bytes as bools: `ArrayView<bool>` doesn't compile,
+  `get_uint8_array()` and a generated getter return the bytes in place, and
+  `TableReader::get_bool_array()` and `Bools::from_bytes()` read them into
+  `Bools`, a `bool` each, one after another, which own them. They convert to
+  the `std::span<const bool>` that `TableWriter::set_bool_array()` and
+  `TableBuilder::set_bool_array()` take, and the builder owns `Bools` given
+  as an rvalue, as it owns a `std::vector`. A `std::vector<bool>` packs its
+  bools into bits instead, which no span views, and filling one from 1,000
+  bytes took 2.0 µs, where `Bools` took 38 ns. The writers copy a span of
+  bools as its bytes, since a `bool` is the byte 0 or 1, as a `static_assert`
+  in `table_writer.hpp` checks: a loop that wrote 1 or 0 for each took 19 ns
+  for 1,000 bools with GCC 16, where the copy took 12 ns, and 4.9 ns for 100
+  with Apple Clang 21, where it took 2.3 ns.
 - **`ArrayView::as_span()`** returns a `std::span<const T>` of the elements
   where they're aligned on a little-endian host, as `TableBuilder` aligns
   them within an aligned table. It deliberately reads the table's bytes as
@@ -279,10 +296,10 @@ and a failure prints the `RC_PARAMS` that reproduces it.
   the format's rules, read as values or decode errors cut short, overwritten
   or arbitrary, and fail with a `BuildError` where they can't be written, with
   examples of every error.
-- `table_reader_test`, `array_view_test`, `utf8_test`, `layout_test` and
-  `compatibility_test`: every getter at every position of arbitrary bytes,
-  views at every alignment, UTF-8 at its limits, layouts, and tables that the
-  TypeScript runtime wrote.
+- `table_reader_test`, `array_view_test`, `bools_test`, `utf8_test`,
+  `layout_test` and `compatibility_test`: every getter at every position of
+  arbitrary bytes, views at every alignment, bools read from bytes, UTF-8 at
+  its limits, layouts, and tables that the TypeScript runtime wrote.
 - `string_vector_test`: vectors of strings read back every string, at once
   and each from its ends alone, take the bytes of a vector of tables whose
   bytes are the strings' UTF-8, are written alike by every writer, and read

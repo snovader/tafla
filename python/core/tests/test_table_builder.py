@@ -146,6 +146,17 @@ class TestTableBuilder(unittest.TestCase):
             reader.get_float32_array(reader.root_offset(0)).tolist(), [1, 2]
         )
 
+    def test_keeps_converted_bools_as_they_were_when_set(self) -> None:
+        values = [True, False]
+        builder = TableBuilder(1)
+        builder.set_bool_array(values)
+        values.append(True)
+        values[0] = False
+
+        reader = builder.finalize()
+
+        self.assertEqual(reader.get_bool_array(reader.root_offset(0)), [True, False])
+
     def test_keeps_a_vector_as_it_was_when_set(self) -> None:
         vector = [b"ab", b"c"]
         builder = TableBuilder(1)

@@ -162,6 +162,10 @@ const stringFields = STRINGS.map((value): FieldDescription => ({
     value
 }));
 
+/** Arrays of bools, empty too */
+const boolArrayFields = fc
+    .array(fc.boolean())
+    .map((value): FieldDescription => ({ type: 'bool[]', value }));
 /** Vectors of strings, empty too, and of empty strings */
 const stringVectorFields = fc
     .array(STRINGS, { maxLength: STRINGS_PER_VECTOR })
@@ -256,6 +260,7 @@ export const FIELDS: fc.Arbitrary<FieldDescription> = fc.letrec<{
             arbitrary: fc.oneof(
                 scalarFields,
                 ARRAY_FIELDS,
+                boolArrayFields,
                 stringFields,
                 stringVectorFields,
                 structFields,

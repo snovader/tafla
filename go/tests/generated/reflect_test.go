@@ -70,14 +70,23 @@ func readFields(reader reflect.Value, fieldsType reflect.Type) (reflect.Value, e
 }
 
 // readValue converts what a getter read into the type of the field that
-// writes it: the elements of an ArrayView, the strings of a StringVector,
-// the fields of a table's reader, and the items of a view
+// writes it: the elements of an ArrayView, the bools of an array of bools'
+// bytes, the strings of a StringVector, the fields of a table's reader, and
+// the items of a view
 func readValue(read reflect.Value, fieldType reflect.Type) (reflect.Value, error) {
 	switch {
 	case read.Type() == fieldType:
 		return read, nil
 	case read.Kind() == reflect.Struct && strings.HasPrefix(read.Type().Name(), "ArrayView["):
 		return read.MethodByName("Slice").Call(nil)[0], nil
+	case fieldType == reflect.TypeFor[[]bool]() && read.Type() == reflect.TypeFor[[]byte]():
+		// The bytes of an array of bools, in place, true where they aren't 0
+		bytes := read.Interface().([]byte)
+		bools := make([]bool, len(bytes))
+		for index, value := range bytes {
+			bools[index] = value != 0
+		}
+		return reflect.ValueOf(bools), nil
 	case read.Type() == reflect.TypeFor[tafla.StringVector]():
 		values, err := readStringVector(read.Interface().(tafla.StringVector))
 		return reflect.ValueOf(values), err
@@ -354,6 +363,8 @@ func describeArray(value reflect.Value) tables.Field {
 		return tables.Uint64Array(values)
 	case []float32:
 		return tables.Float32Array(values)
+	case []bool:
+		return tables.BoolArray(values)
 	default:
 		return tables.Float64Array(value.Interface().([]float64))
 	}

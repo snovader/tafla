@@ -72,6 +72,9 @@ pub enum Value {
     U64Array(Vec<u64>),
     F32Array(Vec<Bits<f32>>),
     F64Array(Vec<Bits<f64>>),
+    /// An array of bools, which tables store as the `u8` array of 1 and 0,
+    /// and read as true where a byte isn't 0
+    BoolArray(Vec<bool>),
     String(String),
     /// A struct's scalars, those of a struct within it in its place
     Struct(Vec<Value>),
@@ -126,6 +129,12 @@ impl Value {
 /// The elements of an array that a getter read
 pub fn to_vec<T: Element>(array: ArrayView<'_, T>) -> Vec<T> {
     array.to_vec()
+}
+
+/// The bools of the bytes of an array of them that a getter read in place,
+/// each true where it isn't 0, as `TableReader::get_bool_array()` reads them
+pub fn bools(bytes: &[u8]) -> Vec<bool> {
+    bytes.iter().map(|&byte| byte != 0).collect()
 }
 
 /// A table's fields as its generated getters read them, each to its value or
@@ -260,6 +269,7 @@ fn set<'a>(builder: &mut TableBuilder<'a>, value: &'a Value) -> Result<(), Build
         Value::U64Array(values) => builder.set_u64_array(values),
         Value::F32Array(values) => builder.set_f32_array(floats(values)),
         Value::F64Array(values) => builder.set_f64_array(floats(values)),
+        Value::BoolArray(values) => builder.set_bool_array(values),
         Value::String(string) => builder.set_str(string),
         Value::Struct(scalars) => builder.set_struct(struct_bytes(scalars)),
         Value::StructArray {

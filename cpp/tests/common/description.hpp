@@ -117,14 +117,15 @@ struct StringVectorField {
 
 /// A field of each type that a table holds, with its value. Equal fields
 /// hold floats of the same bits, so that NaN equals itself and -0 doesn't
-/// equal 0.
+/// equal 0. An array of bools holds `Bools`, which the builder borrows as a
+/// span of bools.
 struct Field {
     using Value = std::variant<std::int8_t, std::uint8_t, std::int16_t, std::uint16_t, std::int32_t, std::uint32_t,
                                std::int64_t, std::uint64_t, float, double, Bool, std::vector<std::int8_t>,
                                std::vector<std::uint8_t>, std::vector<std::int16_t>, std::vector<std::uint16_t>,
                                std::vector<std::int32_t>, std::vector<std::uint32_t>, std::vector<std::int64_t>,
-                               std::vector<std::uint64_t>, std::vector<float>, std::vector<double>, std::string, Struct,
-                               StructArray, TableField, VectorField, StringVectorField>;
+                               std::vector<std::uint64_t>, std::vector<float>, std::vector<double>, Bools, std::string,
+                               Struct, StructArray, TableField, VectorField, StringVectorField>;
 
     Value value;
 

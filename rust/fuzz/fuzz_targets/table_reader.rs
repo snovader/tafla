@@ -100,6 +100,7 @@ fn check_position(reader: &TableReader<'_>, position: usize) {
 
     let string_bytes = array(bytes, offset_type, position, 1);
     check_result(bytes, reader.get_u8_array(position), string_bytes);
+    check_bools(bytes, reader.get_bool_array(position), string_bytes);
     let string = string_bytes.and_then(|bytes| std::str::from_utf8(bytes).ok());
     check_result(bytes, reader.get_str(position), string);
 
@@ -232,6 +233,20 @@ fn check_view<T: Element + Debug, const N: usize>(
     if let Some(slice) = view.as_slice() {
         assert!(std::ptr::eq(slice.as_ptr().cast::<u8>(), bytes.as_ptr()));
         assert_eq!(slice.len(), len);
+    }
+}
+
+/// Checks that an array of bools holds a bool for each of the expected
+/// bytes, true where the byte isn't 0, or fails with the decode error when
+/// there are none
+fn check_bools(bytes: &[u8], read: Result<Vec<bool>, DecodeError>, expected: Option<&[u8]>) {
+    match read {
+        Ok(bools) => {
+            let expected = expected.expect("A read succeeds only within the bytes");
+            let expected = expected.iter().map(|&byte| byte != 0);
+            assert!(bools.into_iter().eq(expected));
+        }
+        Err(error) => check_error(bytes, &error, expected.is_none()),
     }
 }
 

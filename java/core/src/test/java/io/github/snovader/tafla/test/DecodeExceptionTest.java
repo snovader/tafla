@@ -262,6 +262,7 @@ public class DecodeExceptionTest {
             getters.add(new Getter(type.jsonName() + "[]", type::readArray));
         }
 
+        getters.add(new Getter("bool[]", TableReader::getBoolArray));
         getters.add(new Getter("string", TableReader::getString));
         getters.add(new Getter("struct of 9 bytes", (reader, position) -> reader.getStruct(position, 9)));
         getters.add(new Getter("structs of 3 bytes", (reader, position) -> reader.getStructArray(position, 3)));

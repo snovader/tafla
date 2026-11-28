@@ -126,6 +126,7 @@ protocol FieldTarget: ~Copyable {
     mutating func setUInt64Array(_ values: [UInt64]) throws(BuildError)
     mutating func setFloat32Array(_ values: [Float]) throws(BuildError)
     mutating func setFloat64Array(_ values: [Double]) throws(BuildError)
+    mutating func setBoolArray(_ values: [Bool]) throws(BuildError)
     mutating func setString(_ value: String) throws(BuildError)
     mutating func setStruct(_ bytes: [UInt8]) throws(BuildError)
     mutating func setStructArray(_ bytes: [UInt8], size: Int, alignment: Alignment) throws(BuildError)
@@ -169,6 +170,7 @@ extension FieldTarget where Self: ~Copyable {
         case .uint64Array(let values): try setUInt64Array(values)
         case .float32Array(let bits): try setFloat32Array(bits.map(Float.init(bitPattern:)))
         case .float64Array(let bits): try setFloat64Array(bits.map(Double.init(bitPattern:)))
+        case .boolArray(let values): try setBoolArray(values)
         case .string(let utf8): try setString(String(decoding: utf8, as: UTF8.self))
         case .struct(let scalars): try setStruct(structBytes(scalars))
         case .structArray(let types, let items):

@@ -100,6 +100,7 @@ public class TableBuilderTests
         {
             () => builder.SetUInt8Array(new byte[length]),
             () => builder.SetFloat64Array(new double[length / 8]),
+            () => builder.SetBoolArray(new bool[length]),
             () => builder.SetString(new string('é', length / 2)),
             () => builder.SetStruct(new byte[length]),
             () => builder.SetStructArray(new byte[length], 4, 4),

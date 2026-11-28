@@ -199,6 +199,14 @@ public struct TableWriter: ~Copyable {
     @inlinable
     public mutating func setFloat64Array(_ index: Int, _ values: [Double]) { setArray(index, values) }
 
+    /// Writes array field `index` of bools, as a `uint8` array of 1 for each
+    /// true value and 0 for each false one.
+    @inlinable
+    public mutating func setBoolArray(_ index: Int, _ values: [Bool]) {
+        startArray(index, count: values.count, alignment: .one)
+        output.writeBools(values)
+    }
+
     /// Writes array field `index` of `T`, as the setter of its type does
     @inlinable
     public mutating func setArray<T: ArrayElement>(_ index: Int, _ values: [T]) {

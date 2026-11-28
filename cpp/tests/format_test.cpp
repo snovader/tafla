@@ -57,6 +57,13 @@ std::optional<Value> value_of(const Field& field) {
                 return Value{false, 1, 0, field.scalar_bytes()};
             } else if constexpr (std::is_same_v<T, Bool>) {
                 return Value{false, 1, 0, {static_cast<std::uint8_t>(value.value ? 1 : 0)}};
+            } else if constexpr (std::is_same_v<T, Bools>) {
+                // A byte of 1 or 0 for each bool, unpadded
+                Value array{true, 1, value.size(), {}};
+                for (const bool bool_value : value) {
+                    array.bytes.push_back(bool_value ? 1 : 0);
+                }
+                return array;
             } else if constexpr (std::is_same_v<T, std::string>) {
                 return Value{true, 1, value.size(), std::vector<std::uint8_t>(value.begin(), value.end())};
             } else if constexpr (std::is_same_v<T, Struct>) {
@@ -292,7 +299,8 @@ RC_GTEST_PROP(Format, ArraysStartAtAMultipleOfTheirAlignment, ()) {
 }
 
 /// Scalars hold their values' little-endian bytes, structs their scalars',
-/// arrays and strings their counts' and their elements', and vectors their
+/// arrays and strings their counts' and their elements', arrays of bools a
+/// byte of 1 or 0 for each, and vectors their
 /// counts' and their items' ends', which count from the vector's position,
 /// after the ends, and vectors of strings their counts' and their strings'
 /// ends, and then the strings' UTF-8, one after another

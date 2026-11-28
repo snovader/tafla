@@ -100,6 +100,8 @@ void set_field_on(const Field& field, Target& target, std::optional<OffsetType> 
                 target.set_float32_array(std::span(value));
             } else if constexpr (std::is_same_v<T, std::vector<double>>) {
                 target.set_float64_array(std::span(value));
+            } else if constexpr (std::is_same_v<T, Bools>) {
+                target.set_bool_array(value.span());
             } else if constexpr (std::is_same_v<T, std::string>) {
                 target.set_string(std::string_view(value));
             } else if constexpr (std::is_same_v<T, StringVectorField>) {

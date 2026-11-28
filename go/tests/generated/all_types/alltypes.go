@@ -402,7 +402,7 @@ func (f ScalarsFields) AppendBinary(bytes []byte) ([]byte, error) {
 	return bytes, nil
 }
 
-// An array of every scalar type but bool, which has none
+// An array of every scalar type, and of bools, which are bytes of 0 and 1
 type Arrays struct {
 	bytes []byte
 }
@@ -520,11 +520,24 @@ func (t Arrays) Float64() (tafla.ArrayView[float64], error) {
 	return reader.GetFloat64Array(position)
 }
 
+// A byte for each bool, which is true where it isn't 0
+//
+// It fails with a [*tafla.DecodeError] if the field lies outside the bytes.
+func (t Arrays) Bool() ([]byte, error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 40)
+	if err != nil {
+		return nil, err
+	}
+	return reader.GetUint8Array(position)
+}
+
 // Fields reads every field of an [Arrays] at once, into the [ArraysFields] that
 // it's written from, as its getters read them, and its nested tables and the
 // items of its vectors as their Fields() reads them. Its strings, and its
 // arrays and arrays of structs as their Slice() returns them, share the bytes.
-// It fails with a [*tafla.DecodeError] if a field lies outside the bytes.
+// Its arrays of bools are new bools, true where a byte isn't 0. It fails with a
+// [*tafla.DecodeError] if a field lies outside the bytes.
 func (t Arrays) Fields() (ArraysFields, error) {
 	reader := tafla.NewTableReader(t.bytes, t.layout())
 	var fields ArraysFields
@@ -618,6 +631,13 @@ func (t Arrays) Fields() (ArraysFields, error) {
 	}
 	fields.Float64 = array9.Slice()
 
+	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 40); err != nil {
+		return ArraysFields{}, err
+	}
+	if fields.Bool, err = reader.GetBoolArray(position); err != nil {
+		return ArraysFields{}, err
+	}
+
 	return fields, nil
 }
 
@@ -633,6 +653,7 @@ type ArraysFields struct {
 	Uint64  []uint64
 	Float32 []float32
 	Float64 []float64
+	Bool    []bool
 }
 
 // MarshalBinary writes an [Arrays] with every field. It fails with a
@@ -645,7 +666,7 @@ func (f ArraysFields) MarshalBinary() ([]byte, error) {
 // [ArraysFields.MarshalBinary] writes it, and returns the extended bytes, into
 // their capacity when they have room. It fails as MarshalBinary does.
 func (f ArraysFields) AppendBinary(bytes []byte) ([]byte, error) {
-	sizer, err := tafla.NewTableSizer(10, Arrays{}.layout())
+	sizer, err := tafla.NewTableSizer(11, Arrays{}.layout())
 	if err != nil {
 		return nil, err
 	}
@@ -659,6 +680,7 @@ func (f ArraysFields) AppendBinary(bytes []byte) ([]byte, error) {
 	sizer.AddUint64Array(len(f.Uint64))
 	sizer.AddFloat32Array(len(f.Float32))
 	sizer.AddFloat64Array(len(f.Float64))
+	sizer.AddBoolArray(len(f.Bool))
 
 	writer, err := sizer.AppendWriter(bytes)
 	if err != nil {
@@ -674,6 +696,7 @@ func (f ArraysFields) AppendBinary(bytes []byte) ([]byte, error) {
 	writer.SetUint64Array(7, f.Uint64)
 	writer.SetFloat32Array(8, f.Float32)
 	writer.SetFloat64Array(9, f.Float64)
+	writer.SetBoolArray(10, f.Bool)
 
 	return writer.Bytes()
 }

@@ -28,9 +28,9 @@ use proptest::array::uniform5;
 use proptest::collection::vec;
 use proptest::prelude::*;
 use tables::{
-    CASES, Fields, Header, MAX_LENGTH, Value, arbitrary_bytes, arrays, build, check_truncated,
-    expected, float32s, float64s, integers, overwrites, placements, strings, struct_bytes, table,
-    to_vec, truncations, vector,
+    CASES, Fields, Header, MAX_LENGTH, Value, arbitrary_bytes, arrays, bools, build,
+    check_truncated, expected, float32s, float64s, integers, overwrites, placements, strings,
+    struct_bytes, table, to_vec, truncations, vector,
 };
 use tafla::{
     Alignment, BuildError, DecodeError, OffsetType, StringVector, TableLayout, TableReader,
@@ -74,6 +74,7 @@ fn read_arrays(arrays: &Arrays) -> Fields {
         arrays.uint64().map(to_vec).map(Value::U64Array),
         arrays.float32().map(Value::f32_array),
         arrays.float64().map(Value::f64_array),
+        arrays.bool().map(bools).map(Value::BoolArray),
     ]
 }
 
@@ -372,6 +373,7 @@ fn describe_arrays(fields: &ArraysFields) -> Vec<Value> {
         Value::U64Array(fields.uint64.to_vec()),
         Value::f32_array(fields.float32.iter().copied()),
         Value::f64_array(fields.float64.iter().copied()),
+        Value::BoolArray(fields.bool.to_vec()),
     ]
 }
 
@@ -632,7 +634,7 @@ fn scalars() -> impl Strategy<Value = ScalarsFields> {
 }
 
 /// The values of an `Arrays`' fields, which `ArraysFields` borrows
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 struct OwnedArrays {
     int8: Vec<i8>,
     uint8: Vec<u8>,
@@ -644,6 +646,7 @@ struct OwnedArrays {
     uint64: Vec<u64>,
     float32: Vec<f32>,
     float64: Vec<f64>,
+    bool: Vec<bool>,
 }
 
 impl OwnedArrays {
@@ -659,6 +662,7 @@ impl OwnedArrays {
             uint64: &self.uint64,
             float32: &self.float32,
             float64: &self.float64,
+            bool: &self.bool,
         }
     }
 }
@@ -674,9 +678,15 @@ fn owned_arrays() -> impl Strategy<Value = OwnedArrays> {
         arrays(integers(i64::MIN, i64::MAX)),
         arrays(integers(0, u64::MAX)),
     );
+    let others = (
+        arrays(float32s()),
+        arrays(float64s()),
+        arrays(any::<bool>()),
+    );
 
-    (integers, arrays(float32s()), arrays(float64s())).prop_map(|(integers, float32, float64)| {
+    (integers, others).prop_map(|(integers, others)| {
         let (int8, uint8, int16, uint16, int32, uint32, int64, uint64) = integers;
+        let (float32, float64, bool) = others;
         OwnedArrays {
             int8,
             uint8,
@@ -688,6 +698,7 @@ fn owned_arrays() -> impl Strategy<Value = OwnedArrays> {
             uint64,
             float32,
             float64,
+            bool,
         }
     })
 }
@@ -1957,6 +1968,22 @@ fn enums_written_from_their_constants_read_back_as_them() -> Result<(), Box<dyn 
     assert!(marks.is_empty() && marks.get(0).is_none() && marks.iter().len() == 0);
     let steps = enums.steps()?;
     assert!(steps.is_empty() && steps.get(0).is_none() && steps.iter().len() == 0);
+    Ok(())
+}
+
+/// An array of bools is written from bools as bytes of 1 and 0, which its
+/// getter returns in place, as a `uint8` array's does
+#[test]
+fn arrays_of_bools_read_as_their_bytes_in_place() -> Result<(), Box<dyn std::error::Error>> {
+    let arrays = OwnedArrays {
+        bool: vec![true, false, true],
+        ..OwnedArrays::default()
+    };
+    let bytes = arrays.fields().serialize()?;
+
+    let read = Arrays::new(&bytes).bool()?;
+    assert_eq!(read, [1, 0, 1]);
+    assert!(bytes.as_ptr_range().contains(&read.as_ptr()));
     Ok(())
 }
 

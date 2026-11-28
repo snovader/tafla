@@ -61,6 +61,8 @@ const TABLE_IN_PLACE = 25;
 const VECTOR_IN_PLACE = 26;
 /** A vector of strings, whose strings are encoded when it's written */
 const STRING_VECTOR = 27;
+/** An array of bools, written as a `uint8` array of 1 and 0 */
+const BOOL_ARRAY = 28;
 
 /** The size of a scalar of each kind, INT8 to FLOAT64 */
 const SIZES: readonly ElementSize[] = [1, 1, 2, 2, 4, 4, 8, 8, 4, 8];
@@ -376,6 +378,14 @@ export class TableBuilder {
             values.length * SIZEOF_64,
             SIZEOF_64
         );
+    }
+
+    /**
+     * Sets an array of bools, which is written as a `uint8` array, 1 for
+     * each true value and 0 for each false one
+     */
+    setBoolArray(values: ArrayLike<boolean>): void {
+        this.#addArray(BOOL_ARRAY, values, values.length, SIZEOF_8);
     }
 
     /** Writes `string` as UTF-8, with lone surrogates replaced by U+FFFD */
@@ -1070,9 +1080,13 @@ function writeField(
             break;
         }
 
-        // Last, so that the kinds before it are written as they were
+        // Last, so that the kinds before them are written as they were
         case STRING_VECTOR:
             writer.setStringVector(index, value as readonly string[]);
+            break;
+
+        case BOOL_ARRAY:
+            writer.setBoolArray(index, value as ArrayLike<boolean>);
             break;
     }
 }

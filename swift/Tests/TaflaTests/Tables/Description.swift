@@ -44,6 +44,9 @@ enum Field: Hashable, Sendable {
     case uint64Array([UInt64])
     case float32Array(bits: [UInt32])
     case float64Array(bits: [UInt64])
+    /// An array of bools, which is written as the uint8 array of their bytes,
+    /// 1 and 0, and read as true where a byte isn't 0
+    case boolArray([Bool])
     case string(utf8: [UInt8])
     /// A struct of scalar fields, one after another
     case `struct`([Field])

@@ -167,7 +167,8 @@ Table describe(const all_types::ArraysFields& fields) {
              {vector_of(fields.int64)},
              {vector_of(fields.uint64)},
              {vector_of(fields.float32)},
-             {vector_of(fields.float64)}}};
+             {vector_of(fields.float64)},
+             {Bools(fields.bool_)}}};
 }
 
 std::vector<Field> describe_tree(const all_types::TreeFields& tree) {
@@ -275,7 +276,9 @@ Table read(const all_types::Arrays& arrays) {
              {arrays.int64().to_vector()},
              {arrays.uint64().to_vector()},
              {arrays.float32().to_vector()},
-             {arrays.float64().to_vector()}}};
+             {arrays.float64().to_vector()},
+             // The bytes in place, true where they aren't 0
+             {Bools::from_bytes(arrays.bool_())}}};
 }
 
 /// How a test reads the items of a vector or an array of structs from the
@@ -423,9 +426,10 @@ struct OwnedArrays {
     std::vector<std::uint64_t> uint64;
     std::vector<float> float32;
     std::vector<double> float64;
+    Bools bools;
 
     [[nodiscard]] all_types::ArraysFields fields() const {
-        return {int8, uint8, int16, uint16, int32, uint32, int64, uint64, float32, float64};
+        return {int8, uint8, int16, uint16, int32, uint32, int64, uint64, float32, float64, bools};
     }
 };
 
@@ -442,6 +446,7 @@ rc::Gen<OwnedArrays> arrays() {
             *values::arrays(values::integers<std::uint64_t>()),
             *values::arrays(strategy::float32()),
             *values::arrays(strategy::float64()),
+            *values::bools(),
         };
     });
 }
@@ -678,6 +683,21 @@ RC_GTEST_PROP(GeneratedAllTypes, ArraysAreWrittenAsTableBuilderWritesThemAndRead
     RC_ASSERT(bytes == to_bytes(describe(fields)));
     RC_ASSERT(written_into_any_bytes(fields, bytes.span()));
     RC_ASSERT(read(all_types::Arrays(bytes)) == describe(fields));
+}
+
+/// The getter of an array of bools returns its bytes in place, 1 or 0 for
+/// each bool written, which read as true where they aren't 0
+TEST(GeneratedAllTypes, ArraysOfBoolsAreReadAsTheirBytesInPlace) {
+    const bool values[] = {true, false, true};
+    auto bytes = all_types::ArraysFields{.bool_ = values}.serialize().to_vector();
+
+    const auto in_place = all_types::Arrays(bytes).bool_();
+    EXPECT_GE(in_place.data(), bytes.data());
+    EXPECT_LE(in_place.data() + in_place.size(), bytes.data() + bytes.size());
+    EXPECT_EQ(vector_of(in_place), (std::vector<std::uint8_t>{1, 0, 1}));
+
+    bytes[static_cast<std::size_t>(in_place.data() - bytes.data())] = 0x80;
+    EXPECT_EQ(Bools::from_bytes(all_types::Arrays(bytes).bool_()), (Bools{true, false, true}));
 }
 
 RC_GTEST_PROP(GeneratedAllTypes, NestedTablesAndTreesAreWrittenAsTableBuilderWritesThemAndReadBack, ()) {

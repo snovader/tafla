@@ -44,7 +44,8 @@ public class AllTypesTests
     private static readonly Gen<AllTypes.ArraysFields> ArraysFields = Gen.Select(
         Gen.Select(ArraysOf(Int8s), ArraysOf(UInt8s), ArraysOf(Int16s), ArraysOf(UInt16s), ArraysOf(Int32s)),
         Gen.Select(ArraysOf(UInt32s), ArraysOf(Int64s), ArraysOf(UInt64s), ArraysOf(Float32s), ArraysOf(Float64s)),
-        (small, large) => new AllTypes.ArraysFields
+        ArraysOf(Gen.Bool),
+        (small, large, bools) => new AllTypes.ArraysFields
         {
             Int8 = small.Item1,
             Uint8 = small.Item2,
@@ -56,6 +57,7 @@ public class AllTypesTests
             Uint64 = large.Item3,
             Float32 = large.Item4,
             Float64 = large.Item5,
+            Bool = bools,
         }
     );
 
@@ -218,6 +220,26 @@ public class AllTypesTests
 
             Assert.Equal(scalars.Bool ? 1 : 0, scalars.Serialize()[^1]);
             Assert.Equal(packed.Bool ? 1 : 0, packed.Serialize()[^1]);
+        });
+
+    /// <summary>
+    /// The array of bools is the last of the message's fields, whose bytes, 1 and 0, the getter
+    /// reads in place, whatever they are
+    /// </summary>
+    [Fact]
+    public void AnArrayOfBoolsIsWrittenAs1And0AndReadInPlaceAsItsBytes() =>
+        Gen.Select(ArraysFields, Gen.Byte).Check(sample =>
+        {
+            var (fields, value) = sample;
+            var bytes = fields.Serialize();
+
+            Assert.Equal(fields.Bool.ToArray().Select(item => item ? (byte)1 : (byte)0), new AllTypes.Arrays(bytes).Bool.ToArray());
+
+            if (fields.Bool.Length > 0)
+            {
+                bytes[^1] = value;
+                Assert.Equal(value, new AllTypes.Arrays(bytes).Bool[^1]);
+            }
         });
 
     // Structs
@@ -418,7 +440,8 @@ public class AllTypesTests
             Of(fields.Int64.Span),
             Of(fields.Uint64.Span),
             Of(fields.Float32.Span),
-            Of(fields.Float64.Span)
+            Of(fields.Float64.Span),
+            Of(fields.Bool.Span)
         );
 
     public static Table Describe(AllTypes.Arrays arrays) =>
@@ -433,7 +456,8 @@ public class AllTypesTests
             Of(arrays.Int64),
             Of(arrays.Uint64),
             Of(arrays.Float32),
-            Of(arrays.Float64)
+            Of(arrays.Float64),
+            BoolsOf(arrays.Bool)
         );
 
     public static Table Describe(AllTypes.NestedFields fields) =>

@@ -28,6 +28,9 @@ repository's first commits, for code built from its source before the release.
   checks the count once.
 - `TableSizer.writer(bytes)`, which writes a table into the start of the
   caller's bytes rather than new ones.
+- Arrays of bools, stored as `uint8` arrays of 1 and 0:
+  `TableBuilder.setBoolArray()`, `TableSizer.addBoolArray()`,
+  `TableWriter.setBoolArray()` and `TableReader.getBoolArray()`.
 - A vector of strings, which `SPEC.md` adds to the format:
   `TableBuilder.setStringVector()`, `TableSizer.addStringVector()` and
   `TableWriter.setStringVector()` write one from an array of strings,

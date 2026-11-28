@@ -110,6 +110,10 @@ public static class Write
                 AddArray(ref sizer, array.Type, array.Bits.Count);
                 break;
 
+            case BoolArray array:
+                sizer.AddBoolArray(array.Values.Count);
+                break;
+
             case StringField value:
                 sizer.AddString(value.Value);
                 break;
@@ -171,6 +175,10 @@ public static class Write
 
             case ArrayField array:
                 SetArray(ref writer, index, array);
+                break;
+
+            case BoolArray array:
+                writer.SetBoolArray(index, [.. array.Values]);
                 break;
 
             case StringField value:

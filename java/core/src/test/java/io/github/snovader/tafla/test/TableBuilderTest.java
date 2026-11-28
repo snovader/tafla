@@ -57,6 +57,7 @@ public class TableBuilderTest {
     enum GrowingField {
         INT8_ARRAY,
         FLOAT64_ARRAY,
+        BOOL_ARRAY,
         STRING,
         STRUCT_ARRAY,
         NESTED_TABLE,
@@ -91,6 +92,7 @@ public class TableBuilderTest {
             return switch (this) {
                 case INT8_ARRAY -> new ArrayField(ScalarType.INT8, new long[length]);
                 case FLOAT64_ARRAY -> new ArrayField(ScalarType.FLOAT64, new long[length]);
+                case BOOL_ARRAY -> new BoolArrayField(new boolean[length]);
                 case STRING -> new StringField("a".repeat(length));
                 case STRUCT_ARRAY -> new StructArrayField(STRUCT, Collections.nCopies(length, List.of(1L, 2L)));
                 case NESTED_TABLE -> new TableField(from, tableOfBytes(length), OptionalInt.empty());

@@ -51,6 +51,29 @@ sealed interface FieldDescription {
         }
     }
 
+    /**
+     * An array of bools, which writers write as a uint8 array of 1 and 0, and readers read as true
+     * where a byte isn't 0. It compares its elements, and nothing changes them, as for
+     * {@link ArrayField}.
+     */
+    @SuppressWarnings("ArrayRecordComponent")
+    record BoolArrayField(boolean[] values) implements FieldDescription {
+        @Override
+        public boolean equals(Object other) {
+            return other instanceof BoolArrayField array && Arrays.equals(values, array.values);
+        }
+
+        @Override
+        public int hashCode() {
+            return Arrays.hashCode(values);
+        }
+
+        @Override
+        public String toString() {
+            return DescriptionJson.write(this).toString();
+        }
+    }
+
     record StringField(String value) implements FieldDescription {
         @Override
         public String toString() {

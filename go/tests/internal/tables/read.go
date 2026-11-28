@@ -160,6 +160,9 @@ func (r descriptionReader) readField(position int, field Field) (Field, error) {
 	case Float64Array:
 		values, err := reader.GetFloat64Array(position)
 		return Float64Array(values.Append(nil)), err
+	case BoolArray:
+		values, err := reader.GetBoolArray(position)
+		return BoolArray(values), err
 	case String:
 		value, err := reader.GetString(position)
 		return String(value), err

@@ -211,6 +211,13 @@ public struct TableBuilder: Sendable {
         try setArray(values)
     }
 
+    /// Sets an array field of bools, which is written as a `uint8` array, 1
+    /// for each true value and 0 for each false one, and throws as
+    /// ``setInt8(_:)`` does.
+    public mutating func setBoolArray(_ values: [Bool]) throws(BuildError) {
+        try add(.array(.bool(values)))
+    }
+
     /// Sets the array field of `T`, as the setter of its type does
     public mutating func setArray<T: ArrayElement>(_ values: [T]) throws(BuildError) {
         try add(.array(Elements(values)))

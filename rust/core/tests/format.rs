@@ -326,6 +326,8 @@ impl Value {
             Field::U64Array(values) => Self::array(values, u64::to_le_bytes),
             Field::F32Array(values) => Self::array(values, f32::to_le_bytes),
             Field::F64Array(values) => Self::array(values, f64::to_le_bytes),
+            // A byte for each bool, 1 or 0
+            Field::BoolArray(values) => Self::array(values, |value| [u8::from(value)]),
             Field::String(string) => Self::array(string.as_bytes(), u8::to_le_bytes),
             Field::Struct(scalars) => Self::Scalar(struct_bytes(scalars)),
             Field::StructArray { types, items } => Self::Array {

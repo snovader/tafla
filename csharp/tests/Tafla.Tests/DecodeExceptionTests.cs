@@ -141,6 +141,7 @@ public class DecodeExceptionTests
                 reader => Text(reader.GetUInt64Array(position)),
                 reader => Text(reader.GetFloat32Array(position)),
                 reader => Text(reader.GetFloat64Array(position)),
+                reader => Text(reader.GetBoolArray(position)),
                 reader => reader.GetString(position),
                 reader => Text(reader.GetStruct(position, size)),
                 reader => Text(reader.GetStructArray(position, size + 1)),
@@ -248,6 +249,7 @@ public class DecodeExceptionTests
 
         var error = Assert.Throws<DecodeException>(() => new TableReader(bytes).GetFloat64Array(0));
         Assert.Equal((4L, 0xffff_ffffL * 8, 8), (error.Position, error.ByteLength, error.Available));
+        Assert.Throws<DecodeException>(() => new TableReader(bytes).GetBoolArray(0));
         Assert.Throws<DecodeException>(() => new TableReader(bytes).GetStructArray(0, int.MaxValue));
         Assert.Throws<DecodeException>(() => new TableReader(bytes).GetString(0));
         Assert.Throws<DecodeException>(() => new TableReader(bytes).GetVector(0));

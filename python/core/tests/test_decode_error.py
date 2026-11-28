@@ -56,6 +56,7 @@ class TestDecodeError(unittest.TestCase):
             ("get_float64", reader.get_float64),
             ("get_string", reader.get_string),
             ("get_int16_array", reader.get_int16_array),
+            ("get_bool_array", reader.get_bool_array),
             ("get_vector_offsets", reader.get_vector_offsets),
             ("root_offset", reader.root_offset),
             ("field_offset", lambda position: reader.field_offset(position, 0)),
@@ -165,6 +166,15 @@ class TestDecodeError(unittest.TestCase):
             ):
                 get()
 
+    def test_raises_for_an_array_of_bools_whose_count_passes_the_end(self) -> None:
+        # A count of 3, of which the bytes hold 2
+        reader = TableReader(bytes([3, 0, 0, 0, 1, 0]))
+
+        with self.assertRaisesRegex(
+            DecodeError, "Read exceeds the supplied buffer: 3 bytes at 4 of 6"
+        ):
+            reader.get_bool_array(0)
+
     def test_raises_for_a_vector_item_that_ends_before_it_starts(self) -> None:
         # A count of 2 puts the first item after the ends, at 12, but it ends
         # at 11
@@ -195,6 +205,7 @@ class TestDecodeError(unittest.TestCase):
             ("get_vector_offsets", lambda: reader.get_vector_offsets(0)),
             ("get_vector", lambda: reader.get_vector(0)),
             ("get_struct_array", lambda: reader.get_struct_array(0, 8)),
+            ("get_bool_array", lambda: reader.get_bool_array(0)),
         ]
 
         for name, get in reads:

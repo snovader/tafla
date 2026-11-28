@@ -236,6 +236,11 @@ public struct TableSizer: Sendable {
     @inlinable
     public mutating func addFloat64Array(count: Int) { addArray(count: count, of: Double.self) }
 
+    /// Adds an array field of `count` bools, which mustn't be negative, a
+    /// byte each, which needs no padding.
+    @inlinable
+    public mutating func addBoolArray(count: Int) { addArray(count: count, of: UInt8.self) }
+
     /// Adds the array field of `count` elements of type `T`, as the adder of
     /// its type does
     @inlinable

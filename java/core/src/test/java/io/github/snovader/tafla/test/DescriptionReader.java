@@ -83,6 +83,7 @@ final class DescriptionReader {
             case ScalarField scalar -> new ScalarField(scalar.type(), scalar.type().read(reader, position));
             case BoolField ignored -> new BoolField(reader.getUint8(position) != 0);
             case ArrayField array -> new ArrayField(array.type(), array.type().readArray(reader, position));
+            case BoolArrayField ignored -> new BoolArrayField(reader.getBoolArray(position));
             case StringField ignored -> new StringField(reader.getString(position));
             case StructField struct -> StructBytes.read(reader, position, struct.types());
             case StructArrayField array -> StructBytes.readArray(reader, position, array.fields());

@@ -142,6 +142,9 @@ public sealed class Suite
             case "bool":
                 return new Bool(field.GetProperty("value").GetBoolean());
 
+            case "bool[]":
+                return new BoolArray(new Seq<bool>(field.GetProperty("value").EnumerateArray().Select(value => value.GetBoolean())));
+
             case "string":
                 return new StringField(field.GetProperty("value").GetString()!);
 

@@ -1,9 +1,9 @@
-// Every type of field: each scalar alone and as an array, strings, vectors
-// of strings, nested tables, vectors of tables, structs alone, as fields, in
-// arrays and within other structs, and enums of every integer type, as
-// fields, in arrays, in structs and in the tables of a vector, with doc
-// comments on each kind of declaration and field names that are keywords in
-// some target language.
+// Every type of field: each scalar and bools alone and as an array,
+// strings, vectors of strings, nested tables, vectors of tables, structs
+// alone, as fields, in arrays and within other structs, and enums of every
+// integer type, as fields, in arrays, in structs and in the tables of a
+// vector, with doc comments on each kind of declaration and field names that
+// are keywords in some target language.
 
 /// A field of every scalar type, and a bool
 message Scalars {
@@ -20,7 +20,7 @@ message Scalars {
     bool: bool;
 }
 
-/// An array of every scalar type but bool, which has none
+/// An array of every scalar type, and of bools, which are bytes of 0 and 1
 message Arrays {
     int8: [int8];
     uint8: [uint8];
@@ -32,6 +32,7 @@ message Arrays {
     uint64: [uint64];
     float32: [float32];
     float64: [float64];
+    bool: [bool];
 }
 
 /// Tables nested in tables, by field and in vectors

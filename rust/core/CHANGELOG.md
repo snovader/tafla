@@ -50,6 +50,11 @@ first commits, for code built from its source before the release.
   message of such fields is written at constant positions. They're outside
   the compatibility promise of the rest of the API, as Go's
   `AddTableBytes()` and `AppendTable()` are.
+- Arrays of bools, stored as `u8` arrays of 1 and 0:
+  `TableBuilder::set_bool_array()`, `TableSizer::add_bool_array()`,
+  `TableWriter::set_bool_array()` and `TableReader::get_bool_array()`, which
+  reads each byte into a new `Vec<bool>`, true where it isn't 0.
+  `get_u8_array()` reads the bytes in place.
 
 ### Changed
 

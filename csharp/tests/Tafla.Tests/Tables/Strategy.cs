@@ -77,6 +77,9 @@ public static class Strategy
             choices.Add((1, Bits(type).Array[0, limits.Elements].Select(bits => (Field)new ArrayField(type, bits))));
         }
 
+        // As likely as an array of one type of number, empty too
+        choices.Add((1, Gen.Bool.Array[0, limits.Elements].Select(values => (Field)new BoolArray(values))));
+
         // Each as likely as three types of number
         choices.Add((3, String(limits.Characters).Select(value => (Field)new StringField(value))));
         choices.Add((3, StringVector(limits)));
@@ -249,6 +252,7 @@ public static class Strategy
             Scalar scalar => scalar.Type.Size(),
             Bool => 1,
             ArrayField array => Array(array.Bits.Count, array.Type.Size()),
+            BoolArray array => Array(array.Values.Count, sizeof(byte)),
             StringField value => width + System.Text.Encoding.UTF8.GetByteCount(value.Value),
             StringVectorField value => width + value.Values.Sum(item => width + System.Text.Encoding.UTF8.GetByteCount(item)),
             StructField value => Scalars.StructSize(value.Scalars.Select(scalar => scalar.Type)),

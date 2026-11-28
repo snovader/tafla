@@ -88,6 +88,7 @@ func checkVersion(_ reader: TableReader, _ input: Input) {
 func checkPosition(_ reader: TableReader, _ input: Input, at position: Int) {
     checkScalars(reader, input, at: position)
     checkArrays(reader, input, at: position)
+    checkBoolArray(reader, input, at: position)
     checkString(reader, input, at: position)
     checkStructs(reader, input, at: position)
     checkFieldOffsets(reader, input, at: position)
@@ -209,6 +210,23 @@ func checkView<T: ArrayElement>(_ view: ArrayView<T>, _ reader: TableReader, _ i
         if count > 0 {
             input.checkIn(span.bytes, within: reader.bytes, expected)
         }
+    }
+}
+
+/// Checks that an array of bools reads a bool for each of its bytes, true
+/// where it isn't 0, whatever the byte
+func checkBoolArray(_ reader: TableReader, _ input: Input, at position: Int) {
+    let expected = input.array(at: position, reader.layout.offsetType, elementSize: 1)
+
+    do {
+        let bools = try reader.boolArray(at: position)
+        guard let expected else {
+            fatalError("Read \(bools.count) bools outside the input")
+        }
+
+        require(bools.elementsEqual(input.bytes[expected].lazy.map { $0 != 0 }), "Read \(bools) from other bytes")
+    } catch {
+        input.checkError(error, shouldFail: expected == nil)
     }
 }
 

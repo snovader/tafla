@@ -59,6 +59,9 @@
  *     elements are aligned to their size from the table's start. {@code setTable()} aligns a nested
  *     table to the largest alignment of its arrays, arrays of structs and nested tables when given
  *     its builder, and to 4 bytes by default when given bytes.</li>
+ *   <li>An array of bools is a {@code uint8} array of 1 and 0, which {@code setBoolArray()} writes
+ *     from a {@code boolean[]} and {@code getBoolArray()} reads into one, true where a byte isn't
+ *     0. {@code getUint8Array()} and {@code getUint8ArrayView()} read its bytes.</li>
  *   <li>A struct is its scalars one after another, without padding, so that they lie at fixed
  *     offsets from its start. An array of structs starts with its count, and is padded so that its
  *     structs are aligned to the size of their largest scalar. {@code getStruct()} and
@@ -127,6 +130,8 @@
  *   <tr><td>A {@code double} too large for a {@code float32}</td>
  *     <td>The caller's cast to {@code float}, which makes it infinity of its sign and rounds
  *     other values to the nearest {@code float}.</td></tr>
+ *   <tr><td>A {@code boolean} of an array of bools</td><td>The byte 1 for true, and 0 for
+ *     false.</td></tr>
  *   <tr><td>A lone surrogate in a string</td><td>U+FFFD.</td></tr>
  * </table>
  *

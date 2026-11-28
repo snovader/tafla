@@ -47,6 +47,8 @@ public interface ITarget
 
     void SetFloat64Array(ReadOnlySpan<double> values);
 
+    void SetBoolArray(ReadOnlySpan<bool> values);
+
     void SetString(string value);
 
     void SetStringVector(ReadOnlySpan<string> values);
@@ -110,6 +112,8 @@ public readonly struct BuilderTarget(TableBuilder builder) : ITarget
     public void SetFloat32Array(ReadOnlySpan<float> values) => builder.SetFloat32Array(values);
 
     public void SetFloat64Array(ReadOnlySpan<double> values) => builder.SetFloat64Array(values);
+
+    public void SetBoolArray(ReadOnlySpan<bool> values) => builder.SetBoolArray(values);
 
     public void SetString(string value) => builder.SetString(value);
 
@@ -184,6 +188,8 @@ public readonly ref struct ItemTarget : ITarget
     public void SetFloat32Array(ReadOnlySpan<float> values) => _item.SetFloat32Array(values);
 
     public void SetFloat64Array(ReadOnlySpan<double> values) => _item.SetFloat64Array(values);
+
+    public void SetBoolArray(ReadOnlySpan<bool> values) => _item.SetBoolArray(values);
 
     public void SetString(string value) => _item.SetString(value);
 

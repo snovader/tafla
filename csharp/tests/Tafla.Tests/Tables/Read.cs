@@ -72,6 +72,7 @@ public static class Read
             Scalar scalar => Scalars.ReadAs(reader, scalar, position),
             Bool => new Bool(reader.GetUInt8(position) != 0),
             ArrayField array => Scalars.ReadArray(reader, array.Type, position),
+            BoolArray => new BoolArray(reader.GetBoolArray(position)),
             StringField => new StringField(reader.GetString(position)),
             StringVectorField => new StringVectorField(StringVector(reader.GetStringVector(position))),
             StructField value => new StructField(Struct(reader, position, value)),

@@ -37,6 +37,10 @@ export function array(
     return { type: `${type}[]`, value: Array.from(values, jsonOf) };
 }
 
+export function boolArray(values: readonly boolean[]): FieldDescription {
+    return { type: 'bool[]', value: [...values] };
+}
+
 export function string(value: string): FieldDescription {
     return { type: 'string', value };
 }

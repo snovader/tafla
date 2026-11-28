@@ -60,6 +60,7 @@ Each field is `name: type;`, of one of these types:
 | `float32`, `float64`                                                     | A float                   |
 | `bool`                                                                   | A bool, in one byte       |
 | `[int8]` … `[float64]`                                                   | An array of a scalar type |
+| `[bool]`                                                                 | An array of bools         |
 | `string`                                                                 | A UTF-8 string            |
 | `[string]`                                                               | A vector of strings       |
 | A struct's name                                                          | A struct, in place        |
@@ -73,8 +74,18 @@ A `bool` is written as 0 or 1 and read as true when its byte isn't 0, as the
 format describes it, so that any byte reads as a value. It's `boolean` in
 TypeScript, JavaScript and Java, `bool` in Python, Rust, Go, C++ and C#, and
 `Bool` in Swift, and the generated code reads and writes it with the runtime's
-`uint8` getters and setters. It's a scalar, in structs too, but has no arrays: a `[uint8]` of 0
-and 1 holds bools in the meantime.
+`uint8` getters and setters. It's a scalar, in structs too.
+
+An array of bools is an array of `uint8` in the format, written as 0 and 1
+and read as true where a byte isn't 0. Its getter returns the bytes, as a
+`[uint8]` field's getter does: a `Uint8Array` in TypeScript and JavaScript,
+a `memoryview` in Python, a `&[u8]` in Rust, a `[]byte` in Go, a
+`std::span<const std::uint8_t>` in C++, an `ArrayView<UInt8>` in Swift and a
+`ReadOnlySpan<byte>` in C#. Java's getter copies them into a `boolean[]`, as
+its getters copy arrays, and `<field>View()` views the bytes. The fields that
+a message is written from, and that `fields()` reads, hold the language's
+bools, which the runtime's `setBoolArray()` writes and `getBoolArray()`
+reads, under each language's names.
 
 A `[string]` is a vector of strings: a count, the end of each string and
 the strings' UTF-8, one after another, as `SPEC.md` lays it out. Its
@@ -217,7 +228,7 @@ or read its tables, or a target couldn't generate its code:
   readers read a nested table's offsets as of its message's offset type, and
   tables have `uint32` offsets.
 - Structs hold scalars and structs only, and a struct can't contain itself,
-  even within another struct. Arrays of bools aren't supported.
+  even within another struct.
 - A definition's fields fit in a Java constructor, which takes at most 254
   slots of parameters, since the generated Java reads a struct into a record
   of its fields and writes a message or table from a record of them. A

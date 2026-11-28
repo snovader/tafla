@@ -217,6 +217,11 @@ func (b *TableBuilder) SetFloat32Array(values []float32) error { return setArray
 // until the table is written. It fails as [TableBuilder.SetInt8] does.
 func (b *TableBuilder) SetFloat64Array(values []float64) error { return setArray(b, values) }
 
+// SetBoolArray sets an array field of bools, written as a uint8 array of 1
+// for each true value and 0 for each false one, which the builder keeps
+// until the table is written. It fails as [TableBuilder.SetInt8] does.
+func (b *TableBuilder) SetBoolArray(values []bool) error { return setArray(b, boolBytes(values)) }
+
 // SetString sets a string field, of its bytes, which are UTF-8 if it is. It
 // fails as [TableBuilder.SetInt8] does.
 func (b *TableBuilder) SetString(value string) error {

@@ -3,10 +3,11 @@ import Tafla
 import Testing
 
 // The code generated from schemas/all_types.tafla, of every type of field:
-// how the tests draw and read its messages and structs, fields named after
-// keywords, trees of tables that hold vectors of themselves, enums, whose
-// fields hold any integer of their types, named or not, and vectors of
-// strings, a string of which fails to read on its own.
+// how the tests draw and read its messages and structs, arrays of bools,
+// whose getters return their bytes, fields named after keywords, trees of
+// tables that hold vectors of themselves, enums, whose fields hold any
+// integer of their types, named or not, and vectors of strings, a string of
+// which fails to read on its own.
 // GeneratedTests.swift checks the properties of every message and struct of
 // the example schemas.
 
@@ -160,7 +161,8 @@ extension Draw {
             int64: integers(most: 6),
             uint64: integers(most: 6),
             float32: floats(most: 6),
-            float64: doubles(most: 6)
+            float64: doubles(most: 6),
+            bool: array(most: 6) { $0.bool() }
         )
     }
 
@@ -313,7 +315,9 @@ extension ArraysFields {
             int64: Array(arrays.int64),
             uint64: Array(arrays.uint64),
             float32: Array(arrays.float32),
-            float64: Array(arrays.float64)
+            float64: Array(arrays.float64),
+            // The bytes in place, true where they aren't 0
+            bool: Array(arrays.bool).map { $0 != 0 }
         )
     }
 }
@@ -506,6 +510,31 @@ struct AllTypesTests {
 
         try withSpan(of: written) { bytes throws in
             _ = try Structs(bytes).segments[index]
+        }
+    }
+
+    // An array of bools is written as a byte of 1 or 0 for each, which its
+    // getter returns in place, and which TableReader reads as bools, true
+    // where a byte isn't 0, as it reads any other byte than 1
+    @Test func writesBoolsAsBytesOf1And0AndReadsAnyOtherByteAsTrue() throws {
+        let fields = ArraysFields(
+            int8: [], uint8: [], int16: [], uint16: [], int32: [], uint32: [], int64: [], uint64: [], float32: [],
+            float64: [], bool: [true, false, true]
+        )
+        var bytes = try fields.serialize()
+        let position = try withSpan(of: bytes) { bytes throws in try TableReader(bytes).rootOffset(10) }
+
+        try withSpan(of: bytes) { bytes throws in
+            #expect(try Array(Arrays(bytes).bool) == [1, 0, 1])
+        }
+
+        // After the count
+        bytes.replaceSubrange(position + 4..<position + 7, with: [2, 0, 0xff])
+        try withSpan(of: bytes) { bytes throws in
+            #expect(try Array(Arrays(bytes).bool) == [2, 0, 0xff])
+
+            let reader = TableReader(bytes, layout: Arrays.layout)
+            #expect(try reader.boolArray(at: reader.rootOffset(10)) == [true, false, true])
         }
     }
 

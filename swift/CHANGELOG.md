@@ -63,6 +63,11 @@ The first release.
 - `ArrayElement`'s `init(littleEndianBytes:at:)`, which reads a scalar at a
   fixed offset in bytes, as a struct's scalars lie, and which the generated
   structs read themselves with.
+- Arrays of bools, stored as `uint8` arrays of 1 and 0:
+  `TableBuilder.setBoolArray(_:)`, `TableSizer.addBoolArray(count:)`,
+  `TableWriter.setBoolArray(_:_:)` and `TableReader.boolArray(at:)`, which
+  reads a new `[Bool]`, true where a byte isn't 0, without reading any byte
+  as a `Bool`. `uint8Array(at:)` reads the same bytes in place.
 - Vectors of strings, which tafla-gen's schemas declare as `[string]`: a
   count, the end of each string and the strings' UTF-8, one after another.
   `TableBuilder.setStringVector(_:)`, `TableSizer.addStringVector(_:)` and

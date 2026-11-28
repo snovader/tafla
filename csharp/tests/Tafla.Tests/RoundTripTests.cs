@@ -177,13 +177,83 @@ public class RoundTripTests
     {
         var table = new Table(
             Layout.Headerless(OffsetType.UInt32),
-            [.. Scalars.All.Select(type => (Field)new ArrayField(type, Array.Empty<ulong>())), new StringField(""), new StructArray(new[] { ScalarType.Int64 }, Array.Empty<Seq<Scalar>>())]
+            [.. Scalars.All.Select(type => (Field)new ArrayField(type, Array.Empty<ulong>())), new BoolArray(Array.Empty<bool>()), new StringField(""), new StructArray(new[] { ScalarType.Int64 }, Array.Empty<Seq<Scalar>>())]
         );
 
         for (var byteOffset = 0; byteOffset < 8; byteOffset++)
         {
             var bytes = Bytes.AtByteOffset(table.Bytes(), byteOffset);
             Assert.Equal(table, Read.Table(bytes.Span, table));
+        }
+    }
+
+    /// <summary>
+    /// An array of bools is a uint8 array of 1 and 0, unpadded, which reads back as bools, and in place
+    /// as its bytes
+    /// </summary>
+    [Fact]
+    public void WritesAnArrayOfBoolsAsBytesOf1And0()
+    {
+        var builder = new TableBuilder(2);
+        builder.SetUInt8(7);
+        builder.SetBoolArray([true, false, true, true, false]);
+        var bytes = builder.ToArray();
+
+        Assert.Equal([5, 0, 0, 0, 1, 0, 1, 1, 0], bytes[9..]);
+
+        var reader = new TableReader(bytes);
+        Assert.Equal([true, false, true, true, false], reader.GetBoolArray(reader.RootOffset(1)));
+        Assert.Equal([1, 0, 1, 1, 0], reader.GetUInt8Array(reader.RootOffset(1)).ToArray());
+    }
+
+    /// <summary>
+    /// Any byte but 0 reads as true, and each bool read is the byte 1 or 0, as C# makes them, so that
+    /// it compares equal to true, at lengths that the reader reads one byte at a time, and 16 at a
+    /// time, with a last 16 that overlap those before them or not
+    /// </summary>
+    [Fact]
+    public void ReadsAnyByteBut0OfAnArrayOfBoolsAsTrue() =>
+        Gen.Frequency<byte>((1, Gen.Const((byte)0)), (1, Gen.Const((byte)1)), (2, Gen.Byte)).Array[0, 70].Check(values =>
+        {
+            var builder = new TableBuilder(1);
+            builder.SetUInt8Array(values);
+            var reader = new TableReader(builder.ToArray());
+
+            var bools = reader.GetBoolArray(reader.RootOffset(0));
+
+            Assert.Equal(values.Select(value => value != 0), bools);
+            Assert.All(MemoryMarshal.AsBytes(bools.AsSpan()).ToArray(), value => Assert.InRange(value, 0, 1));
+        });
+
+    /// <summary>
+    /// A bool that unsafe code makes of a byte other than 1 or 0 is written as 1, by a builder and a
+    /// writer, at lengths that they write one byte at a time, and 16 at a time, with a last 16 that
+    /// overlap those before them or not
+    /// </summary>
+    [Theory]
+    [InlineData(5)]
+    [InlineData(16)]
+    [InlineData(32)]
+    [InlineData(37)]
+    public void WritesEachBoolOfAnyByteAs1Or0(int length)
+    {
+        byte[] pattern = [2, 0x80, 0xff, 0, 1];
+        var bytes = Enumerable.Range(0, length).Select(index => pattern[index % pattern.Length]).ToArray();
+        var bools = MemoryMarshal.Cast<byte, bool>(bytes);
+        var expected = bytes.Select(value => value == 0 ? (byte)0 : (byte)1).ToArray();
+
+        var builder = new TableBuilder(1);
+        builder.SetBoolArray(bools);
+
+        var sizer = new TableSizer(1);
+        sizer.AddBoolArray(length);
+        var writer = sizer.CreateWriter();
+        writer.SetBoolArray(0, bools);
+
+        foreach (var table in new[] { builder.ToArray(), writer.Bytes })
+        {
+            var reader = new TableReader(table);
+            Assert.Equal(expected, reader.GetUInt8Array(reader.RootOffset(0)).ToArray());
         }
     }
 

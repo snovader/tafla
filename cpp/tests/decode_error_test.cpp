@@ -287,6 +287,7 @@ TEST(DecodeError, ThrownForAnArrayStringStructOrVectorItemOutsideTheBytes) {
     const TableReader reader{std::span(backing).subspan(4, 8), TableLayout()};
 
     expect_outside(error_of([&] { return reader.get_uint8_array(4); }), 8, 13);
+    expect_outside(error_of([&] { return reader.get_bool_array(4); }), 8, 13);
     expect_outside(error_of([&] { return reader.get_string(4); }), 8, 13);
     expect_outside(error_of([&] { return reader.get_float32_array(4); }), 8, 52);
     expect_outside(error_of([&] { return reader.get_struct_array(4, 2); }), 8, 26);

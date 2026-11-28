@@ -227,6 +227,10 @@ public struct TableSizer
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="count"/> is negative.</exception>
     public void AddFloat64Array(int count) => AddArray(count, sizeof(double), sizeof(double));
 
+    /// <summary>Adds an array of <paramref name="count"/> bools, a byte each, which needs no padding.</summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="count"/> is negative.</exception>
+    public void AddBoolArray(int count) => AddArray(count, sizeof(byte), sizeof(byte));
+
     /// <summary>
     /// Adds a string field, of the string's UTF-8, as <see cref="TableBuilder.SetString"/> counts it,
     /// with each lone surrogate as U+FFFD.

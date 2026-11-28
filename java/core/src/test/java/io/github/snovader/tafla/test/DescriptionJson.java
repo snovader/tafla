@@ -51,6 +51,7 @@ final class DescriptionJson {
 
         return switch (type) {
             case "bool" -> new BoolField(field.getBoolean("value"));
+            case "bool[]" -> readBoolArray(field.getJsonArray("value"));
             case "string" -> new StringField(field.getString("value"));
             case "struct" -> new StructField(
                 field.getJsonArray("fields").stream().map(scalar -> readScalar(scalar.asJsonObject())).toList()
@@ -119,6 +120,15 @@ final class DescriptionJson {
 
     private static ArrayField readArray(ScalarType type, JsonArray json) {
         return new ArrayField(type, readValues(type, json));
+    }
+
+    private static BoolArrayField readBoolArray(JsonArray json) {
+        var values = new boolean[json.size()];
+        for (int i = 0; i < values.length; i++) {
+            values[i] = json.getBoolean(i);
+        }
+
+        return new BoolArrayField(values);
     }
 
     /** {@return the values of an array of the type, as {@link ScalarType} holds them} */
@@ -206,6 +216,10 @@ final class DescriptionJson {
                 .add("type", array.type().jsonName() + "[]")
                 .add("value", writeValues(array.type(), array.values()))
                 .build();
+            case BoolArrayField array -> Json.createObjectBuilder()
+                .add("type", "bool[]")
+                .add("value", writeBools(array.values()))
+                .build();
             case StringField string -> Json.createObjectBuilder()
                 .add("type", "string")
                 .add("value", string.value())
@@ -289,6 +303,15 @@ final class DescriptionJson {
         var json = Json.createArrayBuilder();
         for (var value : values) {
             json.add(writeValue(type, value));
+        }
+
+        return json.build();
+    }
+
+    private static JsonArray writeBools(boolean[] values) {
+        var json = Json.createArrayBuilder();
+        for (var value : values) {
+            json.add(value);
         }
 
         return json.build();

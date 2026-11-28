@@ -115,6 +115,45 @@ struct RoundTripTests {
         }
     }
 
+    // An array of bools is written as a byte of 1 or 0 for each, unpadded,
+    // which the reader reads in place as bytes, and as bools, true where a
+    // byte isn't 0, as it reads any other byte than 1
+    @Test func roundTripsBoolArraysAsBytesOf1And0() throws {
+        var builder = try TableBuilder(fields: 3)
+        try builder.setUInt8(7)
+        try builder.setBoolArray([true, false, true, true])
+        try builder.setBoolArray([])
+        var bytes = try builder.bytes()
+
+        // Three offsets, the uint8, and the counts, after no padding
+        #expect(bytes[12...] == [7, 4, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0])
+
+        try withSpan(of: bytes) { bytes throws in
+            let reader = TableReader(bytes)
+            #expect(try reader.boolArray(at: reader.rootOffset(1)) == [true, false, true, true])
+            #expect(try Array(reader.uint8Array(at: reader.rootOffset(1))) == [1, 0, 1, 1])
+            #expect(try reader.boolArray(at: reader.rootOffset(2)) == [])
+        }
+
+        bytes.replaceSubrange(17..<21, with: [2, 0, 0x80, 0xff])
+        try withSpan(of: bytes) { bytes throws in
+            let reader = TableReader(bytes)
+            #expect(try reader.boolArray(at: reader.rootOffset(1)) == [true, false, true, true])
+        }
+
+        // The sizer and writer write the same bytes
+        var sizer = try TableSizer(fields: 3)
+        sizer.addUInt8()
+        sizer.addBoolArray(count: 4)
+        sizer.addBoolArray(count: 0)
+        let written = try sizer.bytes { writer in
+            writer.setUInt8(0, 7)
+            writer.setBoolArray(1, [true, false, true, true])
+            writer.setBoolArray(2, [])
+        }
+        #expect(written == (try builder.bytes()))
+    }
+
     // A builder nested several times writes its bytes each time, in place,
     // as a field and as vector items
     @Test func nestsABuilderSeveralTimes() throws {

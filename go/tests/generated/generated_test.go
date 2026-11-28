@@ -15,6 +15,7 @@ import (
 	"math"
 	"os"
 	"reflect"
+	"slices"
 	"testing"
 	"unsafe"
 
@@ -500,6 +501,23 @@ func TestACorruptItemFailsWhenItsReadRatherThanWhenTheGetterIsCalled(t *testing.
 	}
 	if len(errs) != 2 || errs[0] != nil || !sameError(errs[1], expected) {
 		t.Fatalf("iterated with %v rather than nil and %v", errs, expected)
+	}
+}
+
+// An array of bools is written as bytes of 1 and 0, which its getter returns
+// in place, and which Fields() reads as new bools, true where a byte isn't 0
+func TestAnArrayOfBoolsIsReadAsItsBytesInPlaceAndAsBoolsByFields(t *testing.T) {
+	written := must(alltypes.ArraysFields{Bool: []bool{true, false, true}}.MarshalBinary())
+	message := alltypes.NewArrays(written)
+
+	inPlace := must(message.Bool())
+	if !bytes.Equal(inPlace, []byte{1, 0, 1}) || !within(inPlace, written) {
+		t.Fatalf("read % x, within the bytes: %v", inPlace, within(inPlace, written))
+	}
+
+	inPlace[0], inPlace[1] = 0x80, 2
+	if read := must(message.Fields()).Bool; !slices.Equal(read, []bool{true, true, true}) {
+		t.Fatalf("read %v", read)
 	}
 }
 

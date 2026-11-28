@@ -6,7 +6,8 @@
 //! Structs are plain structs read and written at fixed offsets. An enum is a `Copy` struct of
 //! its integer, with a constant of each value that the schema names, so that
 //! a field of it holds any integer of its type; an array of an enum is an
-//! array of its integers.
+//! array of its integers. An array of bools is read as its bytes, in place,
+//! and written from bools.
 
 use std::collections::HashSet;
 use std::fmt::Display;
@@ -176,11 +177,15 @@ impl Generator<'_> {
         let has_sized = definitions
             .iter()
             .any(|definition| !definition.is_struct() && !whole(definition));
+        // Arrays of bytes, and of bools, are read as bytes
         let has_array_view = definitions
             .iter()
             .flat_map(|definition| &definition.fields)
             .any(|field| {
-                matches!(field.field_type, FieldType::Array(scalar) if scalar != Scalar::Uint8)
+                matches!(
+                    field.field_type,
+                    FieldType::Array(scalar) if !matches!(scalar, Scalar::Uint8 | Scalar::Bool)
+                )
             });
         let has_offset_type = definitions.iter().any(|definition| {
             definition
@@ -1211,6 +1216,10 @@ impl Generator<'_> {
                         None => writer.line(format!("reader.{read}")),
                     }
                 }
+                // An array of bools is read as its bytes, in place, as a
+                // `[uint8]` is, since a `bool` of any byte but 0 or 1 is
+                // undefined behavior
+                FieldType::Array(Scalar::Bool) => writer.line("reader.get_u8_array(position)"),
                 FieldType::Array(scalar) => {
                     writer.line(format!(
                         "reader.get_{}_array(position)",
@@ -1274,8 +1283,8 @@ impl Generator<'_> {
     }
 
     /// The documentation of a field's getter: the field's own, and for a
-    /// vector or an array of structs, the view that it returns, and then its
-    /// errors
+    /// vector or an array of structs, the view that it returns, or for an
+    /// array of bools, its bytes, and then its errors
     fn getter_docs(&self, field: &Field) -> Vec<String> {
         let name = |index: usize| &self.schema.definition(index).name;
         let (view, errors) = match field.field_type {
@@ -1295,6 +1304,10 @@ impl Generator<'_> {
                     name(index)
                 )],
                 "if the field or its structs lie outside the bytes",
+            ),
+            FieldType::Array(Scalar::Bool) => (
+                vec!["A byte for each bool, which is true where it isn't 0".to_owned()],
+                "if the field lies outside the bytes",
             ),
             FieldType::StringVector => (
                 vec![
@@ -1360,7 +1373,8 @@ impl Generator<'_> {
     fn value_type(&self, field: &Field) -> String {
         match field.field_type {
             FieldType::Scalar(scalar) => self.scalar_field_type(field, scalar),
-            FieldType::Array(Scalar::Uint8) => "&'a [u8]".to_owned(),
+            // An array of bools is read as its bytes
+            FieldType::Array(Scalar::Uint8 | Scalar::Bool) => "&'a [u8]".to_owned(),
             FieldType::Array(scalar) => format!("ArrayView<'a, {}>", scalar_type(scalar)),
             FieldType::String => "&'a str".to_owned(),
             FieldType::Struct(index) => self.schema.definition(index).name.clone(),
@@ -1378,6 +1392,8 @@ impl Generator<'_> {
 
         match field.field_type {
             FieldType::Scalar(scalar) => self.scalar_field_type(field, scalar),
+            // Bools too, which `TableWriter::set_bool_array()` writes as bytes
+            // of 1 and 0
             FieldType::Array(scalar) => format!("&'a [{}]", scalar_type(scalar)),
             FieldType::String => "&'a str".to_owned(),
             FieldType::Struct(index) => self.schema.definition(index).name.clone(),

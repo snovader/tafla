@@ -17,8 +17,10 @@ namespace Tafla.Fuzz;
 /// that leaves it. Structs, vector items and arrays of bytes are spans of the input. Wider arrays
 /// are too where the runtime reads them in place, and copies outside it where it doesn't: on a
 /// big-endian host, on 32-bit Arm, and built with <c>-p:TaflaPortable=true</c>, as
-/// <c>TAFLA_PORTABLE=true fuzz/fuzz.sh</c> builds them. A read that returns allocates nothing but
-/// the string or copy that it returns, and one that throws nothing but its exception.
+/// <c>TAFLA_PORTABLE=true fuzz/fuzz.sh</c> builds them. Bools are a new array of a bool for each
+/// byte, each the byte 1 where its byte isn't 0, and 0 where it is. A read that returns allocates
+/// nothing but the string, copy or bools that it returns, and one that throws nothing but its
+/// exception.
 /// </para>
 /// <para>
 /// Any other exception escapes, and is a finding: an <see cref="ArgumentException"/>, an
@@ -89,16 +91,18 @@ internal static class TableReaderTarget
     }
 
     /// <summary>
-    /// Reads that throw, decode invalid and valid strings, and copy arrays where the runtime copies
-    /// them, unchecked, so that what the runtime and .NET allocate once, such as the reader's UTF-8
-    /// decoders, an exception's resources and the chars that the reader decodes strings into on each
-    /// thread, is allocated before the reads that are checked
+    /// Reads that throw, decode invalid and valid strings, copy arrays where the runtime copies
+    /// them, and read bools, one at a time and 16 at a time, unchecked, so that what the runtime and
+    /// .NET allocate once, such as the reader's UTF-8 decoders, an exception's resources and the
+    /// chars that the reader decodes strings into on each thread, is allocated before the reads that
+    /// are checked
     /// </summary>
     private static void WarmUp()
     {
         var layout = new TableLayout { OffsetType = OffsetType.UInt8 };
         var invalid = new TableReader(new byte[] { 2, 0xc0, 0x80 }, layout);
         var empty = new TableReader(new byte[] { 0 }, layout);
+        var bools = new TableReader(new byte[] { 17, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 }, layout);
 
         try
         {
@@ -132,6 +136,7 @@ internal static class TableReaderTarget
         _ = empty.GetInt16Array(0).Length + empty.GetUInt16Array(0).Length;
         _ = empty.GetInt32Array(0).Length + empty.GetUInt32Array(0).Length + empty.GetFloat32Array(0).Length;
         _ = empty.GetInt64Array(0).Length + empty.GetUInt64Array(0).Length + empty.GetFloat64Array(0).Length;
+        _ = empty.GetBoolArray(0).Length + bools.GetBoolArray(0).Length;
     }
 
     /// <summary>
@@ -281,6 +286,7 @@ internal static class TableReaderTarget
         CheckArray(bytes, reader, position, reader => reader.GetUInt64Array(position));
         CheckArray(bytes, reader, position, reader => reader.GetFloat32Array(position));
         CheckArray(bytes, reader, position, reader => reader.GetFloat64Array(position));
+        CheckBools(bytes, reader, position);
     }
 
     /// <summary>
@@ -326,6 +332,39 @@ internal static class TableReaderTarget
         {
             CheckElement(arrayBytes, elements, at, size);
             CheckElement(arrayBytes, elements, array.Length - 1 - at, size);
+        }
+    }
+
+    /// <summary>
+    /// Checks that the bools read at <paramref name="position"/> are a new array of a bool for each
+    /// byte of the array there, each the byte 1 where its byte isn't 0, and 0 where it is, which are
+    /// all compared, since reading them reads every byte too
+    /// </summary>
+    private static void CheckBools(ReadOnlySpan<byte> bytes, TableReader reader, int position)
+    {
+        var expected = ArrayAt(bytes, reader.OffsetType, position, sizeof(byte));
+
+        var start = Allocated();
+        bool[] bools;
+        try
+        {
+            bools = reader.GetBoolArray(position);
+        }
+        catch (DecodeException error)
+        {
+            CheckFailure(bytes, error, expected, start);
+            return;
+        }
+
+        CheckAllocation(Allocated() - start, bools.Length + ObjectOverhead);
+        var range = expected.Value ?? throw new CheckFailedException($"An array of bools outside the bytes read {bools.Length} bools");
+        Check.That(bools.Length == range.Length);
+
+        var elements = bytes.Slice(range.Start, range.Length);
+        var values = MemoryMarshal.AsBytes(bools.AsSpan());
+        for (var at = 0; at < values.Length; at++)
+        {
+            Check.That(values[at] == (elements[at] == 0 ? 0 : 1));
         }
     }
 

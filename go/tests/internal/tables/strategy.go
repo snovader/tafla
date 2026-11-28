@@ -126,6 +126,7 @@ func drawValue(t *rapid.T, limits limits) Field {
 		choice[Field]{1, func(t *rapid.T) Field { return Uint64Array(drawSlice(t, elements, uint64s)) }},
 		choice[Field]{1, func(t *rapid.T) Field { return Float32Array(drawSlice(t, elements, float32s)) }},
 		choice[Field]{1, func(t *rapid.T) Field { return Float64Array(drawSlice(t, elements, float64s)) }},
+		choice[Field]{1, func(t *rapid.T) Field { return BoolArray(drawSlice(t, elements, bools)) }},
 		// Each as likely as three types of number
 		choice[Field]{3, func(t *rapid.T) Field { return String(drawString(t, limits.characters)) }},
 		choice[Field]{3, func(t *rapid.T) Field { return DrawStringVector(t, limits.strings, limits.characters) }},
@@ -213,6 +214,7 @@ func drawInteger[T any](t *rapid.T, lowest, highest T, any *rapid.Generator[T]) 
 	})
 }
 
+func bools(t *rapid.T) bool   { return rapid.Bool().Draw(t, "bool") }
 func int8s(t *rapid.T) int8   { return drawInteger(t, math.MinInt8, math.MaxInt8, rapid.Int8()) }
 func uint8s(t *rapid.T) uint8 { return drawInteger(t, 0, math.MaxUint8, rapid.Uint8()) }
 func int16s(t *rapid.T) int16 { return drawInteger(t, math.MinInt16, math.MaxInt16, rapid.Int16()) }
@@ -436,6 +438,8 @@ func longest(field Field, width uint64) uint64 {
 		return array(len(value), 8)
 	case Float64Array:
 		return array(len(value), 8)
+	case BoolArray:
+		return array(len(value), 1)
 	case String:
 		return width + uint64(len(value))
 	case StringVector:
