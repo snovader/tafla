@@ -426,39 +426,32 @@ func TestAVectorOfUnevenItemsAllocatesInProportionToItsTable(t *testing.T) {
 	}
 }
 
-// Builders nested at any depth are written once, rather than once for each
-// level that they're nested in, and allocate in proportion to their table:
-// here a chain of 2,000 builders, each of a string of 100 bytes and the
-// builder before it
-func TestBuildersNestedDeeplyAllocateInProportionToTheirTable(t *testing.T) {
-	const depth = 2_000
+// Builders nested in builders at depth read back at every level: here a
+// chain of 200 builders, each of a string of 100 bytes and the builder before
+// it, which each builder copies when it's set
+func TestBuildersNestedDeeplyReadBackAtEveryLevel(t *testing.T) {
+	const depth = 200
 	value := strings.Repeat("a", 100)
 
-	var table []byte
-	allocated := allocatedBy(func() {
-		inner := must(tafla.NewTableBuilder(1, tafla.TableLayout{}))
-		check(t, inner.SetString(value))
-		for range depth {
-			outer := must(tafla.NewTableBuilder(2, tafla.TableLayout{}))
-			check(t, outer.SetString(value))
-			check(t, outer.SetTable(inner))
-			inner = outer
-		}
-		table = must(inner.Bytes())
-	})
-	if allocated > 16*uint64(len(table)) {
-		t.Errorf("allocated %d bytes for a table of %d", allocated, len(table))
+	inner := must(tafla.NewTableBuilder(1, tafla.TableLayout{}))
+	check(t, inner.SetString(value))
+	for range depth {
+		outer := must(tafla.NewTableBuilder(2, tafla.TableLayout{}))
+		check(t, outer.SetString(value))
+		check(t, outer.SetTable(inner))
+		inner = outer
 	}
+	table := must(inner.Bytes())
 
-	buffer := tafla.NewTableReader(table, tafla.TableLayout{})
+	reader := tafla.NewTableReader(table, tafla.TableLayout{})
 	position := 0
 	for level := range depth + 1 {
-		read := must(buffer.GetString(must(buffer.FieldOffset(position, 0))))
+		read := must(reader.GetString(must(reader.FieldOffset(position, 0))))
 		if read != value {
 			t.Fatalf("read %q at level %d", read, level)
 		}
 		if level < depth {
-			position = must(buffer.FieldOffset(position, 1))
+			position = must(reader.FieldOffset(position, 1))
 		}
 	}
 }

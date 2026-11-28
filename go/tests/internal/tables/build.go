@@ -10,7 +10,7 @@ func (t Table) Builder() (*tafla.TableBuilder, error) {
 	return tafla.NewTableBuilder(len(t.Fields), t.TableLayout())
 }
 
-// Build builds the table, which keeps its values.
+// Build builds the table.
 func (t Table) Build() (*tafla.TableBuilder, error) {
 	builder, err := t.Builder()
 	if err != nil {
@@ -38,7 +38,8 @@ func (t Table) Bytes() ([]byte, error) {
 
 // BytesInPlace writes the table with a TableBuilder, as Bytes does, but
 // writes each table nested from a builder without a header and of the
-// table's offset type in place, with SetTableFunc, and each vector of them
+// table's offset type in place, with SetTableFunc, or with
+// SetTableFuncAligned when it's nested at Align8, and each vector of them
 // whose items hold as many fields with SetVectorFunc, rather than from their
 // builders. Its bytes and errors are those of Bytes.
 func (t Table) BytesInPlace() ([]byte, error) {
@@ -47,20 +48,28 @@ func (t Table) BytesInPlace() ([]byte, error) {
 		return nil, err
 	}
 
-	// The tables that its builder would write in place: without a header,
-	// and with this table's offset type
-	inPlace := func(nested Nested) bool {
-		layout := nested.Table.Layout
-		return nested.From == FromBuilder && !layout.Sized && !layout.Versioned &&
-			layout.OffsetType == t.Layout.OffsetType
-	}
-	for _, field := range t.Fields {
-		if err := set(builder, field, inPlace); err != nil {
-			return nil, err
-		}
+	if err := t.SetFields(builder, true); err != nil {
+		return nil, err
 	}
 
 	return builder.Bytes()
+}
+
+// SetFields sets the table's fields on a builder of it, as Bytes does, or
+// as BytesInPlace does when inPlace, and returns the first error.
+func (t Table) SetFields(builder *tafla.TableBuilder, inPlace bool) error {
+	// The tables that its builder would write in place: without a header,
+	// and with this table's offset type
+	var writesInPlace func(Nested) bool
+	if inPlace {
+		writesInPlace = func(nested Nested) bool {
+			layout := nested.Table.Layout
+			return nested.From == FromBuilder && !layout.Sized && !layout.Versioned &&
+				layout.OffsetType == t.Layout.OffsetType
+		}
+	}
+
+	return setAll(builder, t.Fields, writesInPlace)
 }
 
 // Target is what a field is set on: a *tafla.TableBuilder, or a tafla.Item
@@ -95,6 +104,7 @@ type Target interface {
 	SetTableAligned(table tafla.NestedTable, alignment tafla.Alignment) error
 	SetVector(items ...tafla.NestedTable) error
 	SetTableFunc(fields int, fill func(table tafla.Item) error) error
+	SetTableFuncAligned(fields int, alignment tafla.Alignment, fill func(table tafla.Item) error) error
 	SetVectorFunc(count, fields int, fill func(index int, item tafla.Item) error) error
 }
 
@@ -170,11 +180,17 @@ func set(target Target, field Field, inPlace func(Nested) bool) error {
 		}
 		return target.SetStructArray(bytes, StructSize(value.Types), StructAlignment(value.Types))
 	case TableField:
-		if value.Alignment == 0 && inPlace != nil && inPlace(value.Nested) {
+		if inPlace != nil && inPlace(value.Nested) {
 			fields := value.Nested.Table.Fields
-			return target.SetTableFunc(len(fields), func(table tafla.Item) error {
-				return setAll(table, fields, inPlace)
-			})
+			fill := func(table tafla.Item) error { return setAll(table, fields, inPlace) }
+			switch value.Alignment {
+			case 0:
+				return target.SetTableFunc(len(fields), fill)
+			case tafla.Align8:
+				// At least any field's alignment, so the bytes are those of
+				// SetTableAligned with its builder
+				return target.SetTableFuncAligned(len(fields), tafla.Align8, fill)
+			}
 		}
 
 		table, err := value.Nested.Build()

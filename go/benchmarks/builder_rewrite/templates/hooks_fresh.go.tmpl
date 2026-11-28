@@ -1,0 +1,12 @@
+// The hooks of a builder that writes each table with a builder of its own:
+// main's and #216's, which take no bytes, and the buffer's, which takes
+// them in roomy.go.
+package template
+
+import "github.com/snovader/tafla/go/benchmarks/workloads"
+
+// roomyDocument writes the document, which a builder that takes bytes
+// writes into bytes with room for it
+func roomyDocument(document workloads.Document, _ int) ([]byte, error) {
+	return SerializeDocument(document)
+}

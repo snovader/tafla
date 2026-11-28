@@ -1,6 +1,8 @@
 package codecs
 
 import (
+	"bytes"
+
 	"github.com/snovader/tafla/go/benchmarks/workloads"
 	"github.com/vmihailenco/msgpack/v5"
 )
@@ -10,7 +12,9 @@ import (
 // field names, as msgpackr packs an object, and a column element by element.
 // The array of structs packs each struct, and the table that holds them, as
 // an array of its fields in order, without their names, as every language's
-// MessagePack codec packs that fixed shape.
+// MessagePack codec packs that fixed shape. Each message is packed into new
+// bytes of the shape's capacity, as msgpack.Marshal packs into bytes that
+// grow from none.
 type MessagePack struct{}
 
 // itemArray and listArray pack the array of structs as arrays
@@ -30,8 +34,24 @@ type listArray struct {
 
 func (MessagePack) Name() string { return "msgpack" }
 
+// marshal packs value as msgpack.Marshal does, with a pooled encoder, into
+// new bytes of capacity bytes rather than into bytes that grow from none
+func marshal(value any, capacity int) ([]byte, error) {
+	encoder := msgpack.GetEncoder()
+	buffer := bytes.NewBuffer(make([]byte, 0, capacity))
+	encoder.Reset(buffer)
+
+	err := encoder.Encode(value)
+	msgpack.PutEncoder(encoder)
+	if err != nil {
+		return nil, err
+	}
+
+	return buffer.Bytes(), nil
+}
+
 func (MessagePack) SerializeRecord(record workloads.Record) ([]byte, error) {
-	return msgpack.Marshal(&record)
+	return marshal(&record, record.Capacity())
 }
 
 func (MessagePack) DeserializeRecord(bytes []byte) (workloads.Record, error) {
@@ -41,7 +61,7 @@ func (MessagePack) DeserializeRecord(bytes []byte) (workloads.Record, error) {
 }
 
 func (MessagePack) SerializeDocument(document workloads.Document) ([]byte, error) {
-	return msgpack.Marshal(&document)
+	return marshal(&document, document.Capacity())
 }
 
 func (MessagePack) DeserializeDocument(bytes []byte) (workloads.Document, error) {
@@ -60,7 +80,7 @@ func (MessagePack) SumA(bytes []byte) (float64, error) {
 }
 
 func (MessagePack) SerializeList(list workloads.List) ([]byte, error) {
-	return msgpack.Marshal(&list)
+	return marshal(&list, list.Capacity())
 }
 
 func (MessagePack) DeserializeList(bytes []byte) (workloads.List, error) {
@@ -75,7 +95,7 @@ func (MessagePack) SerializeStructs(list workloads.List) ([]byte, error) {
 		array.Items[index] = itemArray{Value: item.Value, First: item.First, Second: item.Second}
 	}
 
-	return msgpack.Marshal(&array)
+	return marshal(&array, list.StructsCapacity())
 }
 
 func (MessagePack) DeserializeStructs(bytes []byte) (workloads.List, error) {
@@ -93,7 +113,7 @@ func (MessagePack) DeserializeStructs(bytes []byte) (workloads.List, error) {
 }
 
 func (MessagePack) SerializeSample(sample workloads.Sample) ([]byte, error) {
-	return msgpack.Marshal(&sample)
+	return marshal(&sample, sample.Capacity())
 }
 
 func (MessagePack) DeserializeSample(bytes []byte) (workloads.Sample, error) {

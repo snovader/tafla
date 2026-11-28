@@ -1,0 +1,43 @@
+// A prototype of nesting in place with begin and end calls rather than a
+// function, on the buffer's builder: the builder isn't passed to a
+// function that the compiler can't see, so it stays on its caller's stack.
+package template
+
+// TableInPlace is a table nested in place that StartTable started
+type TableInPlace struct{ saved checkpoint }
+
+// StartTable starts a table of fields fields nested in place: the fields
+// set next are its own, until EndTable
+func (b *TableBuilder) StartTable(fields int) (TableInPlace, error) {
+	saved, err := b.startTable(fields, Align1)
+	return TableInPlace{saved}, err
+}
+
+// EndTable ends the table, or cuts the builder back to before it if err
+// isn't nil or it fails
+func (b *TableBuilder) EndTable(table TableInPlace, err error) error {
+	return b.endTable(table.saved, Align1, err)
+}
+
+// VectorInPlace is a vector of tables in place that StartVector started
+type VectorInPlace struct {
+	vector vectorInPlace
+	fields int
+}
+
+func (b *TableBuilder) StartVector(count, fields int) (VectorInPlace, error) {
+	vector, err := b.startVector(count, fields)
+	return VectorInPlace{vector, fields}, err
+}
+
+func (b *TableBuilder) StartItem(vector *VectorInPlace) {
+	b.startInPlace(vector.fields, vector.vector.header)
+}
+
+func (b *TableBuilder) EndItem(vector *VectorInPlace, index int, err error) error {
+	return b.endItem(&vector.vector, index, err)
+}
+
+func (b *TableBuilder) EndVector(vector *VectorInPlace) error {
+	return b.endVector(&vector.vector)
+}

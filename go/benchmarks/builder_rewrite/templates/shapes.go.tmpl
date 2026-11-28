@@ -1,0 +1,482 @@
+// The rows that every builder writes: the comparison's, and shapes that it
+// doesn't time, of #216's reviews and of Rust's #378. Rows returns each
+// row's call, by name.
+package template
+
+import (
+	"errors"
+	"fmt"
+	"strings"
+
+	tafla "github.com/snovader/tafla/go"
+	"github.com/snovader/tafla/go/benchmarks/workloads"
+)
+
+// Row is a row's name and the call that writes its table
+type Row struct {
+	Name string
+	Call func() ([]byte, error)
+}
+
+func Rows() []Row {
+	var rows []Row
+	add := func(name string, call func() ([]byte, error)) {
+		rows = append(rows, Row{name, call})
+	}
+
+	record := workloads.TheRecord
+	small := workloads.NewDocument(workloads.DocumentRows[0])
+	large := workloads.NewDocument(workloads.DocumentRows[1])
+	paddedSmall, paddedLarge := padded(small), padded(large)
+	list := workloads.NewList(workloads.ListItems)
+	add("record", func() ([]byte, error) { return SerializeRecord(record) })
+	add("document of 100 rows", func() ([]byte, error) { return SerializeDocument(small) })
+	add("document of 100,000 rows", func() ([]byte, error) { return SerializeDocument(large) })
+	add("document of 100 rows, its columns padded", func() ([]byte, error) { return SerializeDocument(paddedSmall) })
+	add("document of 100,000 rows, its columns padded", func() ([]byte, error) { return SerializeDocument(paddedLarge) })
+	room := documentLength(large)
+	add("document of 100,000 rows, into bytes with room for it", func() ([]byte, error) { return roomyDocument(large, room) })
+	add("vector of 100 nested tables", func() ([]byte, error) { return SerializeList(list) })
+	add("array of 100 structs", func() ([]byte, error) { return SerializeStructs(list) })
+	add("vector of 100 nested builders", func() ([]byte, error) { return SerializeListOfBuilders(list) })
+	add("document of 100 rows, columns from a builder", func() ([]byte, error) { return documentOfBuilder(small) })
+
+	medium, short := values(128, 48), values(64, 24)
+	add("table of 32 medium values", func() ([]byte, error) { return mediumValues(medium) })
+	add("table of 32 short values", func() ([]byte, error) { return mediumValues(short) })
+	for _, shape := range stringShapes() {
+		add("16 × "+shape.name, func() ([]byte, error) { return stringFields(16, shape.value) })
+	}
+	column, small200 := []float64{1.5, 1.5, 1.5, 1.5}, []byte(strings.Repeat("\x07", 200))
+	for _, depth := range []int{1, 10, 100, 1000} {
+		add(fmt.Sprintf("tables nested in place, padded, depth %s", thousands(depth)), func() ([]byte, error) {
+			return nested(depth, column, small200)
+		})
+	}
+	for _, shape := range []struct{ count, length int }{{9, 256}, {32, 256}, {4, 255}, {8, 63}, {100_000, 255}, {100_000, 63}} {
+		value := []byte(strings.Repeat("\x07", shape.length))
+		add(fmt.Sprintf("table of %s arrays of %d B", thousands(shape.count), shape.length), func() ([]byte, error) {
+			return byteArrays(shape.count, value)
+		})
+	}
+	column100 := make([]float64, 100)
+	for index := range column100 {
+		column100[index] = 1.5
+	}
+	for _, count := range []int{5, 8, 16, 33} {
+		add(fmt.Sprintf("table of %d float64 columns of 100 rows", count), func() ([]byte, error) {
+			return float64Columns(count, column100)
+		})
+	}
+	for _, fields := range []int{1, 4, 32} {
+		add(fmt.Sprintf("vector of 100,000 builders of %d uint32", fields), func() ([]byte, error) {
+			return vectorOfScalarBuilders(100_000, fields)
+		})
+	}
+
+	s100, s20, s300 := strings.Repeat("c", 100), strings.Repeat("d", 20), strings.Repeat("e", 300)
+	for _, depth := range []int{10, 200, 2000} {
+		add(fmt.Sprintf("chain of %s builders, 100 B string each", thousands(depth)), func() ([]byte, error) {
+			return chain(depth, s100)
+		})
+	}
+	add("tree of builders, depth 4, fanout 10", func() ([]byte, error) { return tree(4, 10, s20) })
+	add("tree of builders, depth 12, fanout 2", func() ([]byte, error) { return tree(12, 2, s20) })
+	add("vector of 5,000 builders, 300 B string each", func() ([]byte, error) { return vectorOfBuilders(5000, s300) })
+	for _, length := range []int{32, 63, 64, 100, 255} {
+		value := strings.Repeat("f", length)
+		add(fmt.Sprintf("20,000 string fields of %d B", length), func() ([]byte, error) { return stringFields(20000, value) })
+	}
+	for _, length := range []int{100, 200} {
+		value := strings.Repeat("g", length)
+		add(fmt.Sprintf("50 string fields of %d B", length), func() ([]byte, error) { return stringFields(50, value) })
+	}
+	elements := make([]uint32, 25)
+	add("50 uint32 arrays of 25 elements", func() ([]byte, error) { return arrayFields(50, elements) })
+	s60, s255 := strings.Repeat("h", 60), strings.Repeat("i", 255)
+	add("vector of 100,000 items, 60 B string each", func() ([]byte, error) { return vectorOfStrings(100000, s60) })
+	add("vector of 100,000 items, 255 B string each", func() ([]byte, error) { return vectorOfStrings(100000, s255) })
+	add("vector of 100,000 items of uint32, float64, 20 B string", func() ([]byte, error) {
+		return vectorOfSmallItems(100000, s20)
+	})
+	s250 := strings.Repeat("j", 250)
+	add("uneven vector of 100,000 items, the first of 250 B", func() ([]byte, error) { return unevenVector(100000, s250) })
+	s200 := strings.Repeat("k", 200)
+	add("vector too long for uint16 offsets, 30,000 items", func() ([]byte, error) { return vectorTooLong(s200) })
+
+	return rows
+}
+
+func thousands(n int) string {
+	if n < 1000 {
+		return fmt.Sprint(n)
+	}
+	return fmt.Sprintf("%s,%03d", thousands(n/1000), n%1000)
+}
+
+// padded returns the document with a name of 17 bytes rather than 16, so
+// that its table of columns, which follows the name, is padded by 3 bytes
+func padded(document workloads.Document) workloads.Document {
+	document.Name = "tafla-benchmarks!"
+	return document
+}
+
+// documentLength returns the length of the document's table
+func documentLength(document workloads.Document) int {
+	table, err := SerializeDocument(document)
+	if err != nil {
+		panic(err)
+	}
+	return len(table)
+}
+
+// documentOfBuilder writes the document with its columns from a builder of
+// their own, rather than in place, into the same bytes
+func documentOfBuilder(document workloads.Document) ([]byte, error) {
+	columns, err := tafla.NewTableBuilder(4, tafla.TableLayout{})
+	if err != nil {
+		return nil, err
+	}
+	err = errors.Join(
+		columns.SetInt64(document.Base),
+		columns.SetUint32Array(document.Keys),
+		columns.SetFloat32Array(document.A),
+		columns.SetFloat32Array(document.B),
+	)
+	if err != nil {
+		return nil, err
+	}
+	builder, err := ROOT(4, documentLayout)
+	if err != nil {
+		return nil, err
+	}
+	err = errors.Join(
+		builder.SetFloat64(document.X),
+		builder.SetFloat64(document.Y),
+		builder.SetString(document.Name),
+		builder.SetTable(columns),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return FINISH(builder)
+}
+
+// medium are a table's 16 strings and 16 float32 arrays
+type medium struct {
+	strings []string
+	arrays  [][]float32
+}
+
+func values(characters, elements int) medium {
+	var values medium
+	for index := range 16 {
+		values.strings = append(values.strings, strings.Repeat(fmt.Sprintf("%03d", index), characters)[:characters])
+		array := make([]float32, elements)
+		for element := range array {
+			array[element] = float32(element + index)
+		}
+		values.arrays = append(values.arrays, array)
+	}
+	return values
+}
+
+func mediumValues(values medium) ([]byte, error) {
+	builder, err := ROOT(32, tafla.TableLayout{})
+	if err != nil {
+		return nil, err
+	}
+	for index := range values.strings {
+		if err := builder.SetString(values.strings[index]); err != nil {
+			return nil, err
+		}
+		if err := builder.SetFloat32Array(values.arrays[index]); err != nil {
+			return nil, err
+		}
+	}
+
+	return FINISH(builder)
+}
+
+type stringShape struct{ name, value string }
+
+func stringShapes() []stringShape {
+	return []stringShape{
+		{"empty", ""},
+		{"8 chars of ASCII", strings.Repeat("a", 8)},
+		{"64 chars of ASCII", strings.Repeat("a", 64)},
+		{"256 chars of ASCII", strings.Repeat("a", 256)},
+		{"1,024 chars of ASCII", strings.Repeat("a", 1024)},
+		{"8 chars of 3 bytes", strings.Repeat("一", 8)},
+	}
+}
+
+// nested writes tables nested in place, depth in one another, each after a
+// uint8, around a table of an array of four float64 and 500 arrays of 200
+// bytes, so that each is padded
+func nested(depth int, column []float64, small []byte) ([]byte, error) {
+	builder, err := ROOT(1, tafla.TableLayout{})
+	if err != nil {
+		return nil, err
+	}
+	err = builder.SetTableFunc(2, func(table tafla.Item) error { return level(table, depth, column, small) })
+	if err != nil {
+		return nil, err
+	}
+
+	return FINISH(builder)
+}
+
+func level(table tafla.Item, depth int, column []float64, small []byte) error {
+	if err := table.SetUint8(1); err != nil {
+		return err
+	}
+	if depth > 0 {
+		return table.SetTableFunc(2, func(inner tafla.Item) error { return level(inner, depth-1, column, small) })
+	}
+
+	return table.SetTableFunc(501, func(inner tafla.Item) error {
+		if err := inner.SetFloat64Array(column); err != nil {
+			return err
+		}
+		for range 500 {
+			if err := inner.SetUint8Array(small); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func byteArrays(count int, value []byte) ([]byte, error) {
+	builder, err := ROOT(count, tafla.TableLayout{})
+	if err != nil {
+		return nil, err
+	}
+	for range count {
+		if err := builder.SetUint8Array(value); err != nil {
+			return nil, err
+		}
+	}
+
+	return FINISH(builder)
+}
+
+func float64Columns(count int, column []float64) ([]byte, error) {
+	builder, err := ROOT(count, tafla.TableLayout{})
+	if err != nil {
+		return nil, err
+	}
+	for range count {
+		if err := builder.SetFloat64Array(column); err != nil {
+			return nil, err
+		}
+	}
+
+	return FINISH(builder)
+}
+
+func vectorOfScalarBuilders(count, fields int) ([]byte, error) {
+	items := make([]tafla.NestedTable, count)
+	for index := range items {
+		item, err := tafla.NewTableBuilder(fields, tafla.TableLayout{})
+		if err != nil {
+			return nil, err
+		}
+		for field := range fields {
+			if err := item.SetUint32(uint32(index + field)); err != nil {
+				return nil, err
+			}
+		}
+		items[index] = item
+	}
+	builder, err := ROOT(1, tafla.TableLayout{})
+	if err != nil {
+		return nil, err
+	}
+	if err := builder.SetVector(items...); err != nil {
+		return nil, err
+	}
+
+	return FINISH(builder)
+}
+
+func chain(depth int, value string) ([]byte, error) {
+	inner, err := tafla.NewTableBuilder(1, tafla.TableLayout{})
+	if err != nil {
+		return nil, err
+	}
+	if err := inner.SetString(value); err != nil {
+		return nil, err
+	}
+	for range depth {
+		outer, err := tafla.NewTableBuilder(2, tafla.TableLayout{})
+		if err != nil {
+			return nil, err
+		}
+		if err := errors.Join(outer.SetString(value), outer.SetTable(inner)); err != nil {
+			return nil, err
+		}
+		inner = outer
+	}
+
+	return inner.Bytes()
+}
+
+func tree(depth, fanout int, value string) ([]byte, error) {
+	builder, err := node(depth, fanout, value)
+	if err != nil {
+		return nil, err
+	}
+
+	return builder.Bytes()
+}
+
+func node(depth, fanout int, value string) (*tafla.TableBuilder, error) {
+	if depth == 0 {
+		leaf, err := tafla.NewTableBuilder(3, tafla.TableLayout{})
+		if err != nil {
+			return nil, err
+		}
+		return leaf, errors.Join(leaf.SetUint32(1), leaf.SetFloat64(2), leaf.SetString(value))
+	}
+
+	items := make([]tafla.NestedTable, fanout)
+	for index := range items {
+		item, err := node(depth-1, fanout, value)
+		if err != nil {
+			return nil, err
+		}
+		items[index] = item
+	}
+	builder, err := tafla.NewTableBuilder(2, tafla.TableLayout{})
+	if err != nil {
+		return nil, err
+	}
+
+	return builder, errors.Join(builder.SetUint32(uint32(depth)), builder.SetVector(items...))
+}
+
+func vectorOfBuilders(count int, value string) ([]byte, error) {
+	items := make([]tafla.NestedTable, count)
+	for index := range items {
+		item, err := tafla.NewTableBuilder(2, tafla.TableLayout{})
+		if err != nil {
+			return nil, err
+		}
+		if err := errors.Join(item.SetUint32(1), item.SetString(value)); err != nil {
+			return nil, err
+		}
+		items[index] = item
+	}
+	builder, err := ROOT(1, tafla.TableLayout{})
+	if err != nil {
+		return nil, err
+	}
+	if err := builder.SetVector(items...); err != nil {
+		return nil, err
+	}
+
+	return FINISH(builder)
+}
+
+func stringFields(count int, value string) ([]byte, error) {
+	builder, err := ROOT(count, tafla.TableLayout{})
+	if err != nil {
+		return nil, err
+	}
+	for range count {
+		if err := builder.SetString(value); err != nil {
+			return nil, err
+		}
+	}
+
+	return FINISH(builder)
+}
+
+func arrayFields(count int, elements []uint32) ([]byte, error) {
+	builder, err := ROOT(count, tafla.TableLayout{})
+	if err != nil {
+		return nil, err
+	}
+	for range count {
+		if err := builder.SetUint32Array(elements); err != nil {
+			return nil, err
+		}
+	}
+
+	return FINISH(builder)
+}
+
+func vectorOfStrings(count int, value string) ([]byte, error) {
+	builder, err := ROOT(1, tafla.TableLayout{})
+	if err != nil {
+		return nil, err
+	}
+	err = builder.SetVectorFunc(count, 1, func(_ int, item tafla.Item) error {
+		return item.SetString(value)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return FINISH(builder)
+}
+
+func vectorOfSmallItems(count int, value string) ([]byte, error) {
+	builder, err := ROOT(1, tafla.TableLayout{})
+	if err != nil {
+		return nil, err
+	}
+	err = builder.SetVectorFunc(count, 3, func(index int, item tafla.Item) error {
+		return errors.Join(item.SetUint32(uint32(index)), item.SetFloat64(1), item.SetString(value))
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return FINISH(builder)
+}
+
+// unevenVector writes a vector in place whose first item holds value, and
+// the others an empty string
+func unevenVector(count int, value string) ([]byte, error) {
+	builder, err := ROOT(1, tafla.TableLayout{})
+	if err != nil {
+		return nil, err
+	}
+	err = builder.SetVectorFunc(count, 1, func(index int, item tafla.Item) error {
+		if index == 0 {
+			return item.SetString(value)
+		}
+		return item.SetString("")
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return FINISH(builder)
+}
+
+// vectorTooLong returns the error of a vector too long for its table, which
+// every builder must return alike
+func vectorTooLong(value string) ([]byte, error) {
+	builder, err := ROOT(1, tafla.TableLayout{}.WithOffsetType(tafla.Uint16))
+	if err != nil {
+		return nil, err
+	}
+	err = builder.SetVectorFunc(30000, 30, func(_ int, item tafla.Item) error {
+		for range 30 {
+			if err := item.SetString(value); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err == nil {
+		return nil, errors.New("the vector fit")
+	}
+
+	return []byte(err.Error()), nil
+}

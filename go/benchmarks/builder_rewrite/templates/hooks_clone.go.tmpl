@@ -1,0 +1,9 @@
+// The hook of the buffer's builder whose tables are copied out, as Rust's
+// to_bytes() copies them.
+package template
+
+import "bytes"
+
+func cloned(table []byte, err error) ([]byte, error) {
+	return bytes.Clone(table), err
+}

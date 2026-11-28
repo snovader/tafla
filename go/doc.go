@@ -12,7 +12,7 @@
 // it's written, as the code that tafla-gen generates writes its tables: the
 // sizer counts the table's length from its fields, and its writer writes the
 // same fields, in the same order, straight into bytes of that length, rather
-// than into a buffer to copy, as TableBuilder does. Fields whose sizes a
+// than into a buffer that grows, as TableBuilder does. Fields whose sizes a
 // schema fixes, the generated code lays out itself: the sizer and the writer
 // take them together, and [AppendTable] appends a table that its caller lays
 // out entirely.
@@ -51,16 +51,15 @@
 //
 // # Sharing and copying
 //
-// Builders write each field when it's set, but keep long values: a setter of
-// an array, a string, a vector of strings or the bytes of structs or of a
-// nested table may keep the slice or strings until the table is written,
-// rather than copy them, so a slice's elements must not change in between.
-// A nested builder is copied into its parent when it's set, and its parent
-// keeps what it kept, unless that's long: then its parent keeps a copy of the
-// builder, and writes its table along with its own.
+// Builders copy each value when it's set, into a buffer that holds the
+// table, which [TableBuilder.Bytes] returns rather than a copy: a slice, a
+// string, or a nested builder or its bytes, can change once its setter
+// returns. [TableBuilder.Reset] starts the next table after the bytes of a
+// slice of the caller's, into its capacity, as append does. A nested
+// builder is copied into its parent when it's set.
 // [TableBuilder.SetTableFunc] and [TableBuilder.SetVectorFunc] write a
 // nested table, or each item of a vector, straight into the builder's own
-// bytes, without a builder of its own, nor copying it.
+// bytes, without a builder of its own to copy.
 //
 // Readers share the bytes: [ArrayView] reads an array's elements in place,
 // at any alignment and in any host byte order, and [ArrayView.AsSlice]

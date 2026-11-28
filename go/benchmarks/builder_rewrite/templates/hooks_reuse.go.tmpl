@@ -1,0 +1,21 @@
+// The hooks of the buffer's builder reused: one builder writes every root
+// table, each into the bytes of the one before it.
+package template
+
+import tafla "github.com/snovader/tafla/go"
+
+var (
+	reused tafla.TableBuilder
+	last   []byte
+)
+
+func reuse(fields int, layout tafla.TableLayout) (*tafla.TableBuilder, error) {
+	return &reused, reused.Reset(last[:0], fields, layout)
+}
+
+func keep(table []byte, err error) ([]byte, error) {
+	if err == nil {
+		last = table
+	}
+	return table, err
+}

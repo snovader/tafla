@@ -1,0 +1,108 @@
+// The rows that nest tables in place, each with SetTableFuncAligned and the
+// alignment of its fields, so that none is moved.
+package template
+
+import (
+	"errors"
+	"fmt"
+	"strings"
+
+	tafla "github.com/snovader/tafla/go"
+	"github.com/snovader/tafla/go/benchmarks/workloads"
+)
+
+type Row struct {
+	Name string
+	Call func() ([]byte, error)
+}
+
+var documentLayout = tafla.TableLayout{}.Sized().WithVersion(1)
+
+func Rows() []Row {
+	var rows []Row
+	add := func(name string, call func() ([]byte, error)) {
+		rows = append(rows, Row{name, call})
+	}
+
+	small := workloads.NewDocument(workloads.DocumentRows[0])
+	large := workloads.NewDocument(workloads.DocumentRows[1])
+	paddedSmall, paddedLarge := small, large
+	paddedSmall.Name, paddedLarge.Name = "tafla-benchmarks!", "tafla-benchmarks!"
+	add("document of 100 rows", func() ([]byte, error) { return document(small) })
+	add("document of 100,000 rows", func() ([]byte, error) { return document(large) })
+	add("document of 100 rows, its columns padded", func() ([]byte, error) { return document(paddedSmall) })
+	add("document of 100,000 rows, its columns padded", func() ([]byte, error) { return document(paddedLarge) })
+	column, small200 := []float64{1.5, 1.5, 1.5, 1.5}, []byte(strings.Repeat("\x07", 200))
+	for _, depth := range []int{1, 10, 100, 1000} {
+		name := fmt.Sprintf("tables nested in place, padded, depth %d", depth)
+		if depth == 1000 {
+			name = "tables nested in place, padded, depth 1,000"
+		}
+		add(name, func() ([]byte, error) { return nested(depth, column, small200) })
+	}
+
+	return rows
+}
+
+func document(document workloads.Document) ([]byte, error) {
+	builder, err := tafla.NewTableBuilder(4, documentLayout)
+	if err != nil {
+		return nil, err
+	}
+	err = errors.Join(
+		builder.SetFloat64(document.X),
+		builder.SetFloat64(document.Y),
+		builder.SetString(document.Name),
+		builder.SetTableFuncAligned(4, tafla.Align4, func(columns tafla.Item) error {
+			return errors.Join(
+				columns.SetInt64(document.Base),
+				columns.SetUint32Array(document.Keys),
+				columns.SetFloat32Array(document.A),
+				columns.SetFloat32Array(document.B),
+			)
+		}),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return builder.Bytes()
+}
+
+func nested(depth int, column []float64, small []byte) ([]byte, error) {
+	builder, err := tafla.NewTableBuilder(1, tafla.TableLayout{})
+	if err != nil {
+		return nil, err
+	}
+	err = builder.SetTableFuncAligned(2, tafla.Align8, func(table tafla.Item) error {
+		return level(table, depth, column, small)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return builder.Bytes()
+}
+
+func level(table tafla.Item, depth int, column []float64, small []byte) error {
+	if err := table.SetUint8(1); err != nil {
+		return err
+	}
+	if depth > 0 {
+		return table.SetTableFuncAligned(2, tafla.Align8, func(inner tafla.Item) error {
+			return level(inner, depth-1, column, small)
+		})
+	}
+
+	return table.SetTableFuncAligned(501, tafla.Align8, func(inner tafla.Item) error {
+		if err := inner.SetFloat64Array(column); err != nil {
+			return err
+		}
+		for range 500 {
+			if err := inner.SetUint8Array(small); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}

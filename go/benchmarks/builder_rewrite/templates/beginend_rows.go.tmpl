@@ -1,0 +1,203 @@
+// The rows that nest tables in place, written with the begin and end calls
+// of beginend_api.go rather than functions.
+package template
+
+import (
+	"errors"
+	"fmt"
+	"strings"
+
+	tafla "github.com/snovader/tafla/go"
+	"github.com/snovader/tafla/go/benchmarks/workloads"
+)
+
+type Row struct {
+	Name string
+	Call func() ([]byte, error)
+}
+
+var documentLayout = tafla.TableLayout{}.Sized().WithVersion(1)
+
+func Rows() []Row {
+	var rows []Row
+	add := func(name string, call func() ([]byte, error)) {
+		rows = append(rows, Row{name, call})
+	}
+
+	small := workloads.NewDocument(workloads.DocumentRows[0])
+	large := workloads.NewDocument(workloads.DocumentRows[1])
+	paddedSmall, paddedLarge := small, large
+	paddedSmall.Name, paddedLarge.Name = "tafla-benchmarks!", "tafla-benchmarks!"
+	list := workloads.NewList(workloads.ListItems)
+	add("document of 100 rows", func() ([]byte, error) { return document(small) })
+	add("document of 100,000 rows", func() ([]byte, error) { return document(large) })
+	add("document of 100 rows, its columns padded", func() ([]byte, error) { return document(paddedSmall) })
+	add("document of 100,000 rows, its columns padded", func() ([]byte, error) { return document(paddedLarge) })
+	add("vector of 100 nested tables", func() ([]byte, error) { return listOf(list) })
+	column, small200 := []float64{1.5, 1.5, 1.5, 1.5}, []byte(strings.Repeat("\x07", 200))
+	for _, depth := range []int{1, 10, 100, 1000} {
+		name := fmt.Sprintf("tables nested in place, padded, depth %d", depth)
+		if depth == 1000 {
+			name = "tables nested in place, padded, depth 1,000"
+		}
+		add(name, func() ([]byte, error) { return nested(depth, column, small200) })
+	}
+	s20, s60 := strings.Repeat("d", 20), strings.Repeat("h", 60)
+	add("vector of 100,000 items, 60 B string each", func() ([]byte, error) { return vectorOfStrings(100000, s60) })
+	add("vector of 100,000 items of uint32, float64, 20 B string", func() ([]byte, error) {
+		return vectorOfSmallItems(100000, s20)
+	})
+
+	return rows
+}
+
+func document(document workloads.Document) ([]byte, error) {
+	builder, err := tafla.NewTableBuilder(4, documentLayout)
+	if err != nil {
+		return nil, err
+	}
+	err = errors.Join(
+		builder.SetFloat64(document.X),
+		builder.SetFloat64(document.Y),
+		builder.SetString(document.Name),
+	)
+	if err != nil {
+		return nil, err
+	}
+	columns, err := builder.StartTable(4)
+	if err != nil {
+		return nil, err
+	}
+	err = builder.EndTable(columns, errors.Join(
+		builder.SetInt64(document.Base),
+		builder.SetUint32Array(document.Keys),
+		builder.SetFloat32Array(document.A),
+		builder.SetFloat32Array(document.B),
+	))
+	if err != nil {
+		return nil, err
+	}
+
+	return builder.Bytes()
+}
+
+func listOf(list workloads.List) ([]byte, error) {
+	builder, err := tafla.NewTableBuilder(1, tafla.TableLayout{})
+	if err != nil {
+		return nil, err
+	}
+	vector, err := builder.StartVector(len(list.Items), 2)
+	if err != nil {
+		return nil, err
+	}
+	for index, item := range list.Items {
+		builder.StartItem(&vector)
+		if err := builder.EndItem(&vector, index, setListItem(builder, item)); err != nil {
+			return nil, err
+		}
+	}
+	if err := builder.EndVector(&vector); err != nil {
+		return nil, err
+	}
+
+	return builder.Bytes()
+}
+
+func setListItem(builder *tafla.TableBuilder, item workloads.Item) error {
+	if err := builder.SetFloat32(item.Value); err != nil {
+		return err
+	}
+	pair, err := builder.StartTable(2)
+	if err != nil {
+		return err
+	}
+
+	return builder.EndTable(pair, errors.Join(builder.SetFloat32(item.First), builder.SetFloat32(item.Second)))
+}
+
+func nested(depth int, column []float64, small []byte) ([]byte, error) {
+	builder, err := tafla.NewTableBuilder(1, tafla.TableLayout{})
+	if err != nil {
+		return nil, err
+	}
+	table, err := builder.StartTable(2)
+	if err != nil {
+		return nil, err
+	}
+	if err := builder.EndTable(table, level(builder, depth, column, small)); err != nil {
+		return nil, err
+	}
+
+	return builder.Bytes()
+}
+
+func level(builder *tafla.TableBuilder, depth int, column []float64, small []byte) error {
+	if err := builder.SetUint8(1); err != nil {
+		return err
+	}
+	if depth > 0 {
+		inner, err := builder.StartTable(2)
+		if err != nil {
+			return err
+		}
+		return builder.EndTable(inner, level(builder, depth-1, column, small))
+	}
+
+	inner, err := builder.StartTable(501)
+	if err != nil {
+		return err
+	}
+	err = builder.SetFloat64Array(column)
+	for range 500 {
+		if err != nil {
+			break
+		}
+		err = builder.SetUint8Array(small)
+	}
+	return builder.EndTable(inner, err)
+}
+
+func vectorOfStrings(count int, value string) ([]byte, error) {
+	builder, err := tafla.NewTableBuilder(1, tafla.TableLayout{})
+	if err != nil {
+		return nil, err
+	}
+	vector, err := builder.StartVector(count, 1)
+	if err != nil {
+		return nil, err
+	}
+	for index := range count {
+		builder.StartItem(&vector)
+		if err := builder.EndItem(&vector, index, builder.SetString(value)); err != nil {
+			return nil, err
+		}
+	}
+	if err := builder.EndVector(&vector); err != nil {
+		return nil, err
+	}
+
+	return builder.Bytes()
+}
+
+func vectorOfSmallItems(count int, value string) ([]byte, error) {
+	builder, err := tafla.NewTableBuilder(1, tafla.TableLayout{})
+	if err != nil {
+		return nil, err
+	}
+	vector, err := builder.StartVector(count, 3)
+	if err != nil {
+		return nil, err
+	}
+	for index := range count {
+		builder.StartItem(&vector)
+		err := errors.Join(builder.SetUint32(uint32(index)), builder.SetFloat64(1), builder.SetString(value))
+		if err := builder.EndItem(&vector, index, err); err != nil {
+			return nil, err
+		}
+	}
+	if err := builder.EndVector(&vector); err != nil {
+		return nil, err
+	}
+
+	return builder.Bytes()
+}
