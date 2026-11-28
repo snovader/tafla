@@ -14,8 +14,8 @@ table Vector { x: uint8; }
 // java.lang.String, which a class in the same package hides
 table String { x: uint8; }
 
-// Every target imports the runtime's ByteBuffer
-table ByteBuffer { x: uint8; }
+// Every target imports the runtime's TableReader
+table TableReader { x: uint8; }
 // TypeScript's global
 struct Number { x: uint8; }
 // Python's typing
@@ -26,6 +26,10 @@ struct Override { x: uint8; }
 struct Option { x: uint8; }
 // A keyword in Rust, and a type of typing in Python
 struct Self { x: uint8; }
+// A keyword in Swift
+table Any { x: uint8; }
+// The elements of Swift's Array, in its extension for an array of structs
+struct Element { x: uint8; }
 
 // Declarations whose names the generated code doesn't use are valid: Java
 // names java.util.Arrays in full

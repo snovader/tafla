@@ -31,6 +31,8 @@ bool same(const T& left, const T& right) {
         return left.nested == right.nested && left.alignment == right.alignment;
     } else if constexpr (std::is_same_v<T, VectorField>) {
         return left.items == right.items;
+    } else if constexpr (std::is_same_v<T, StringVectorField>) {
+        return left.strings == right.strings;
     } else {
         return left == right;
     }
@@ -168,7 +170,8 @@ Alignment Field::alignment() const {
                 }
                 return field.nested.from == Source::builder ? field.nested.table.alignment() : Alignment::four;
             } else if constexpr (std::is_same_v<T, std::vector<std::uint8_t>> ||
-                                 std::is_same_v<T, std::vector<std::int8_t>> || std::is_same_v<T, std::string>) {
+                                 std::is_same_v<T, std::vector<std::int8_t>> || std::is_same_v<T, Bools> ||
+                                 std::is_same_v<T, std::string>) {
                 return Alignment::one;
             } else if constexpr (requires { typename T::value_type; }) {
                 return static_cast<Alignment>(sizeof(typename T::value_type));
@@ -203,6 +206,13 @@ bool operator==(const Nested& left, const Nested& right) {
 std::ostream& operator<<(std::ostream& stream, const Field& field) {
     std::visit(Overloaded{
                    [&stream](const Bool& value) { stream << (value.value ? "true" : "false"); },
+                   [&stream](const Bools& value) {
+                       stream << "bool[";
+                       for (std::size_t index = 0; index < value.size(); ++index) {
+                           stream << (index == 0 ? "" : ", ") << (value[index] ? "true" : "false");
+                       }
+                       stream << "]";
+                   },
                    [&stream](const std::string& value) { stream << '"' << value << '"'; },
                    [&stream](const Struct& value) {
                        stream << "struct";
@@ -228,6 +238,13 @@ std::ostream& operator<<(std::ostream& stream, const Field& field) {
                        stream << "vector[";
                        for (const auto& item : value.items) {
                            stream << (item.from == Source::builder ? "builder " : "bytes ") << item.table << "; ";
+                       }
+                       stream << "]";
+                   },
+                   [&stream](const StringVectorField& value) {
+                       stream << "string[";
+                       for (std::size_t index = 0; index < value.strings.size(); ++index) {
+                           stream << (index == 0 ? "\"" : ", \"") << value.strings[index] << '"';
                        }
                        stream << "]";
                    },

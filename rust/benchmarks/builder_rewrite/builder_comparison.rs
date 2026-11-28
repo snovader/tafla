@@ -1,7 +1,7 @@
-//! Times main's `TableBuilder` against the rewrite, and its variants, on
-//! the rows of `builders::for_each_row()`: the comparison's rows that build
-//! tables, the vector of 100 nested tables from builders, tables of 32
-//! medium and 32 short values, and the shapes of the second review.
+//! Times main's `TableBuilder` against the rewrite on the rows of
+//! `builders::for_each_row()`: the comparison's rows that build tables,
+//! the vector of 100 nested tables from builders, tables of 32 medium and
+//! 32 short values, and the shapes of the second review.
 //!
 //! Every builder writes each row in a loop of its own, after a check that it
 //! writes main's builder's bytes, and of the comparison's rows, the tafla

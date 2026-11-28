@@ -59,15 +59,17 @@ pub fn with_elements<R>(
 /// values)` converts them, into the bytes that `destination` returns for their
 /// byte length, in the host's byte order, and returns that length. This is
 /// `with_elements()`'s conversion without the `array`, which a writer
-/// writes straight into its bytes.
+/// writes straight into its bytes. The code `?` converts bools to the bytes
+/// 1 and 0, as `tafla.elements.bool_bytes()` does, which has no `array`.
 ///
-/// Only `int`s, `float`s and `bool`s convert, whose conversions run no Python
-/// code, so nothing changes the sequence while it's read; on a free-threaded
-/// build, a list is locked for it, too. Returns `None` for any other values,
-/// for an element of another type or one that `array()` rejects, such as an
-/// `int` out of the code's range, and if `destination` returns `None`, so that
-/// `with_elements()` converts them, with `array()`'s errors. `destination`
-/// may hold elements converted before one that failed.
+/// Only `int`s, `float`s and `bool`s convert, and only `bool`s for `?`, whose
+/// conversions run no Python code, so nothing changes the sequence while
+/// it's read; on a free-threaded build, a list is locked for it, too. Returns
+/// `None` for any other values, for an element of another type or one that
+/// `array()` rejects, such as an `int` out of the code's range, and if
+/// `destination` returns `None`, so that `with_elements()` or `bool_bytes()`
+/// converts them, with their errors. `destination` may hold elements
+/// converted before one that failed.
 ///
 /// # Safety
 ///
@@ -104,6 +106,7 @@ pub unsafe fn convert_sequence<'a>(
                 real(item).map(|value| (value as f32).to_ne_bytes())
             }),
             'd' => items.convert(destination, |item| real(item).map(f64::to_ne_bytes)),
+            '?' => items.convert(destination, boolean),
             _ => None,
         }
     };
@@ -271,6 +274,19 @@ fn real(object: *mut ffi::PyObject) -> Option<f64> {
         return None;
     }
     Some(value)
+}
+
+/// The byte of `True` or `False`, 1 or 0, or `None` for another object,
+/// whose truth may take Python code to find
+#[inline]
+fn boolean(object: *mut ffi::PyObject) -> Option<[u8; 1]> {
+    if unsafe { ffi::Py_IsTrue(object) } != 0 {
+        Some([1])
+    } else if unsafe { ffi::Py_IsFalse(object) } != 0 {
+        Some([0])
+    } else {
+        None
+    }
 }
 
 /// The format of a buffer, which is bytes without one

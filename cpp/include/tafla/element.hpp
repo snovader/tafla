@@ -33,6 +33,10 @@ namespace tafla {
 /// A number type that tables store in arrays: `std::int8_t` … `std::uint64_t`,
 /// `float` or `double`. Elements are stored little-endian and aligned to their
 /// size from the table's start.
+///
+/// Not `bool`: an array of bools is a `uint8` array, whose bytes other than 0
+/// and 1 are no `bool`, so an `ArrayView` never views them as bools.
+/// `TableReader::get_bool_array()` reads them into `Bools` instead.
 template <class T>
 concept Element = std::same_as<T, std::int8_t> || std::same_as<T, std::uint8_t> || std::same_as<T, std::int16_t> ||
                   std::same_as<T, std::uint16_t> || std::same_as<T, std::int32_t> || std::same_as<T, std::uint32_t> ||

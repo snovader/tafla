@@ -110,7 +110,7 @@ _FLOAT32 = Struct("<f")
 
 def document_input(rows: int) -> DocumentInput:
     """Returns a document of ``rows`` rows, with its columns as arrays"""
-    random = _xorshift(rows)
+    random = xorshift(rows)
 
     # Keys below 2^24 take 4 bytes in protobuf's varints, like the floats.
     # array("f") rounds each float64 to float32 as Math.fround() does.
@@ -135,7 +135,7 @@ def document_lists(document: DocumentInput) -> DocumentInput:
 
 
 def list_input(items: int) -> ListInput:
-    random = _xorshift(items)
+    random = xorshift(items)
 
     # Float32 values, so that every format reads them back exactly
     return ListInput(
@@ -150,9 +150,11 @@ def list_input(items: int) -> ListInput:
     )
 
 
-def _xorshift(seed: int) -> Iterator[float]:
-    """A deterministic generator in [0, 1), so every run sees the same values.
-    Its state is the 32 bits that the TypeScript generator's shifts leave."""
+def xorshift(seed: int) -> Iterator[float]:
+    """A deterministic generator in [0, 1), so every run sees the same values:
+    the TypeScript suites' generator, whose values the workloads and the
+    strings of ``list_shapes.py`` take. Its state is the 32 bits that the
+    TypeScript generator's shifts leave."""
     state = 0x2545F491 ^ seed
 
     while True:

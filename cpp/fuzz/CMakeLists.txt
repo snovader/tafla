@@ -3,7 +3,7 @@
 # conformance target reads with the tests' descriptions, so the tests are
 # built too.
 
-foreach(target byte_buffer conformance)
+foreach(target table_reader conformance)
     add_executable(fuzz_${target} ${target}.cpp)
     target_link_libraries(fuzz_${target} PRIVATE tafla::tafla tafla_warnings)
     target_link_options(fuzz_${target} PRIVATE -fsanitize=fuzzer)

@@ -6,15 +6,11 @@ rewrite, and the rewrite's variants, for the comparison in README.md.
 It adds a detached worktree of the current commit at the scratch directory,
 and in it:
 
-- main's `rust/core/src/table_builder.rs`, from the revision given (7238a1b,
-  the main that the rewrite was measured against), as `tafla::main_builder`;
-- copies of the rewrite with a change or two each: `..._room_16`, whose
-  bytes start with room for 16 bytes a field rather than 64,
-  `..._long_segments`, which keeps a run of 64 bytes or more as a segment
-  rather than grow bytes of 64 KiB or more for it, `..._room_16_long_segments`,
-  with both, and `..._segments_128` and `..._segments_64`, which keep runs
-  of 128 or 64 bytes or more as segments rather than 256, with room for 64,
-  32 or 16 bytes a field;
+- main's `rust/core/src/table_builder.rs`, from the revision given (630f0016,
+  main with #376, which the rewrite was last measured against), as
+  `tafla::main_builder`;
+- copies of the rewrite with a change or two each, as `VARIANTS` lists them,
+  none at present;
 - the `main-builder` feature of the runtime and the benchmarks that builds
   them, and this directory's binaries and differential test.
 
@@ -31,37 +27,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 #: The edits that make each variant of the rewrite, as (old, new) pairs of
 #: `table_builder.rs`'s text, or (file, old, new) of a file of its
 #: submodules, each of which must be found once
-VARIANTS = {
-    'rewrite_room_16': [
-        ('bytes.rs', 'const ROOM_FOR_A_FIELD: usize = 64;', 'const ROOM_FOR_A_FIELD: usize = 16;'),
-    ],
-    'rewrite_long_segments': [
-        ('        if byte_length >= SEGMENT_BYTES {\n            self.push_segment(run(values), byte_length);', '        if byte_length >= SEGMENT_BYTES || (byte_length >= 64 && self.bytes.would_grow_long(byte_length)) {\n            self.push_segment(run(values), byte_length);'),
-        ('        if byte_length >= SEGMENT_BYTES {\n            self.push_segment(Run::U8(bytes), byte_length);', '        if byte_length >= SEGMENT_BYTES || (byte_length >= 64 && self.bytes.would_grow_long(byte_length)) {\n            self.push_segment(Run::U8(bytes), byte_length);'),
-        ('bytes.rs', '    #[inline(always)]\n    pub fn push(&mut self, bytes: &[u8]) {', '    /// Whether `additional` more bytes would grow bytes of 64 KiB or more\n    #[inline(always)]\n    pub fn would_grow_long(&self, additional: usize) -> bool {\n        additional > self.vec.capacity() - self.vec.len() && self.vec.capacity() >= FOURFOLD_BELOW\n    }\n\n    #[inline(always)]\n    pub fn push(&mut self, bytes: &[u8]) {'),
-    ],
-    'rewrite_room_16_long_segments': [
-        ('bytes.rs', 'const ROOM_FOR_A_FIELD: usize = 64;', 'const ROOM_FOR_A_FIELD: usize = 16;'),
-        ('        if byte_length >= SEGMENT_BYTES {\n            self.push_segment(run(values), byte_length);', '        if byte_length >= SEGMENT_BYTES || (byte_length >= 64 && self.bytes.would_grow_long(byte_length)) {\n            self.push_segment(run(values), byte_length);'),
-        ('        if byte_length >= SEGMENT_BYTES {\n            self.push_segment(Run::U8(bytes), byte_length);', '        if byte_length >= SEGMENT_BYTES || (byte_length >= 64 && self.bytes.would_grow_long(byte_length)) {\n            self.push_segment(Run::U8(bytes), byte_length);'),
-        ('bytes.rs', '    #[inline(always)]\n    pub fn push(&mut self, bytes: &[u8]) {', '    /// Whether `additional` more bytes would grow bytes of 64 KiB or more\n    #[inline(always)]\n    pub fn would_grow_long(&self, additional: usize) -> bool {\n        additional > self.vec.capacity() - self.vec.len() && self.vec.capacity() >= FOURFOLD_BELOW\n    }\n\n    #[inline(always)]\n    pub fn push(&mut self, bytes: &[u8]) {'),
-    ],
-    'rewrite_segments_128': [
-        ('const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 256 };', 'const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 128 };'),
-    ],
-    'rewrite_segments_128_room_32': [
-        ('const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 256 };', 'const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 128 };'),
-        ('bytes.rs', 'const ROOM_FOR_A_FIELD: usize = 64;', 'const ROOM_FOR_A_FIELD: usize = 32;'),
-    ],
-    'rewrite_segments_128_room_16': [
-        ('const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 256 };', 'const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 128 };'),
-        ('bytes.rs', 'const ROOM_FOR_A_FIELD: usize = 64;', 'const ROOM_FOR_A_FIELD: usize = 16;'),
-    ],
-    'rewrite_segments_64_room_16': [
-        ('const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 256 };', 'const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 64 };'),
-        ('bytes.rs', 'const ROOM_FOR_A_FIELD: usize = 64;', 'const ROOM_FOR_A_FIELD: usize = 16;'),
-    ],
-}
+VARIANTS = {}
 
 
 def edit(path, old, new):
@@ -81,7 +47,7 @@ def main():
     if len(sys.argv) not in (2, 3):
         sys.exit(__doc__)
     scratch = pathlib.Path(sys.argv[1]).resolve()
-    main_revision = sys.argv[2] if len(sys.argv) == 3 else "7238a1b"
+    main_revision = sys.argv[2] if len(sys.argv) == 3 else "630f0016"
     repository = pathlib.Path(git("rev-parse", "--show-toplevel", cwd=HERE).strip())
 
     git("worktree", "add", "--detach", str(scratch), "HEAD", cwd=repository)

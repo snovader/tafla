@@ -13,7 +13,7 @@ use crate::python::{
 };
 use crate::values;
 
-/// The buffer that a `ByteBuffer` reads, held while it lives. It's requested
+/// The buffer that a `TableReader` reads, held while it lives. It's requested
 /// as plain bytes, which C-contiguous buffers of any shape and format export,
 /// and which leaves the request without pointers into itself, so it can move.
 struct Held(ffi::Py_buffer);
@@ -26,7 +26,7 @@ unsafe impl Sync for Held {}
 
 impl Drop for Held {
     fn drop(&mut self) {
-        // The ByteBuffer is dropped by its deallocation, with the thread
+        // The TableReader is dropped by its deallocation, with the thread
         // attached
         unsafe { ffi::PyBuffer_Release(&raw mut self.0) };
     }
@@ -35,16 +35,17 @@ impl Drop for Held {
 /// Reads a table within the supplied bytes, in the table layout it was
 /// written in, whose multi-byte values are little-endian. Array reads return
 /// views of the bytes on a little-endian host, whatever their alignment, and
-/// copies in the host's byte order on a big-endian host.
+/// copies in the host's byte order on a big-endian host, but
+/// ``get_bool_array()``, which reads bools into a list.
 ///
 /// Every read checks that it stays within the bytes and raises ``DecodeError``
 /// otherwise, at any position, however large. The bytes must be C-contiguous,
 /// and bytes that aren't raise ``TypeError``.
 ///
 /// Tables are written with ``TableBuilder``, whose ``finalize()`` returns a
-/// ``ByteBuffer`` that reads the table, or with ``TableWriter``.
-#[pyclass(frozen, module = "tafla._native", name = "ByteBuffer")]
-pub struct ByteBuffer {
+/// ``TableReader`` that reads the table, or with ``TableWriter``.
+#[pyclass(frozen, module = "tafla._native", name = "TableReader")]
+pub struct TableReader {
     held: Held,
     shape: Shape,
     /// The view of the bytes that `bytes()` returns and reads slice, created
@@ -53,7 +54,7 @@ pub struct ByteBuffer {
     view: PyOnceLock<Py<PyAny>>,
 }
 
-impl ByteBuffer {
+impl TableReader {
     /// The bytes, which no Python code may run while they're borrowed, so
     /// that nothing changes them
     #[inline]
@@ -67,19 +68,19 @@ impl ByteBuffer {
     }
 
     #[inline]
-    fn core(&self) -> tafla::ByteBuffer<'_> {
-        tafla::ByteBuffer::new(self.bytes_slice(), self.shape.core())
+    fn core(&self) -> tafla::TableReader<'_> {
+        tafla::TableReader::new(self.bytes_slice(), self.shape.core())
     }
 
     #[inline]
-    const fn size(&self) -> usize {
+    pub(crate) const fn size(&self) -> usize {
         self.shape.size()
     }
 
     /// The position of a read of `length` bytes, which must be non-negative,
     /// as `struct` reads the scalars
     #[inline]
-    fn position(&self, position: &Bound<'_, PyAny>, length: usize) -> PyResult<usize> {
+    pub(crate) fn position(&self, position: &Bound<'_, PyAny>, length: usize) -> PyResult<usize> {
         if let Some(position) = small(position)?
             && let Ok(position) = usize::try_from(position)
         {
@@ -191,6 +192,21 @@ impl ByteBuffer {
         count: &Int<'py>,
         index: &Int<'py>,
     ) -> PyResult<Int<'py>> {
+        let (start, _) = self.item_bounds(py, position, count, index)?;
+        Ok(start)
+    }
+
+    /// Where item `index` of the vector of `count` items at `position`
+    /// starts and ends, as `item_offset()` finds it: within the bytes, but
+    /// before them for a negative position, which a caller may pass, as the
+    /// pure-Python runtime finds it
+    pub(crate) fn item_bounds<'py>(
+        &self,
+        py: Python<'py>,
+        position: &Int<'py>,
+        count: &Int<'py>,
+        index: &Int<'py>,
+    ) -> PyResult<(Int<'py>, Int<'py>)> {
         if index.is_negative()? || !index.lt(count.clone())? {
             return Err(PyIndexError::new_err(format!(
                 "Item {} is outside the vector of {} at {}",
@@ -211,8 +227,91 @@ impl ByteBuffer {
         if end.lt(start.clone())? || Int::from(self.available()).lt(position.add(end.clone())?)? {
             return Err(item_error(py, position, &start, &end, self.available()));
         }
-        position.add(start)
+
+        Ok((position.add(start)?, position.add(end)?))
     }
+
+    /// Reads every string of the vector of strings at `at`, as
+    /// `get_string_vector()` reads them
+    pub(crate) fn strings_at<'py>(
+        &self,
+        py: Python<'py>,
+        at: usize,
+    ) -> PyResult<Bound<'py, PyList>> {
+        let vector = self
+            .core()
+            .get_vector(at)
+            .map_err(|error| core_error(py, &error))?;
+
+        // The list first, since creating it may run the garbage collector,
+        // and with it Python code, which creating the strings doesn't. Each
+        // string is decoded by CPython, which checks it as UTF-8 on its own,
+        // from the bounds that the Rust runtime reads and checks one after
+        // another.
+        let list = unsafe {
+            Bound::from_owned_ptr_or_err(py, ffi::PyList_New(vector.len().cast_signed()))?
+                .cast_into_unchecked::<PyList>()
+        };
+        for (index, item) in vector.iter().enumerate() {
+            let bytes = item.map_err(|error| core_error(py, &error))?;
+            let string = decode_utf8(py, bytes, self.offset_of(bytes))?;
+            list_set(&list, index, string)?;
+        }
+
+        Ok(list)
+    }
+
+    /// Decodes the string from `start` to `end` in the bytes, which
+    /// `item_bounds()` found, as the pure-Python runtime decodes a string of
+    /// a vector of strings. A string that starts before the bytes, at a
+    /// negative position, lies outside them.
+    #[inline]
+    pub(crate) fn decode_string<'py>(
+        &self,
+        py: Python<'py>,
+        start: &Int<'py>,
+        end: &Int<'py>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        match (start.index(), end.index()) {
+            (Some(from), Some(to)) => decode_utf8(py, &self.bytes_slice()[from..to], from),
+            _ => Err(out_of_range(
+                py,
+                start,
+                &end.sub(start.clone())?,
+                self.available(),
+            )),
+        }
+    }
+}
+
+/// Decodes `bytes`, a string at `start` in a reader's bytes, as UTF-8, or
+/// raises the pure-Python runtime's `DecodeError` for them, whose cause is
+/// the `UnicodeDecodeError`. Creating a `str` runs no Python code, so the
+/// bytes stay borrowed.
+#[inline]
+fn decode_utf8<'py>(py: Python<'py>, bytes: &[u8], start: usize) -> PyResult<Bound<'py, PyAny>> {
+    let string = unsafe {
+        ffi::PyUnicode_DecodeUTF8(
+            bytes.as_ptr().cast(),
+            bytes.len().cast_signed(),
+            c"strict".as_ptr(),
+        )
+    };
+    if string.is_null() {
+        return Err(string_error(py, start));
+    }
+
+    Ok(unsafe { Bound::from_owned_ptr(py, string) })
+}
+
+/// The error of a string of a vector of strings, at `start`, that isn't
+/// valid UTF-8, whose `UnicodeDecodeError` `CPython` has just raised
+#[cold]
+fn string_error(py: Python<'_>, start: usize) -> PyErr {
+    let cause = PyErr::fetch(py);
+    let error = decode_error(py, format!("The string at {start} isn't valid UTF-8"));
+    error.set_cause(py, Some(cause));
+    error
 }
 
 /// The error of a vector item that starts after it ends, or ends past the
@@ -256,10 +355,10 @@ fn hold(source: &Bound<'_, PyAny>) -> PyResult<Held> {
     Ok(Held(unsafe { held.assume_init() }))
 }
 
-/// A one-dimensional view of the bytes of `source`, which a `ByteBuffer`
+/// A one-dimensional view of the bytes of `source`, which a `TableReader`
 /// holds, as the pure-Python runtime views them: `memoryview(source)`, cast
 /// to bytes if it's of another format or shape. A memoryview is one that
-/// the `ByteBuffer` created of its own, which it views them through.
+/// the `TableReader` created of its own, which it views them through.
 fn byte_view(source: Bound<'_, PyAny>) -> PyResult<Bound<'_, PyAny>> {
     let py = source.py();
     if source.is_exact_instance_of::<pyo3::types::PyBytes>()
@@ -287,7 +386,7 @@ fn byte_view(source: Bound<'_, PyAny>) -> PyResult<Bound<'_, PyAny>> {
 macro_rules! scalar_getters {
     ($($name:ident: $core:ident -> $type:ty),* $(,)?) => {
         #[pymethods]
-        impl ByteBuffer {
+        impl TableReader {
             $(
                 fn $name(&self, py: Python<'_>, position: &Bound<'_, PyAny>) -> PyResult<$type> {
                     let at = self.position(position, size_of::<$type>())?;
@@ -313,7 +412,7 @@ scalar_getters!(
 macro_rules! array_getters {
     ($($name:ident: $code:literal, $size:literal),* $(,)?) => {
         #[pymethods]
-        impl ByteBuffer {
+        impl TableReader {
             $(
                 /// Reads the array at ``position``: a view of the buffer on a
                 /// little-endian host, and a copy on a big-endian host.
@@ -338,7 +437,7 @@ array_getters!(
 );
 
 #[pymethods]
-impl ByteBuffer {
+impl TableReader {
     /// Reads ``bytes`` in ``layout``, which must be the layout that the
     /// table was written in.
     ///
@@ -371,9 +470,9 @@ impl ByteBuffer {
 
     /// Returns the values of the fields that ``fields`` describes whole, a
     /// message's, of the message in ``data``, in the layout that ``fields``
-    /// was created with, as ``ByteBuffer(data, layout).get_fields(0,
+    /// was created with, as ``TableReader(data, layout).get_fields(0,
     /// fields)`` returns them, or ``None`` as it does, without creating a
-    /// ``ByteBuffer``. It returns ``None`` too if ``version`` isn't the one
+    /// ``TableReader``. It returns ``None`` too if ``version`` isn't the one
     /// that the header holds, for the reader's constructor to raise for.
     ///
     /// Raises ``TypeError`` if ``data`` isn't C-contiguous, if ``fields`` has
@@ -394,25 +493,25 @@ impl ByteBuffer {
         let held = hold(data)?;
         let fixed = fields.get();
         let shape = fixed.shape()?;
-        if version.is_some() && !shape.versioned {
+        if version.is_some() && !shape.versioned() {
             return Err(PyTypeError::new_err("The table has no version"));
         }
-        let buffer = Self {
+        let reader = Self {
             held,
             shape,
             view: PyOnceLock::new(),
         };
 
         if let Some(version) = version {
-            let layout = shape.core().versioned();
-            let Ok(found) = tafla::ByteBuffer::new(buffer.bytes_slice(), layout).version() else {
+            let layout = shape.core().with_version(0);
+            let Ok(found) = tafla::TableReader::new(reader.bytes_slice(), layout).version() else {
                 return Ok(None);
             };
             if !version.eq(found)? {
                 return Ok(None);
             }
         }
-        buffer.fields_at(py, fixed.plan(shape.size())?, 0)
+        reader.fields_at(py, fixed.plan(shape.size())?, 0)
     }
 
     fn bytes<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
@@ -426,12 +525,12 @@ impl ByteBuffer {
     /// Returns the version that the table's header carries after its
     /// length. It's as wide as the header's other slots.
     ///
-    /// Raises ``TypeError`` if the buffer's layout isn't versioned.
+    /// Raises ``TypeError`` if the reader's layout isn't versioned.
     fn get_version(&self, py: Python<'_>) -> PyResult<u32> {
-        if !self.shape.versioned {
+        if !self.shape.versioned() {
             return Err(PyTypeError::new_err("The table has no version"));
         }
-        tafla::ByteBuffer::new(self.bytes_slice(), self.shape.core().versioned())
+        tafla::TableReader::new(self.bytes_slice(), self.shape.core().with_version(0))
             .version()
             .map_err(|error| core_error(py, &error))
     }
@@ -495,6 +594,45 @@ impl ByteBuffer {
         let start = self.offset_of(bytes);
 
         self.slice(py, start, start + bytes.len())
+    }
+
+    /// Reads the array of bools at ``position``, a ``uint8`` array whose
+    /// bytes are true when they aren't 0, into a new list.
+    /// ``get_uint8_array()`` reads the same bytes in place.
+    fn get_bool_array<'py>(
+        &self,
+        py: Python<'py>,
+        position: &Bound<'_, PyAny>,
+    ) -> PyResult<Bound<'py, PyList>> {
+        let at = self.position(position, self.size())?;
+        let (start, length) = self
+            .core()
+            .get_u8_array(at)
+            .map(|bytes| (self.offset_of(bytes), bytes.len()))
+            .map_err(|error| core_error(py, &error))?;
+
+        // A loop fills the list with True and False, which took 1.0 µs for
+        // 1,000 bools, where a Struct's unpack of the bytes' view took 3.3 µs
+        // and list(map(bool, view)) 17.6 µs, in CPython 3.15. The list is
+        // created before the bytes are read, since creating it may run the
+        // garbage collector, and with it Python code, and True and False
+        // create no objects.
+        let list = unsafe {
+            Bound::from_owned_ptr_or_err(py, ffi::PyList_New(length.cast_signed()))?
+                .cast_into_unchecked::<PyList>()
+        };
+        for (index, &byte) in self.bytes_slice()[start..start + length].iter().enumerate() {
+            let bool = unsafe {
+                if byte == 0 {
+                    ffi::Py_False()
+                } else {
+                    ffi::Py_True()
+                }
+            };
+            list_set_bool(&list, index, bool)?;
+        }
+
+        Ok(list)
     }
 
     /// Returns a view of the ``size`` bytes of the struct at ``position``,
@@ -605,7 +743,11 @@ impl ByteBuffer {
     /// Raises ``DecodeError`` if the count or the ends after it don't lie
     /// within the buffer. Every item has an end, so a count that the bytes
     /// can't hold fails before anything is allocated for it.
-    fn get_vector_length(&self, py: Python<'_>, position: &Bound<'_, PyAny>) -> PyResult<usize> {
+    pub(crate) fn get_vector_length(
+        &self,
+        py: Python<'_>,
+        position: &Bound<'_, PyAny>,
+    ) -> PyResult<usize> {
         let at = self.position(position, self.size())?;
         let vector = self
             .core()
@@ -747,19 +889,19 @@ impl ByteBuffer {
         read: Bound<'_, PyAny>,
     ) -> PyResult<VectorFields> {
         let py = slf.py();
-        let buffer = slf.get();
-        let count = buffer.get_vector_length(py, position)?;
-        let at = buffer.position(position, buffer.size())?;
-        fields.get().plan(buffer.size())?;
+        let reader = slf.get();
+        let count = reader.get_vector_length(py, position)?;
+        let at = reader.position(position, reader.size())?;
+        fields.get().plan(reader.size())?;
 
         Ok(VectorFields {
-            buffer: slf.clone().unbind(),
+            reader: slf.clone().unbind(),
             fields: fields.clone().unbind(),
             read: read.unbind(),
             position: at,
             count,
             index: 0,
-            start: (count + 1) * buffer.size(),
+            start: (count + 1) * reader.size(),
         })
     }
 
@@ -787,9 +929,53 @@ impl ByteBuffer {
         }
         Ok(list)
     }
+
+    /// Reads every string of the vector of strings at ``position``, in
+    /// order.
+    ///
+    /// A vector of strings is laid out as a vector of tables is: its count,
+    /// the end of each string from the vector's position, and then the
+    /// strings' UTF-8, one after another, so the ends are read and checked
+    /// as ``get_vector()`` reads a vector's. Each string reads as reading it
+    /// on its own with ``get_string_vector_item()`` would.
+    ///
+    /// Raises ``DecodeError`` if the count, the ends or the strings don't
+    /// lie within the buffer, a string ends before it starts, or one isn't
+    /// valid UTF-8: the error that reading the strings one after another
+    /// with ``get_string_vector_item()`` raises first.
+    fn get_string_vector<'py>(
+        &self,
+        py: Python<'py>,
+        position: &Bound<'_, PyAny>,
+    ) -> PyResult<Bound<'py, PyList>> {
+        let at = self.position(position, self.size())?;
+        self.strings_at(py, at)
+    }
+
+    /// Reads string ``index`` of the vector of strings at ``position``,
+    /// from its end and the end of the string before it, without reading
+    /// any other string. It takes the vector's ``count``, which
+    /// ``get_vector_length()`` returned, and doesn't read or check it again,
+    /// as ``get_vector_item_offset()`` does, so that reading many strings,
+    /// as a ``StringVector`` does, reads and checks the count once.
+    ///
+    /// Raises ``IndexError`` if ``index`` isn't below ``count``, and
+    /// ``DecodeError`` if the string's ends or the string don't lie within
+    /// the buffer, it ends before it starts, or it isn't valid UTF-8.
+    fn get_string_vector_item<'py>(
+        &self,
+        py: Python<'py>,
+        position: &Bound<'py, PyAny>,
+        count: &Bound<'py, PyAny>,
+        index: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let position = Int::new(position)?;
+        let (start, end) = self.item_bounds(py, &position, &Int::new(count)?, &Int::new(index)?)?;
+        self.decode_string(py, &start, &end)
+    }
 }
 
-impl ByteBuffer {
+impl TableReader {
     /// The values of the fields of `plan`, of the table at `position`, as
     /// `get_fields()` returns them, or `None`
     fn fields_at<'py>(
@@ -886,12 +1072,12 @@ impl ByteBuffer {
 }
 
 /// An iterator over the values of a vector's items, which
-/// ``ByteBuffer.iter_vector_fields()`` returns. It's for one thread at a
+/// ``TableReader.iter_vector_fields()`` returns. It's for one thread at a
 /// time: in free-threaded Python, a call while another thread's call to it
 /// runs raises ``RuntimeError``.
 #[pyclass(module = "tafla._native", name = "VectorFieldsIterator")]
 pub struct VectorFields {
-    buffer: Py<ByteBuffer>,
+    reader: Py<TableReader>,
     fields: Py<FixedFields>,
     /// What reads an item that `get_fields()` can't, from its position
     read: Py<PyAny>,
@@ -926,13 +1112,13 @@ impl VectorFields {
 impl VectorFields {
     /// The values of the next item, after reading its end
     fn next_item<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let buffer = self.buffer.get();
-        let size = buffer.size();
-        let available = buffer.available();
+        let reader = self.reader.get();
+        let size = reader.size();
+        let available = reader.available();
 
         // The ends lie within the bytes, which the iterator checked first
         let slot = self.position + (self.index + 1) * size;
-        let end = read_slot(&buffer.bytes_slice()[slot..], size);
+        let end = read_slot(&reader.bytes_slice()[slot..], size);
         let start = self.start;
         if start > end
             || self
@@ -954,7 +1140,7 @@ impl VectorFields {
 
         let offset = self.position + start;
         let plan = self.fields.get().plan(size)?;
-        match buffer.fields_at(py, plan, offset)? {
+        match reader.fields_at(py, plan, offset)? {
             Some(values) => Ok(values.into_any()),
             None => self.read.bind(py).call1((offset,)),
         }
@@ -978,6 +1164,20 @@ fn read_slot(bytes: &[u8], size: usize) -> usize {
     }
 }
 
+/// Sets item `index` of a list that was just created
+#[inline]
+fn list_set(list: &Bound<'_, PyList>, index: usize, value: Bound<'_, PyAny>) -> PyResult<()> {
+    #[cfg(not(Py_LIMITED_API))]
+    unsafe {
+        ffi::PyList_SET_ITEM(list.as_ptr(), index.cast_signed(), value.into_ptr());
+    }
+    #[cfg(Py_LIMITED_API)]
+    if unsafe { ffi::PyList_SetItem(list.as_ptr(), index.cast_signed(), value.into_ptr()) } != 0 {
+        return Err(PyErr::fetch(list.py()));
+    }
+    Ok(())
+}
+
 /// Sets item `index` of a tuple that was just created
 #[inline]
 fn tuple_set(tuple: &Bound<'_, PyAny>, index: usize, value: Bound<'_, PyAny>) -> PyResult<()> {
@@ -988,6 +1188,23 @@ fn tuple_set(tuple: &Bound<'_, PyAny>, index: usize, value: Bound<'_, PyAny>) ->
     #[cfg(Py_LIMITED_API)]
     if unsafe { ffi::PyTuple_SetItem(tuple.as_ptr(), index.cast_signed(), value.into_ptr()) } != 0 {
         return Err(PyErr::fetch(tuple.py()));
+    }
+    Ok(())
+}
+
+/// Sets item `index` of a list that was just created to `True` or `False`,
+/// borrowed from the interpreter
+#[inline]
+fn list_set_bool(list: &Bound<'_, PyList>, index: usize, bool: *mut ffi::PyObject) -> PyResult<()> {
+    // The list holds a reference of its own, which these calls steal
+    let bool = unsafe { ffi::Py_NewRef(bool) };
+    #[cfg(not(Py_LIMITED_API))]
+    unsafe {
+        ffi::PyList_SET_ITEM(list.as_ptr(), index.cast_signed(), bool);
+    }
+    #[cfg(Py_LIMITED_API)]
+    if unsafe { ffi::PyList_SetItem(list.as_ptr(), index.cast_signed(), bool) } != 0 {
+        return Err(PyErr::fetch(list.py()));
     }
     Ok(())
 }

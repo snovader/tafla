@@ -190,6 +190,7 @@ macro_rules! set_field {
             Field::U64Array(values) => Ok(array!(set_u64_array, values)?),
             Field::F32Array(values) => Ok(array!(set_f32_array, values)?),
             Field::F64Array(values) => Ok(array!(set_f64_array, values)?),
+            Field::BoolArray(values) => Ok(array!(set_bool_array, values)?),
             Field::String(string) => {
                 if owned {
                     Ok($target.set_str(string.clone())?)
@@ -233,6 +234,12 @@ macro_rules! set_field {
                     .map(|item| nest(item, $context))
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok($target.set_vector(items)?)
+            }
+            // The list of strings is owned, as only the builder holds it,
+            // and the strings borrowed
+            Field::StringVector(strings) => {
+                let strings: Vec<&str> = strings.iter().map(String::as_str).collect();
+                Ok($target.set_str_vector(strings)?)
             }
         };
 
@@ -301,7 +308,7 @@ fn start<'a>(table: &Table, fields: usize) -> Result<TableBuilder<'a>, BuildErro
 
     match table.version {
         Some(version) if table.layout.versioned => {
-            TableBuilder::versioned(fields, layout.versioned(), version)
+            TableBuilder::new(fields, layout.with_version(version))
         }
         _ => TableBuilder::new(fields, layout),
     }
@@ -450,7 +457,11 @@ fn in_place_plan() -> impl Strategy<Value = Plan> {
 /// table too long more often than not
 fn long_vectors() -> impl Strategy<Value = Table> {
     select(vec![OffsetType::Uint8, OffsetType::Uint16]).prop_flat_map(|offset_type| {
-        let longest: usize = if offset_type == OffsetType::Uint8 { 24 } else { 2_400 };
+        let longest: usize = if offset_type == OffsetType::Uint8 {
+            24
+        } else {
+            2_400
+        };
         let string = move || (0..=longest).prop_map(|length| Field::String("x".repeat(length)));
         let entry = string().prop_map(move |name| in_place(offset_type, vec![name]));
         let item = (string(), vec(entry, 0..=3)).prop_map(move |(name, entries)| {
@@ -466,7 +477,7 @@ fn long_vectors() -> impl Strategy<Value = Table> {
 }
 
 /// A table of `fields` to nest in place in a table of `offset_type` offsets
-fn in_place(offset_type: OffsetType, fields: Vec<Field>) -> Nested {
+const fn in_place(offset_type: OffsetType, fields: Vec<Field>) -> Nested {
     let layout = Layout {
         sized: false,
         versioned: false,

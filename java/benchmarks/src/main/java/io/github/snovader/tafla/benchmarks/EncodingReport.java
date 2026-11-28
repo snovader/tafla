@@ -6,8 +6,9 @@ import java.io.*;
 import java.util.*;
 
 /**
- * Prints what the timings don't show: each codec's encoded size of every workload, and what it
- * does with a document cut short, as the TypeScript comparison prints after its timings.
+ * Prints what the timings don't show: each codec's encoded size of every workload and of the
+ * strings suite's shapes, and what it does with a document cut short, as the TypeScript
+ * comparison and strings suite print after their timings.
  */
 public final class EncodingReport {
     private EncodingReport() {}
@@ -16,6 +17,7 @@ public final class EncodingReport {
         var documents = Workloads.DOCUMENT_ROWS.stream().map(Workloads::documentInput).toList();
 
         printSizes(documents);
+        printStringSizes();
         printTruncation(documents.getLast());
     }
 
@@ -54,6 +56,23 @@ public final class EncodingReport {
             sbeStructs.length,
             sbeSample.length
         );
+    }
+
+    /** Prints a row of each codec's encoded size of 16 strings for each shape */
+    private static void printStringSizes() {
+        var codecs = Codecs.all();
+
+        System.out.printf("%nEncoded size of 16 strings (bytes)%n  %-16s", "");
+        codecs.forEach(codec -> System.out.printf("%12s", codec.name()));
+        System.out.println();
+
+        for (var shape : StringShapes.ALL) {
+            System.out.printf("  %-16s", shape.name());
+            for (var codec : codecs) {
+                System.out.printf("%12d", codec.strings().serialize(shape.strings()).length);
+            }
+            System.out.println();
+        }
     }
 
     /**

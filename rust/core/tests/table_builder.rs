@@ -14,8 +14,8 @@ use proptest::{
     sample::{Index, select},
 };
 use tafla::{
-    Alignment, BuildError, ByteBuffer, InPlaceTable, NestedTable, OffsetType, TableBuilder,
-    TableLayout,
+    Alignment, BuildError, InPlaceTable, NestedTable, OffsetType, TableBuilder, TableLayout,
+    TableReader,
 };
 
 proptest! {
@@ -134,12 +134,12 @@ proptest! {
         prop_assert_eq!(&from_borrowed, &from_bytes);
         prop_assert_eq!(&from_owned, &from_bytes);
 
-        let buffer = ByteBuffer::new(&from_bytes, layout);
-        let nested = buffer.root_offset(1)?;
+        let reader = TableReader::new(&from_bytes, layout);
+        let nested = reader.root_offset(1)?;
         prop_assert_eq!(nested % 8, 0);
         prop_assert_eq!(&from_bytes[nested..nested + bytes.len()], bytes.as_slice());
 
-        let vector = buffer.get_vector(buffer.root_offset(2)?)?;
+        let vector = reader.get_vector(reader.root_offset(2)?)?;
         let items = vector.iter().collect::<Result<Vec<_>, _>>()?;
         prop_assert_eq!(items, [bytes.as_slice(); 2]);
     }
@@ -147,10 +147,12 @@ proptest! {
     /// Tables nested from builders and written in place, with
     /// `set_table_with()` and `set_vector_with()`, write the bytes that their
     /// builders write, and fail as they fail, for tables of any offset type
-    /// and of short ones, whose limits the fields reach. Nesting every table
-    /// as one that's written in place writes most of them in place, and
-    /// the tables as they're generated mix them with tables from bytes and
-    /// builders of other layouts.
+    /// and of short ones, whose limits the fields reach. A vector whose
+    /// count and items' ends alone make its table too long fails before its
+    /// items, where its builders fail for them or count them too. Nesting
+    /// every table as one that's written in place writes most of them in
+    /// place, and the tables as they're generated mix them with tables from
+    /// bytes and builders of other layouts.
     #[test]
     fn test_tables_written_in_place_write_what_their_builders_write(
         table in prop_oneof![strategy::table(), tables_of_short_offsets()],
@@ -158,8 +160,41 @@ proptest! {
     ) {
         let table = if nested_in_place { table.nested_in_place() } else { table };
 
-        prop_assert_eq!(table.to_bytes_in_place(), table.to_bytes());
+        let in_place = table.to_bytes_in_place();
+        let from_builders = table.to_bytes();
+
+        if !fails_before_its_items(&in_place, &from_builders) {
+            prop_assert_eq!(in_place, from_builders);
+        }
     }
+}
+
+/// Whether a table recorded in place failed for a vector whose count and
+/// items' ends alone make its table too long, which fails before its items
+/// are recorded: with that length, where its builders failed for the vector
+/// with its items too, which is longer, or for an item of it first
+fn fails_before_its_items(
+    in_place: &Result<Vec<u8>, BuildError>,
+    from_builders: &Result<Vec<u8>, BuildError>,
+) -> bool {
+    let (
+        Err(BuildError::TooLong {
+            index,
+            length,
+            offset_type,
+        }),
+        Err(BuildError::TooLong {
+            index: builder_index,
+            length: builder_length,
+            offset_type: builder_offset_type,
+        }),
+    ) = (in_place, from_builders)
+    else {
+        return false;
+    };
+
+    let same_field = index == builder_index && offset_type == builder_offset_type;
+    !same_field || length < builder_length
 }
 
 /// A parent of `before` bytes in a `uint8[]`, the table at alignment 8, and a
@@ -226,6 +261,10 @@ enum LongField {
     NestedBytes,
     /// A table of bytes, nested from its builder
     NestedBuilder,
+    /// A vector of one string
+    VectorString,
+    /// A vector of empty strings, each an end of its own
+    EmptyStrings,
 }
 
 fn long_field() -> impl Strategy<Value = LongField> {
@@ -238,6 +277,8 @@ fn long_field() -> impl Strategy<Value = LongField> {
         LongField::Item,
         LongField::NestedBytes,
         LongField::NestedBuilder,
+        LongField::VectorString,
+        LongField::EmptyStrings,
     ])
 }
 
@@ -263,6 +304,8 @@ impl LongField {
                 nested: nested(Source::Builder, bytes()),
                 alignment: None,
             },
+            Self::VectorString => Field::StringVector(vec!["a".repeat(units)]),
+            Self::EmptyStrings => Field::StringVector(vec![String::new(); units]),
         }
     }
 
@@ -271,7 +314,7 @@ impl LongField {
         match self {
             Self::Floats => 8,
             Self::Structs => 3,
-            Self::EmptyItems => width,
+            Self::EmptyItems | Self::EmptyStrings => width,
             _ => 1,
         }
     }
@@ -338,9 +381,9 @@ fn test_reject_field_that_makes_table_too_long() {
         fits.set_u8(7).unwrap();
 
         let table = fits.to_bytes().unwrap();
-        let buffer = ByteBuffer::new(&table, layout);
+        let reader = TableReader::new(&table, layout);
         assert_eq!(table.len(), max);
-        assert_eq!(buffer.get_u8(buffer.root_offset(1).unwrap()).unwrap(), 7);
+        assert_eq!(reader.get_u8(reader.root_offset(1).unwrap()).unwrap(), 7);
 
         let bytes = vec![0; max - 3 * width];
         let mut too_long = TableBuilder::new(2, layout).unwrap();
@@ -436,13 +479,27 @@ fn test_reject_table_of_32_bit_offsets_past_4_gib_before_writing() {
 }
 
 #[test]
+fn test_write_the_layouts_version() {
+    const FIRST: TableLayout<true> = TableLayout::DEFAULT.sized().with_version(1);
+    const SECOND: TableLayout<true> = FIRST.with_version(2);
+
+    assert_eq!(SECOND.version(), 2);
+    assert!(SECOND.is_sized());
+    assert!(SECOND.is_versioned());
+
+    let bytes = TableBuilder::new(0, SECOND).unwrap().to_bytes().unwrap();
+
+    // A reader reads a table of any version, whatever its layout's
+    assert_eq!(TableReader::new(&bytes, FIRST).version(), Ok(2));
+    assert_eq!(TableReader::new(&bytes, SECOND).version(), Ok(2));
+}
+
+#[test]
 fn test_reject_version_too_large_for_slot() {
     for (offset_type, version) in [(OffsetType::Uint8, 0x100), (OffsetType::Uint16, 0x1_0000)] {
-        let layout = TableLayout::DEFAULT
-            .with_offset_type(offset_type)
-            .versioned();
+        let layout = TableLayout::DEFAULT.with_offset_type(offset_type);
 
-        let error = TableBuilder::versioned(1, layout, version).unwrap_err();
+        let error = TableBuilder::new(1, layout.with_version(version)).unwrap_err();
         assert_eq!(
             error,
             BuildError::VersionTooLarge {
@@ -454,7 +511,7 @@ fn test_reject_version_too_large_for_slot() {
             error.to_string(),
             format!("Version {version} doesn't fit in a {offset_type} slot")
         );
-        assert!(TableBuilder::versioned(1, layout, version - 1).is_ok());
+        assert!(TableBuilder::new(1, layout.with_version(version - 1)).is_ok());
     }
 }
 
@@ -479,17 +536,17 @@ fn test_reject_incomplete_nested_builder() {
     parent.set_vector([&nested]).unwrap();
 
     let table = parent.to_bytes().unwrap();
-    let buffer = ByteBuffer::new(&table, TableLayout::DEFAULT);
-    let position = buffer.root_offset(0).unwrap();
+    let reader = TableReader::new(&table, TableLayout::DEFAULT);
+    let position = reader.root_offset(0).unwrap();
     assert_eq!(position, 8);
     assert_eq!(
-        buffer
-            .get_u8(buffer.field_offset(position, 1).unwrap())
+        reader
+            .get_u8(reader.field_offset(position, 1).unwrap())
             .unwrap(),
         2
     );
 
-    let vector = buffer.get_vector(buffer.root_offset(1).unwrap()).unwrap();
+    let vector = reader.get_vector(reader.root_offset(1).unwrap()).unwrap();
     assert_eq!(
         vector.iter().collect::<Result<Vec<_>, _>>(),
         Ok(vec![&nested.to_bytes().unwrap()[..]])
@@ -738,7 +795,7 @@ fn test_a_builder_is_padded_for_the_tables_nested_in_it_in_place() {
     builder.set_table(nested).unwrap();
 
     let bytes = builder.to_bytes().unwrap();
-    let buffer = ByteBuffer::new(&bytes, TableLayout::DEFAULT);
+    let buffer = TableReader::new(&bytes, TableLayout::DEFAULT);
     let nested = buffer.root_offset(1).unwrap();
     let table = buffer.field_offset(nested, 1).unwrap();
     let array = buffer.field_offset(table, 0).unwrap();
@@ -830,7 +887,7 @@ fn test_a_table_moved_by_its_padding_moves_the_values_kept_from_it() {
     assert_eq!(build(false).as_ref(), Ok(&bytes));
 
     // The table starts at 317, padded to 320
-    let buffer = ByteBuffer::new(&bytes, TableLayout::DEFAULT);
+    let buffer = TableReader::new(&bytes, TableLayout::DEFAULT);
     let table = buffer.root_offset(2).unwrap();
     assert_eq!(table, 320);
     let array = buffer.field_offset(table, 1).unwrap();
@@ -842,8 +899,8 @@ fn test_a_table_moved_by_its_padding_moves_the_values_kept_from_it() {
 /// keeps, around a table of a uint8, a float64 array, which needs each of
 /// them padded, and `strings` strings of 30 bytes, which it copies
 fn nested_tables(depth: usize, strings: usize, in_place: bool) -> Result<Vec<u8>, BuildError> {
-    fn level<'a>(
-        table: &mut InPlaceTable<'_, 'a>,
+    fn level(
+        table: &mut InPlaceTable<'_, '_>,
         depth: usize,
         strings: usize,
     ) -> Result<(), BuildError> {
@@ -905,7 +962,7 @@ fn test_tables_nested_in_place_one_in_another_are_each_padded() {
         let bytes = nested_tables(DEPTH, strings, true).unwrap();
         assert_eq!(nested_tables(DEPTH, strings, false).as_ref(), Ok(&bytes));
 
-        let buffer = ByteBuffer::new(&bytes, TableLayout::DEFAULT);
+        let buffer = TableReader::new(&bytes, TableLayout::DEFAULT);
         let mut table = buffer.root_offset(0).unwrap();
         for _ in 0..DEPTH {
             table = buffer.field_offset(table, 2).unwrap();
@@ -925,7 +982,11 @@ fn test_tables_nested_in_place_one_in_another_are_each_padded() {
 #[test]
 fn test_vectors_in_place_in_the_items_of_one_that_makes_its_table_too_long() {
     const ITEMS: usize = 40;
-    fn names<'a>(item: &mut InPlaceTable<'_, 'a>, name: &'a str, count: usize) -> Result<(), BuildError> {
+    fn names<'a>(
+        item: &mut InPlaceTable<'_, 'a>,
+        name: &'a str,
+        count: usize,
+    ) -> Result<(), BuildError> {
         item.set_vector_with(count, 1, |_, entry| entry.set_str(name))
     }
     let layout = TableLayout::DEFAULT.with_offset_type(OffsetType::Uint16);
@@ -946,7 +1007,10 @@ fn test_vectors_in_place_in_the_items_of_one_that_makes_its_table_too_long() {
         TableBuilder::new(1, layout)?.set_vector(items)
     };
     let expected = from_builders();
-    assert!(matches!(expected, Err(BuildError::TooLong { index: 0, .. })));
+    assert!(matches!(
+        expected,
+        Err(BuildError::TooLong { index: 0, .. })
+    ));
 
     let mut builder = TableBuilder::new(1, layout).unwrap();
     let mut calls = 0;
@@ -965,9 +1029,13 @@ fn test_vectors_in_place_in_the_items_of_one_that_makes_its_table_too_long() {
     });
     assert_eq!(error, expected);
 
-    builder.set_vector_with(2, 1, |_, item| names(item, &name, 1)).unwrap();
+    builder
+        .set_vector_with(2, 1, |_, item| names(item, &name, 1))
+        .unwrap();
     let mut written = TableBuilder::new(1, layout).unwrap();
-    written.set_vector_with(2, 1, |_, item| names(item, &name, 1)).unwrap();
+    written
+        .set_vector_with(2, 1, |_, item| names(item, &name, 1))
+        .unwrap();
     assert_eq!(builder.to_bytes(), written.to_bytes());
 }
 
@@ -990,19 +1058,19 @@ fn test_an_uneven_vector_in_place_is_written() {
         .unwrap();
     let bytes = builder.to_bytes().unwrap();
 
-    let buffer = ByteBuffer::new(&bytes, TableLayout::DEFAULT);
+    let buffer = TableReader::new(&bytes, TableLayout::DEFAULT);
     let vector = buffer.get_vector(buffer.root_offset(0).unwrap()).unwrap();
     assert_eq!(vector.len(), ITEMS);
     let names_of = |index: usize| {
         let item = vector.get_in_place(index).unwrap().unwrap();
-        let item = ByteBuffer::new(item, TableLayout::DEFAULT);
+        let item = TableReader::new(item, TableLayout::DEFAULT);
         item.get_vector(item.root_offset(0).unwrap()).unwrap()
     };
 
     let first = names_of(0);
     assert_eq!(first.len(), NAMES);
     let entry = first.get_in_place(NAMES - 1).unwrap().unwrap();
-    let entry = ByteBuffer::new(entry, TableLayout::DEFAULT);
+    let entry = TableReader::new(entry, TableLayout::DEFAULT);
     assert_eq!(
         entry.get_str(entry.root_offset(0).unwrap()),
         Ok(name.as_str())
@@ -1090,4 +1158,36 @@ fn test_reject_tables_in_place_past_4_gib_of_borrowed_arrays() {
         let error = builder.set_vector_with(1, 2, |_, item| twice(item, &array));
         assert_eq!(error, Err(too_long(root + 8 + table)));
     }
+}
+
+/// A vector written in place whose count and items' ends alone make its
+/// table too long reports that length, since its items aren't written,
+/// where a vector of their builders reports the length with its items
+#[test]
+fn test_vector_too_long_before_its_items_reports_its_length_without_them() {
+    let layout = TableLayout::DEFAULT.with_offset_type(OffsetType::Uint8);
+    let string = "a".repeat(249);
+    let mut builder = TableBuilder::new(2, layout).unwrap();
+    builder.set_str(string.as_str()).unwrap();
+    let mut item = TableBuilder::new(1, layout).unwrap();
+    item.set_u8(1).unwrap();
+
+    // 2 offsets, a count and 249 bytes, and a vector of a count and 3 ends,
+    // and of 3 items of an offset and a byte
+    assert_eq!(
+        builder.set_vector_with(3, 1, |_, item| item.set_u8(1)),
+        Err(BuildError::TooLong {
+            index: 1,
+            length: 256,
+            offset_type: OffsetType::Uint8
+        })
+    );
+    assert_eq!(
+        builder.set_vector([&item, &item, &item]),
+        Err(BuildError::TooLong {
+            index: 1,
+            length: 262,
+            offset_type: OffsetType::Uint8
+        })
+    );
 }

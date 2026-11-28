@@ -1,6 +1,7 @@
 // The code generated from `schemas/shapes.tafla`'s fields and reads as the
 // tests' descriptions of tables, which `TableBuilder` builds by hand and
-// `ByteBuffer` reads, and which compare floats by their bits
+// `TableReader` reads, and which compare floats by their bits. An enum is the
+// integer that stores it.
 
 #ifndef TAFLA_TEST_GENERATED_SHAPES_DESCRIBE_HPP
 #define TAFLA_TEST_GENERATED_SHAPES_DESCRIBE_HPP
@@ -60,6 +61,22 @@ inline Table describe(const shapes::Sample& sample) {
     return {Layout{}, std::nullopt, {{sample.key}, {sample.a}, {sample.b}}};
 }
 
+/// A task's step, a struct of the integers that store its enums, which the
+/// fields struct writes and the getter reads alike
+inline Field describe_step(const shapes::Step& step) {
+    return {
+        Struct{{{static_cast<std::uint16_t>(step.state)}, {static_cast<std::int8_t>(step.priority)}, {step.seconds}}}};
+}
+
+inline Table describe(const shapes::TaskFields& task) {
+    return {Layout{},
+            std::nullopt,
+            {{static_cast<std::int8_t>(task.priority)},
+             {std::vector<std::uint16_t>(task.history.begin(), task.history.end())},
+             describe_step(task.step),
+             {std::string(task.name)}}};
+}
+
 inline Table read(const shapes::Point& point) {
     return {Layout{}, std::nullopt, {{point.x()}, {point.y()}, {point.id()}, {std::string(point.name())}}};
 }
@@ -109,6 +126,15 @@ inline Table read_view(const shapes::ItemList& list, bool by_index) {
         }
     }
     return {Layout{}, std::nullopt, {{items}}};
+}
+
+inline Table read(const shapes::Task& task) {
+    return {Layout{},
+            std::nullopt,
+            {{static_cast<std::int8_t>(task.priority())},
+             {task.history().to_vector()},
+             describe_step(task.step()),
+             {std::string(task.name())}}};
 }
 
 }  // namespace tafla::test::shapes_tables

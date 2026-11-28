@@ -51,9 +51,10 @@ func loadShapeCases(t *testing.T) []shapeCase {
 	return suite.Cases
 }
 
-// shapeTypes are the messages and the struct of shapes.tafla, by their
-// names in the schema: the struct of a message's fields, or the struct, and
-// how to read bytes as it
+// shapeTypes are the messages and the struct of shapes.tafla that the cases
+// are of, by their names in the schema: the struct of a message's fields, or
+// the struct, and how to read bytes as it. A field of an enum is of the
+// enum's type, which the JSON holds the integer of.
 var shapeTypes = map[string]struct {
 	fields reflect.Type
 	read   func([]byte) (reflect.Value, error)
@@ -61,6 +62,7 @@ var shapeTypes = map[string]struct {
 	"Point":    {reflect.TypeFor[shapes.PointFields](), readMessage(reflect.TypeFor[shapes.PointFields]())},
 	"Document": {reflect.TypeFor[shapes.DocumentFields](), readMessage(reflect.TypeFor[shapes.DocumentFields]())},
 	"ItemList": {reflect.TypeFor[shapes.ItemListFields](), readMessage(reflect.TypeFor[shapes.ItemListFields]())},
+	"Task":     {reflect.TypeFor[shapes.TaskFields](), readMessage(reflect.TypeFor[shapes.TaskFields]())},
 	"Sample": {reflect.TypeFor[shapes.Sample](), func(bytes []byte) (reflect.Value, error) {
 		var sample shapes.Sample
 		err := sample.UnmarshalBinary(bytes)

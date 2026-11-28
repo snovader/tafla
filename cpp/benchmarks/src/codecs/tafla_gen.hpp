@@ -12,6 +12,7 @@
 
 #include "../codec.hpp"
 #include "../codecs/tafla.hpp"
+#include "strings/strings.hpp"
 #include "tafla/workloads.hpp"
 
 namespace tafla::benchmarks {
@@ -28,6 +29,10 @@ namespace tafla::benchmarks {
 /// vector's items and the array's structs from views of the workload's items
 /// with the generated generic fields structs, which convert each item as they
 /// write it, rather than collecting the items into the generated types first.
+///
+/// The strings suite's table is the code that tafla-gen generates from
+/// `strings.tafla`, in `generated/strings/`, which writes the 16 strings from
+/// the generated fields, which view them, and reads each with its getter.
 struct TaflaGen {
     static constexpr std::string_view name = "tafla-gen";
 
@@ -115,6 +120,40 @@ struct TaflaGen {
     [[nodiscard]] Sample deserialize(SampleShape, std::span<const std::uint8_t> bytes) const {
         const auto sample = ::workloads::Sample::read(bytes);
         return {sample.key, sample.a, sample.b};
+    }
+
+    [[nodiscard]] Bytes serialize(StringsShape, const Strings& input) const {
+        const ::strings::StringsFields fields{
+            .s0 = input[0].view(),
+            .s1 = input[1].view(),
+            .s2 = input[2].view(),
+            .s3 = input[3].view(),
+            .s4 = input[4].view(),
+            .s5 = input[5].view(),
+            .s6 = input[6].view(),
+            .s7 = input[7].view(),
+            .s8 = input[8].view(),
+            .s9 = input[9].view(),
+            .s10 = input[10].view(),
+            .s11 = input[11].view(),
+            .s12 = input[12].view(),
+            .s13 = input[13].view(),
+            .s14 = input[14].view(),
+            .s15 = input[15].view(),
+        };
+        return fields.serialize();
+    }
+
+    [[nodiscard]] Strings deserialize(StringsShape, std::span<const std::uint8_t> bytes) const {
+        const ::strings::Strings table(bytes);
+        return {
+            Text::borrowed(table.s0()),  Text::borrowed(table.s1()),  Text::borrowed(table.s2()),
+            Text::borrowed(table.s3()),  Text::borrowed(table.s4()),  Text::borrowed(table.s5()),
+            Text::borrowed(table.s6()),  Text::borrowed(table.s7()),  Text::borrowed(table.s8()),
+            Text::borrowed(table.s9()),  Text::borrowed(table.s10()), Text::borrowed(table.s11()),
+            Text::borrowed(table.s12()), Text::borrowed(table.s13()), Text::borrowed(table.s14()),
+            Text::borrowed(table.s15()),
+        };
     }
 
 private:

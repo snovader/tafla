@@ -2,16 +2,16 @@
 
 Binary tables of scalars, strings, arrays and structs, in tafla's format.
 `TableBuilder` writes a table at its exact size, copying arrays in bulk,
-and `ByteBuffer` reads fields back by offset, borrowing arrays, strings and
+and `TableReader` reads fields back by offset, borrowing arrays, strings and
 structs from the bytes. Every read checks that it stays within the bytes it was
 given.
 
 ```rust
-use tafla::{ByteBuffer, DecodeError, TableBuilder, TableLayout};
+use tafla::{TableReader, DecodeError, TableBuilder, TableLayout};
 
 // A format's header, shared by its writer and its readers
-const LAYOUT: TableLayout<true> = TableLayout::DEFAULT.sized().versioned();
 const FORMAT_VERSION: u32 = 1;
+const LAYOUT: TableLayout<true> = TableLayout::DEFAULT.sized().with_version(FORMAT_VERSION);
 
 let timestamps = vec![0_u32, 86_400];
 let values = vec![21.75_f32, 18.5];
@@ -20,23 +20,23 @@ let mut series = TableBuilder::new(2, TableLayout::DEFAULT)?;
 series.set_u32_array(&timestamps)?; // borrowed until the table is written
 series.set_f32_array(values.clone())?; // or owned
 
-let mut builder = TableBuilder::versioned(3, LAYOUT, FORMAT_VERSION)?;
+let mut builder = TableBuilder::new(3, LAYOUT)?;
 builder.set_f64(59.3293)?;
 builder.set_str("Europe/Stockholm")?;
 builder.set_table(series)?; // copied into the table
 let bytes = builder.to_bytes()?;
 
-let buffer = ByteBuffer::new(&bytes, LAYOUT);
-let version = buffer.version()?;
+let reader = TableReader::new(&bytes, LAYOUT);
+let version = reader.version()?;
 if version != FORMAT_VERSION {
     let supported = FORMAT_VERSION;
     return Err(DecodeError::UnsupportedVersion { version, supported }.into());
 }
 
-let latitude = buffer.get_f64(buffer.root_offset(0)?)?;
-let time_zone = buffer.get_str(buffer.root_offset(1)?)?;
-let table = buffer.root_offset(2)?;
-let read = buffer.get_f32_array(buffer.field_offset(table, 1)?)?;
+let latitude = reader.get_f64(reader.root_offset(0)?)?;
+let time_zone = reader.get_str(reader.root_offset(1)?)?;
+let table = reader.root_offset(2)?;
+let read = reader.get_f32_array(reader.field_offset(table, 1)?)?;
 
 assert_eq!((latitude, time_zone), (59.3293, "Europe/Stockholm"));
 assert_eq!(read.to_vec(), values);
@@ -80,10 +80,10 @@ The generated code writes a table of fields whose sizes the schema fixes
 whole, at positions that it works out: a nested one from its bytes, which
 the sizer's `add_table_bytes()` adds and the writer's `copy_table()` copies,
 and a message of such fields, and a string after them, into the bytes that
-`TableWriter::table_bytes()` or `versioned_table_bytes()` returns with its
-header, without a sizer and a writer. Like Go's `AppendTable()`, these are
-for the generated code, outside the compatibility promise of the rest of
-the API, and may change with the generator.
+`TableWriter::table_bytes()` returns with its header, without a sizer and a
+writer. Like Go's `AppendTable()`, these are for the generated code, outside
+the compatibility promise of the rest of the API, and may change with the
+generator.
 
 ## Format
 
@@ -91,7 +91,7 @@ All values are little-endian. A table is its header, one offset per field
 and then the fields in the order they were set:
 
 - The header holds the table's byte length when the layout is `sized`, and
-  then its version when it's `versioned`.
+  then the version that `with_version()` gave it.
 - Header slots, offsets, counts and vector item ends are all of the
   layout's offset type, `OffsetType::Uint8`, `Uint16` or `Uint32`, whose
   offset size is 1, 2 or 4 bytes. It limits the table to 255 bytes, 64 KiB or
@@ -105,6 +105,11 @@ and then the fields in the order they were set:
   start, and arrays of structs to the size of their largest scalar.
   `set_table()` aligns a nested table to the largest alignment of its arrays
   when given its builder, and to 4 bytes by default when given bytes.
+- An array of bools is a `u8` array of 1 and 0, which `set_bool_array()`
+  writes from bools and `get_bool_array()` reads into a new `Vec<bool>`,
+  true where a byte isn't 0. `get_u8_array()` reads its bytes in place,
+  which aren't viewed as bools, since a `bool` of any byte but 0 or 1 is
+  undefined behavior.
 - A vector starts with its item count, then the end of each item, counted
   from the vector's start, and then the items, so `Vector::get()` finds any
   item from two ends without reading the others. An item without a header
@@ -112,6 +117,10 @@ and then the fields in the order they were set:
   `Vector::get_in_place()` returns, which run on to the end of its parent's,
   since its offsets may lead past its end. Any other item is read from its
   own bytes, which `Vector::get()` returns.
+- A vector of strings is laid out as a vector is, with each string's UTF-8
+  as an item, without a count of its own, and the strings one after another
+  without padding. `TableBuilder::set_str_vector()` and
+  `TableWriter::set_str_vector()` write it from a list of strings.
 
 The crate writes the same bytes as the TypeScript runtime, `tafla` on
 npm, for the same fields, and reads its tables; `tests/compatibility.rs` checks
@@ -163,7 +172,7 @@ repository's conformance suite, which covers the whole format.
   let bytes = builder.to_bytes()?;
   # Ok::<(), BuildError>(())
   ```
-- **Arrays are read in place.** `ByteBuffer`'s array getters return an
+- **Arrays are read in place.** `TableReader`'s array getters return an
   `ArrayView`, which reads elements from the bytes at any alignment and in
   any host byte order. `as_slice()` returns them as a slice when the host is
   little-endian and the elements are aligned to their type in memory, and
@@ -171,6 +180,31 @@ repository's conformance suite, which covers the whole format.
   from the table's start, so they're aligned in memory when the table is, as
   a `Vec<u8>` from the system allocator typically is but isn't guaranteed to
   be. Byte arrays, strings, structs and vector items are always slices.
+- **Vectors of strings are read a string at a time or whole.**
+  `get_str_vector()` returns a `StringVector`, whose `get()` reads one
+  string from its end and the end of the one before it, without reading the
+  others, and whose `iter()` reads each in turn. `to_vec()` reads every
+  string into a `Vec<&str>`, checking their run of bytes as UTF-8 at once,
+  which read lists of ASCII in 0.34–0.92 times the time of reading each
+  string. Every string is a `&str` borrowed from the bytes.
+  `TableReader::get_str_vector_item()` reads one string from a count that
+  the caller keeps, rather than the view, as a binding to another language
+  does.
+
+  ```rust
+  # use tafla::{TableBuilder, TableLayout, TableReader};
+  let tags = ["small", "größer", "最大"];
+
+  let mut builder = TableBuilder::new(1, TableLayout::DEFAULT)?;
+  builder.set_str_vector(tags.as_slice())?; // borrowed, or a Vec<&str> owned
+  let bytes = builder.to_bytes()?;
+
+  let reader = TableReader::new(&bytes, TableLayout::DEFAULT);
+  let read = reader.get_str_vector(reader.root_offset(0)?)?;
+  assert_eq!(read.get(1), Some(Ok("größer")));
+  assert_eq!(read.to_vec()?, tags);
+  # Ok::<(), Box<dyn std::error::Error>>(())
+  ```
 
 ## Performance
 
@@ -221,7 +255,7 @@ Each setter takes its field's own Rust type, such as `u8` for a `uint8` and
 
 Validation is always on:
 
-- Every read checks its range against the bytes the `ByteBuffer` was given
+- Every read checks its range against the bytes the `TableReader` was given
   and returns a `DecodeError` if it would leave them. Strings must be valid
   UTF-8. A truncated or corrupted buffer therefore returns an error rather
   than values from outside it, and no bytes make a read panic.
@@ -232,7 +266,13 @@ Validation is always on:
   when `Vector::get()` or the iterator reads it, which returns a `Result`. An
   item that ends before the one before it is
   `DecodeError::ItemEndsBeforeStart`.
-- `ByteBuffer` doesn't compare versions. A reader returns
+- `get_str_vector()` checks a vector of strings' count and ends as
+  `get_vector()` does, and each string is checked when it's read, as UTF-8
+  on its own: an end that splits a character fails the strings on both
+  sides of it, with `DecodeError::InvalidUtf8` at the position of each
+  one's first byte. `to_vec()` returns what reading each string returns,
+  or the error of the first that fails.
+- `TableReader` doesn't compare versions. A reader returns
   `DecodeError::UnsupportedVersion` when `version()` isn't one it reads, as
   the example does, so that every decoding failure is a `DecodeError`.
 - Checks can't tell a value that was corrupted within range from a real one,
@@ -249,6 +289,6 @@ than panicking, since WebAssembly builds abort on panic:
   nesting a builder, return an error while fields are left to set. A version
   that doesn't fit, or a header too long for its offset type, is an error
   from the constructor.
-- The compiler requires a version exactly for a versioned layout, and offers
-  `ByteBuffer::version()` only for one, through `TableLayout`'s `VERSIONED`
+- The compiler offers a layout's `version()` and `TableReader::version()`
+  only for a layout with a version, through `TableLayout`'s `VERSIONED`
   parameter.

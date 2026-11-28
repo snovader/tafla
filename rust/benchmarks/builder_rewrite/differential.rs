@@ -206,6 +206,7 @@ macro_rules! set_field {
             Field::U64Array(values) => Ok(array!(set_u64_array, values)?),
             Field::F32Array(values) => Ok(array!(set_f32_array, values)?),
             Field::F64Array(values) => Ok(array!(set_f64_array, values)?),
+            Field::BoolArray(values) => Ok(array!(set_bool_array, values)?),
             Field::String(string) => {
                 if owned {
                     Ok($target.set_str(string.clone())?)
@@ -248,6 +249,12 @@ macro_rules! set_field {
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok($target.set_vector(items)?)
             }
+            // The list of strings is owned, as only the builder holds it,
+            // and the strings borrowed
+            Field::StringVector(strings) => {
+                let strings: Vec<&str> = strings.iter().map(String::as_str).collect();
+                Ok($target.set_str_vector(strings)?)
+            }
         };
 
         result
@@ -262,8 +269,7 @@ macro_rules! driver {
         builder: $builder:ty,
         in_place: $in_place:ty,
         nested: $nested:ty,
-        new: $new:expr,
-        versioned: $versioned:expr $(,)?
+        new: $new:expr $(,)?
     ) => {
         mod $module {
             use super::*;
@@ -330,7 +336,7 @@ macro_rules! driver {
 
                 match table.version {
                     Some(version) if table.layout.versioned => {
-                        ($versioned)(fields, layout.versioned(), version)
+                        ($new)(fields, layout.with_version(version))
                     }
                     _ => ($new)(fields, layout),
                 }
@@ -408,7 +414,6 @@ driver!(
     in_place: main_builder::InPlaceTable<'_, 'a>,
     nested: main_builder::NestedTable<'a>,
     new: main_builder::TableBuilder::new,
-    versioned: main_builder::TableBuilder::versioned,
 );
 
 driver!(
@@ -417,7 +422,6 @@ driver!(
     in_place: InPlaceTable<'_, 'a>,
     nested: NestedTable<'a>,
     new: TableBuilder::new,
-    versioned: TableBuilder::versioned,
 );
 
 /// Builds `table` with main's builder and with the rewrite, and checks

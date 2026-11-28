@@ -74,6 +74,30 @@
             "type": "Sample",
             "file": "shapes/sample.bin",
             "fields": { "key": 4294967295, "a": "-0", "b": "NaN" }
+        },
+        {
+            "name": "task",
+            "description": "Enums by the values that the schema names: an int8 that is negative, an array of uint16 and a struct of both",
+            "type": "Task",
+            "file": "shapes/task.bin",
+            "fields": {
+                "priority": -1,
+                "history": [0, 1, 1000],
+                "step": { "state": 2, "priority": 1, "seconds": 4294967295 },
+                "name": "task"
+            }
+        },
+        {
+            "name": "task-unnamed",
+            "description": "Enums of integers that the schema gives no name, which read as values: the extremes of int8 and uint16",
+            "type": "Task",
+            "file": "shapes/task-unnamed.bin",
+            "fields": {
+                "priority": -128,
+                "history": [3, 65535, 999],
+                "step": { "state": 65535, "priority": 127, "seconds": 0 },
+                "name": ""
+            }
         }
     ]
 }

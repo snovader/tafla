@@ -1,6 +1,6 @@
 //! The tafla codec's serialization with main's `TableBuilder`, which
-//! `setup.py` copies into the runtime as `tafla::main_builder`, with the
-//! rewrite, and with variants of the rewrite, for the `builder_comparison`
+//! `setup.py` copies into the runtime as `tafla::main_builder`, and with the
+//! rewrite, for the `builder_comparison`
 //! and `builder_allocation` binaries, and the rows that they compare.
 //!
 //! Each function makes the codec's calls and is a function of its own, as
@@ -23,8 +23,9 @@ use tafla::{Alignment, BuildError, OffsetType, TableLayout};
 use crate::codec::Error;
 use crate::workloads::{self, Document, Item, LIST_ITEMS, List, RECORD, Record};
 
-const DOCUMENT_LAYOUT: TableLayout<true> = TableLayout::DEFAULT.sized().versioned();
 const DOCUMENT_VERSION: u32 = 1;
+const DOCUMENT_LAYOUT: TableLayout<true> =
+    TableLayout::DEFAULT.sized().with_version(DOCUMENT_VERSION);
 
 const ITEM_SIZE: usize = 12;
 const ITEM_ALIGNMENT: Alignment = Alignment::Four;
@@ -157,7 +158,7 @@ macro_rules! serializers {
 
             #[inline(never)]
             pub fn document(input: &Document<'_>) -> Result<Vec<u8>, Error> {
-                let mut document = TableBuilder::versioned(4, DOCUMENT_LAYOUT, DOCUMENT_VERSION)?;
+                let mut document = TableBuilder::new(4, DOCUMENT_LAYOUT)?;
                 document.set_f64(input.x)?;
                 document.set_f64(input.y)?;
                 document.set_str(input.name.as_ref())?;
@@ -344,13 +345,6 @@ macro_rules! serializers {
 
 serializers!(main_serializers, tafla::main_builder);
 serializers!(rewrite_serializers, tafla);
-serializers!(room_16_serializers, tafla::rewrite_room_16);
-serializers!(long_segments_serializers, tafla::rewrite_long_segments);
-serializers!(room_16_long_segments_serializers, tafla::rewrite_room_16_long_segments);
-serializers!(segments_128_serializers, tafla::rewrite_segments_128);
-serializers!(segments_128_room_32_serializers, tafla::rewrite_segments_128_room_32);
-serializers!(segments_128_room_16_serializers, tafla::rewrite_segments_128_room_16);
-serializers!(segments_64_room_16_serializers, tafla::rewrite_segments_64_room_16);
 
 fn item_struct(item: &Item) -> [u8; ITEM_SIZE] {
     let mut bytes = [0; ITEM_SIZE];
@@ -453,13 +447,6 @@ macro_rules! builder {
 
 builder!(Main, main_serializers);
 builder!(Rewrite, rewrite_serializers);
-builder!(Room16, room_16_serializers);
-builder!(LongSegments, long_segments_serializers);
-builder!(Room16LongSegments, room_16_long_segments_serializers);
-builder!(Segments128, segments_128_serializers);
-builder!(Segments128Room32, segments_128_room_32_serializers);
-builder!(Segments128Room16, segments_128_room_16_serializers);
-builder!(Segments64Room16, segments_64_room_16_serializers);
 
 /// Another builder's functions again, as functions of their own, for an
 /// A/A pair
@@ -537,24 +524,12 @@ pub trait Visit {
     fn visit<T: Builder>(&mut self, name: &'static str);
 }
 
-/// Visits main's builder and the rewrite, twice each, as A/A pairs, and
-/// the rewrite's variants: starting with room for 16 bytes a field rather
-/// than 64, keeping runs of 64 bytes or more as segments rather than grow
-/// bytes of 64 KiB or more, both, and keeping runs of 128 bytes or more as
-/// segments, with room for 64, 32 or 16 bytes a field, or of 64 bytes or
-/// more, with room for 16
+/// Visits main's builder and the rewrite, twice each, as A/A pairs
 pub fn for_each_builder(visitor: &mut impl Visit) {
     visitor.visit::<Main>("main");
     visitor.visit::<Again<Main>>("main A/A");
     visitor.visit::<Rewrite>("rewrite");
     visitor.visit::<Again<Rewrite>>("rewrite A/A");
-    visitor.visit::<Room16>("room 16");
-    visitor.visit::<LongSegments>("long segments");
-    visitor.visit::<Room16LongSegments>("room 16, long segments");
-    visitor.visit::<Segments128>("128");
-    visitor.visit::<Segments128Room32>("128, room 32");
-    visitor.visit::<Segments128Room16>("128, room 16");
-    visitor.visit::<Segments64Room16>("64, room 16");
 }
 
 /// The inputs of every row

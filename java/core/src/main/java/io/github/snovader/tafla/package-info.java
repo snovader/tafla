@@ -1,7 +1,7 @@
 /**
  * Binary tables of scalars, structs, strings and arrays.
  * {@link io.github.snovader.tafla.TableBuilder} writes a table at its exact size, copying arrays in
- * bulk, and {@link io.github.snovader.tafla.ByteBuffer} reads fields back by offset, into Java
+ * bulk, and {@link io.github.snovader.tafla.TableReader} reads fields back by offset, into Java
  * arrays. Every read checks that it stays within the bytes it was given. The TypeScript and Python
  * implementations write and read the same bytes.
  *
@@ -14,28 +14,28 @@
  *
  * {@snippet :
  * // A format's header, shared by its writer and its readers
- * TableLayout layout = TableLayout.builder().sized(true).versioned(true).build();
  * int formatVersion = 1;
+ * TableLayout layout = TableLayout.builder().sized(true).version(formatVersion).build();
  *
  * var series = new TableBuilder(2);
  * series.setUint32Array(new long[] {0, 86400});
  * series.setFloat32Array(new float[] {21.75f, 18.5f});
  *
- * var builder = new TableBuilder(3, layout, formatVersion);
+ * var builder = new TableBuilder(3, layout);
  * builder.setFloat64(59.3293);
  * builder.setString("Europe/Stockholm");
  * builder.setTable(series); // written straight into the table
  * byte[] bytes = builder.bytes();
  *
- * var buffer = new ByteBuffer(bytes, layout);
- * if (buffer.getVersion() != formatVersion) {
+ * var reader = new TableReader(bytes, layout);
+ * if (reader.getVersion() != formatVersion) {
  *     throw new IllegalStateException("Unsupported format version");
  * }
  *
- * double latitude = buffer.getFloat64(buffer.rootOffset(0));
- * String timeZone = buffer.getString(buffer.rootOffset(1));
- * int table = buffer.rootOffset(2);
- * float[] values = buffer.getFloat32Array(buffer.fieldOffset(table, 1));
+ * double latitude = reader.getFloat64(reader.rootOffset(0));
+ * String timeZone = reader.getString(reader.rootOffset(1));
+ * int table = reader.rootOffset(2);
+ * float[] values = reader.getFloat32Array(reader.fieldOffset(table, 1));
  * }
  *
  * <p>Records at fixed offsets without a header or offsets, such as stream frames, are better
@@ -59,6 +59,9 @@
  *     elements are aligned to their size from the table's start. {@code setTable()} aligns a nested
  *     table to the largest alignment of its arrays, arrays of structs and nested tables when given
  *     its builder, and to 4 bytes by default when given bytes.</li>
+ *   <li>An array of bools is a {@code uint8} array of 1 and 0, which {@code setBoolArray()} writes
+ *     from a {@code boolean[]} and {@code getBoolArray()} reads into one, true where a byte isn't
+ *     0. {@code getUint8Array()} and {@code getUint8ArrayView()} read its bytes.</li>
  *   <li>A struct is its scalars one after another, without padding, so that they lie at fixed
  *     offsets from its start. An array of structs starts with its count, and is padded so that its
  *     structs are aligned to the size of their largest scalar. {@code getStruct()} and
@@ -66,6 +69,10 @@
  *   <li>A vector starts with its item count, then the end of each item, counted from the vector's
  *     position, and then the items, one after another. {@code getVectorOffset()} finds any item
  *     from two ends, without reading the items before it.</li>
+ *   <li>A vector of strings is a vector whose items are strings' UTF-8, without counts of their
+ *     own. {@code getStringVector()} reads every string, and a
+ *     {@link io.github.snovader.tafla.StringVector} reads each one from its two ends when it's
+ *     asked for. Each string must be valid UTF-8 on its own.</li>
  * </ul>
  *
  * <p>Java has no unsigned types, so unsigned values are read into the next wider type, such as a
@@ -123,6 +130,8 @@
  *   <tr><td>A {@code double} too large for a {@code float32}</td>
  *     <td>The caller's cast to {@code float}, which makes it infinity of its sign and rounds
  *     other values to the nearest {@code float}.</td></tr>
+ *   <tr><td>A {@code boolean} of an array of bools</td><td>The byte 1 for true, and 0 for
+ *     false.</td></tr>
  *   <tr><td>A lone surrogate in a string</td><td>U+FFFD.</td></tr>
  * </table>
  *
@@ -131,7 +140,7 @@
  * <p>Validation is always on:</p>
  *
  * <ul>
- *   <li>Every read checks its range against the bytes the {@code ByteBuffer} was given, and throws
+ *   <li>Every read checks its range against the bytes the {@code TableReader} was given, and throws
  *     a {@link io.github.snovader.tafla.DecodeException} if it would leave them. Strings must be valid
  *     UTF-8, and a vector item must start no later than it ends. A truncated or corrupted buffer
  *     therefore throws rather than returning values from outside it.</li>
@@ -146,20 +155,23 @@
  * <p>Using the API wrongly throws other exceptions, whatever the bytes:</p>
  *
  * <ul>
- *   <li>{@code ByteBuffer} throws an {@link IllegalArgumentException} for a struct size below 1,
- *     or below 0 for {@code getStruct()}, and {@code getVectorOffset()} and
- *     {@code getVectorItemOffset()} an {@link IndexOutOfBoundsException} for an item outside the
- *     vector, or the count it's given.</li>
+ *   <li>{@code TableReader} throws an {@link IllegalArgumentException} for a struct size below 1,
+ *     or below 0 for {@code getStruct()}, and {@code getVectorOffset()},
+ *     {@code getVectorItemOffset()} and {@code getStringVectorItem()} an
+ *     {@link IndexOutOfBoundsException} for an item outside the vector, or the count it's given,
+ *     as does a {@code StringVector}'s {@code get()}.</li>
+ *   <li>{@code TableLayout} throws an {@link IllegalArgumentException} from its builder's
+ *     {@code build()} and from {@code withVersion()} for a version that doesn't fit in the offset
+ *     type.</li>
  *   <li>{@code TableBuilder} throws an {@link IllegalStateException} for a field beyond the number
  *     that its table holds, a table recorded in place too, for writing before every field is set
  *     or while a fill records a table in it, and for a field set after writing. It throws an
- *     {@link IllegalArgumentException} for a version missing from or given for a layout, a version
- *     that doesn't fit, a negative number of fields or count, a nested builder or a table recorded
- *     in place with fields left to set, an alignment other than 1, 2, 4 or 8, and a struct size
- *     below 1 or bytes that aren't a whole number of structs. A field that would make the table
- *     too long for its offset type throws an {@code IllegalArgumentException} from its setter and
- *     isn't added. A table recorded in place passes on what its fill throws, and leaves the
- *     builder as it was whatever is thrown.</li>
+ *     {@link IllegalArgumentException} for a negative number of fields or count, a nested builder
+ *     or a table recorded in place with fields left to set, an alignment other than 1, 2, 4 or 8,
+ *     and a struct size below 1 or bytes that aren't a whole number of structs. A field that would
+ *     make the table too long for its offset type throws an {@code IllegalArgumentException} from
+ *     its setter and isn't added. A table recorded in place passes on what its fill throws, and
+ *     leaves the builder as it was whatever is thrown.</li>
  *   <li>{@code TableSizer} throws the {@code IllegalArgumentException}s of {@code TableBuilder}'s
  *     constructor, and one for a negative count, a negative struct size, a struct size below 1 in
  *     an array of structs, and an alignment other than 1, 2, 4 or 8. Its {@code byteLength()} and

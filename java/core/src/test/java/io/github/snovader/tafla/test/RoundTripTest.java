@@ -14,7 +14,7 @@ public class RoundTripTest {
     void a_table_built_from_any_description_reads_back_the_same_values(@ForAll("tables") TableDescription table) {
         var bytes = Tables.build(table).bytes();
 
-        assertEquals(table, TableReader.strict(bytes, table.layout()).readTable(table));
+        assertEquals(table, DescriptionReader.strict(bytes, table.layout()).readTable(table));
     }
 
     @Example
@@ -30,7 +30,7 @@ public class RoundTripTest {
         var table = new TableDescription(LayoutDescription.headerless(OffsetType.UINT32), OptionalLong.empty(), fields);
         var bytes = Tables.build(table).bytes();
 
-        assertEquals(table, TableReader.strict(bytes, table.layout()).readTable(table));
+        assertEquals(table, DescriptionReader.strict(bytes, table.layout()).readTable(table));
     }
 
     // Tables of 32 KiB and more, so fewer of them
@@ -50,7 +50,7 @@ public class RoundTripTest {
         Assume.that(Descriptions.maxLength(withArray) <= offsetType.maxValue());
 
         var bytes = Tables.build(withArray).bytes();
-        assertEquals(withArray, TableReader.strict(bytes, table.layout()).readTable(withArray));
+        assertEquals(withArray, DescriptionReader.strict(bytes, table.layout()).readTable(withArray));
     }
 
     @Provide

@@ -5,6 +5,18 @@ use crate::Alignment;
 /// A number type that tables store in arrays: `i8`, `u8`, `i16`, `u16`,
 /// `i32`, `u32`, `i64`, `u64`, `f32` or `f64`. Elements are stored
 /// little-endian and aligned to their size from the table's start.
+///
+/// It's sealed, since an [`ArrayView`](crate::ArrayView) may return its
+/// elements in place, which is sound only for types of which every bit
+/// pattern is a value. That rules out `bool`, of which any byte but 0 or 1
+/// is undefined behavior: [`TableReader::get_bool_array()`](crate::TableReader::get_bool_array)
+/// reads an array of bools into a new `Vec`, and
+/// [`TableReader::get_u8_array()`](crate::TableReader::get_u8_array) reads
+/// its bytes in place.
+///
+/// ```compile_fail,E0277
+/// let bools: tafla::ArrayView<'_, bool>;
+/// ```
 pub trait Element: sealed::Sealed {}
 
 pub mod sealed {

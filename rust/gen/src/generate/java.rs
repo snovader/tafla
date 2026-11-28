@@ -2,7 +2,8 @@
 //! and tables read fields lazily from their bytes and are written from
 //! records of their fields, which a `TableSizer` counts and a `TableWriter`
 //! then writes, nested tables in place. Structs are records, read and
-//! written in place with `VarHandle`s.
+//! written in place with `VarHandle`s. Enums are classes of constants, of
+//! the primitive type that their fields read as.
 
 use std::fmt::Write;
 
@@ -11,7 +12,9 @@ use super::prose::article;
 use super::writer::{CodeWriter, Style, call, doc_comment, escape_outside_code_spans, text};
 use super::{GeneratedFile, JavaPackage, Options};
 use crate::check::{MAX_JAVA_PARAMETER_SLOTS, java_parameter_slots};
-use crate::model::{Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema};
+use crate::model::{
+    Definition, Enum, EnumValue, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema,
+};
 use crate::naming::camel_case;
 
 /// The runtime's package, unless [`Options::runtime`] names another
@@ -60,18 +63,28 @@ pub fn generate(schema: &Schema, header: &str, options: &Options) -> Vec<Generat
         .as_ref()
         .map_or(PACKAGE, JavaPackage::as_str);
 
+    // A file's writer, after its header and package
+    let start = || {
+        let mut writer = CodeWriter::new(STYLE.indent);
+        writer.line(&header);
+        writer.line(format!("package {package};"));
+        writer.blank();
+        writer
+    };
     let file = |name: &str, contents: String| GeneratedFile {
         path: format!("{}/{name}.java", package.replace('.', "/")),
         contents,
     };
 
     let mut files = Vec::new();
-    for (index, definition) in schema.definitions.iter().enumerate() {
-        let mut writer = CodeWriter::new(STYLE.indent);
-        writer.line(&header);
-        writer.line(format!("package {package};"));
-        writer.blank();
+    for enumeration in &schema.enums {
+        let mut writer = start();
+        enum_class(&mut writer, enumeration);
+        files.push(file(&enumeration.name, writer.finish()));
+    }
 
+    for (index, definition) in schema.definitions.iter().enumerate() {
+        let mut writer = start();
         match definition.kind {
             Kind::Message(layout) => {
                 imports(&mut writer, runtime, schema, definition, Some(layout));
@@ -95,11 +108,7 @@ pub fn generate(schema: &Schema, header: &str, options: &Options) -> Vec<Generat
         files.push(file(&definition.name, writer.finish()));
 
         if schema.is_item(index) {
-            let mut writer = CodeWriter::new(STYLE.indent);
-            writer.line(&header);
-            writer.line(format!("package {package};"));
-            writer.blank();
-
+            let mut writer = start();
             let view = if definition.is_struct() {
                 struct_array_view(&mut writer, runtime, definition)
             } else {
@@ -112,6 +121,66 @@ pub fn generate(schema: &Schema, header: &str, options: &Options) -> Vec<Generat
     files
 }
 
+/// An enum: a class of a constant of each value, by its name in
+/// `UPPER_SNAKE_CASE`, which no keyword is, of the primitive type that the
+/// getters of its fields return and its writers take. A field holds any value
+/// of its integer type, which it reads without a lookup, and compares with
+/// the constants as they are, which a `switch` takes as its labels.
+fn enum_class(writer: &mut CodeWriter, enumeration: &Enum) {
+    let name = &enumeration.name;
+    let underlying = enumeration.underlying;
+    let constant_type = scalar_type(underlying);
+
+    let mut docs = schema_docs(&enumeration.docs);
+    if !docs.is_empty() {
+        docs.push(String::new());
+    }
+    docs.extend([
+        format!(
+            "Constants of the values that `{name}` names. A field of it is {}, which",
+            article(constant_type)
+        ),
+        format!("holds any `{}`, named or not.", underlying.name()),
+    ]);
+
+    writer.lines(&javadoc(&docs));
+    writer.open(format!("public final class {name} {{"));
+    for value in &enumeration.values {
+        let (literal, docs) = enum_value(value);
+        writer.lines(&javadoc(&docs));
+        writer.line(format!(
+            "public static final {constant_type} {} = {literal};",
+            value.name.to_ascii_uppercase()
+        ));
+    }
+    writer.blank();
+    writer.line(format!("private {name}() {{}}"));
+    writer.close("}");
+}
+
+/// A value of an enum as a Java literal, with an `L` where it doesn't fit an
+/// `int`, as `FORMAT_VERSION` has, and its documentation. A `uint64` beyond a
+/// `long`'s greatest is the `long` with its bits, as the getters return it,
+/// which the documentation says.
+fn enum_value(value: &EnumValue) -> (String, Vec<String>) {
+    let bits = i64::try_from(value.value).unwrap_or_else(|_| {
+        u64::try_from(value.value)
+            .expect("the checker keeps a value within int64 and uint64")
+            .cast_signed()
+    });
+    let suffix = if i32::try_from(bits).is_ok() { "" } else { "L" };
+
+    let mut docs = schema_docs(&value.docs);
+    if i128::from(bits) != value.value {
+        if !docs.is_empty() {
+            docs.push(String::new());
+        }
+        docs.push(format!("`{}`, as a `long` with the same bits", value.value));
+    }
+
+    (format!("{bits}{suffix}"), docs)
+}
+
 /// The view of a vector of a table, a lazy `List` whose `get()` reads an
 /// item from its end and the end of the item before it, checked against the
 /// count that the view read once, and returns the view's class name
@@ -119,8 +188,8 @@ fn vector_view(writer: &mut CodeWriter, runtime: &str, definition: &Definition) 
     let table = &definition.name;
     let name = format!("{table}Vector");
 
-    writer.line(format!("import {runtime}.ByteBuffer;"));
     writer.line(format!("import {runtime}.DecodeException;"));
+    writer.line(format!("import {runtime}.TableReader;"));
     writer.blank();
     writer.line("import java.util.AbstractList;");
     writer.line("import java.util.RandomAccess;");
@@ -132,7 +201,7 @@ fn vector_view(writer: &mut CodeWriter, runtime: &str, definition: &Definition) 
     writer.open(format!(
         "public final class {name} extends AbstractList<{table}> implements RandomAccess {{"
     ));
-    writer.line("private final ByteBuffer buffer;");
+    writer.line("private final TableReader reader;");
     writer.line("private final int position;");
     writer.line("private final int size;");
     writer.blank();
@@ -143,10 +212,10 @@ fn vector_view(writer: &mut CodeWriter, runtime: &str, definition: &Definition) 
             .to_owned(),
         "    bytes".to_owned(),
     ]));
-    writer.open(format!("{name}(ByteBuffer buffer, int position) {{"));
-    writer.line("this.buffer = buffer;");
+    writer.open(format!("{name}(TableReader reader, int position) {{"));
+    writer.line("this.reader = reader;");
     writer.line("this.position = position;");
-    writer.line("this.size = buffer.getVectorLength(position);");
+    writer.line("this.size = reader.getVectorLength(position);");
     writer.close("}");
     writer.blank();
 
@@ -161,7 +230,7 @@ fn vector_view(writer: &mut CodeWriter, runtime: &str, definition: &Definition) 
     writer.line("@Override");
     writer.open(format!("public {table} get(int index) {{"));
     writer.line(format!(
-        "return new {table}(buffer, buffer.getVectorItemOffset(position, size, index));"
+        "return new {table}(reader, reader.getVectorItemOffset(position, size, index));"
     ));
     writer.close("}");
     writer.blank();
@@ -193,11 +262,11 @@ fn vector_iterator(writer: &mut CodeWriter, table: &str) {
     writer.line("private int index = 0;");
     // Item 0 starts where the items do, so that every item takes the same
     // path. Reading it with `getVectorItemOffset()` instead, a call once in
-    // 100 items, which C2 left out of line, kept the buffer from escape
+    // 100 items, which C2 left out of line, kept the reader from escape
     // analysis: reading a vector of 100 tables took 17% longer than with
     // `get()`, and allocated 88 bytes.
     writer.line("// Where item index starts, which is where the item before it ends");
-    writer.line("private int start = buffer.getVectorItemsStart(position, size);");
+    writer.line("private int start = reader.getVectorItemsStart(position, size);");
     writer.blank();
     writer.line("@Override");
     writer.open("public boolean hasNext() {");
@@ -211,9 +280,9 @@ fn vector_iterator(writer: &mut CodeWriter, table: &str) {
     writer.close("}");
     writer.blank();
     writer.line("var item = start;");
-    writer.line("start = buffer.getVectorItemEnd(position, index++, item);");
+    writer.line("start = reader.getVectorItemEnd(position, index++, item);");
     writer.blank();
-    writer.line(format!("return new {table}(buffer, item);"));
+    writer.line(format!("return new {table}(reader, item);"));
     writer.close("}");
     writer.close("};");
     writer.close("}");
@@ -225,8 +294,8 @@ fn struct_array_view(writer: &mut CodeWriter, runtime: &str, definition: &Defini
     let structure = &definition.name;
     let name = format!("{structure}Array");
 
-    writer.line(format!("import {runtime}.ByteBuffer;"));
     writer.line(format!("import {runtime}.DecodeException;"));
+    writer.line(format!("import {runtime}.TableReader;"));
     writer.blank();
     writer.line("import java.util.AbstractList;");
     writer.line("import java.util.Objects;");
@@ -248,9 +317,9 @@ fn struct_array_view(writer: &mut CodeWriter, runtime: &str, definition: &Defini
         "@throws DecodeException if the array's count or its structs aren't within the bytes"
             .to_owned(),
     ]));
-    writer.open(format!("{name}(ByteBuffer buffer, int position) {{"));
+    writer.open(format!("{name}(TableReader reader, int position) {{"));
     writer.line(format!(
-        "this.view = buffer.getStructArray(position, {structure}.SIZE);"
+        "this.view = reader.getStructArray(position, {structure}.SIZE);"
     ));
     writer.line(format!("this.size = view.remaining() / {structure}.SIZE;"));
     writer.close("}");
@@ -298,11 +367,18 @@ fn imports(
             .iter()
             .any(|field| predicate(field.field_type))
     };
-    let has_vector = has(|field_type| matches!(field_type, FieldType::Vector(_)));
-    let has_view =
-        has(|field_type| matches!(field_type, FieldType::Vector(_) | FieldType::StructArray(_)));
+    // A vector of tables or of strings, which a `Fields` record holds in a `List`
+    let has_list =
+        has(|field_type| matches!(field_type, FieldType::Vector(_) | FieldType::StringVector));
+    let has_string_vector = has(|field_type| field_type == FieldType::StringVector);
+    let has_view = has(|field_type| {
+        matches!(
+            field_type,
+            FieldType::Vector(_) | FieldType::StructArray(_) | FieldType::StringVector
+        )
+    });
 
-    let mut names = vec!["ByteBuffer"];
+    let mut names = Vec::new();
     // A versioned message's constructor throws it, and the getters of views
     // document it
     if has_view || layout.is_some_and(|layout| layout.version.is_some()) {
@@ -311,10 +387,15 @@ fn imports(
     if layout.is_some_and(|layout| layout.offset_type != OffsetType::Uint32) {
         names.push("OffsetType");
     }
+    // The getter of a vector of strings returns the runtime's view
+    if has_string_vector {
+        names.push("StringVector");
+    }
     // Messages make a sizer, and tables take a sizer and a writer
     if layout.is_some() {
         names.push("TableLayout");
     }
+    names.push("TableReader");
     names.push("TableSizer");
     // Tables take a writer, and a message of an array of structs alone takes
     // its fill
@@ -325,7 +406,7 @@ fn imports(
         writer.line(format!("import {runtime}.{name};"));
     }
 
-    if has_vector {
+    if has_list {
         writer.blank();
         writer.line("import java.util.List;");
     }
@@ -344,7 +425,7 @@ fn version_of(writer: &mut CodeWriter) {
         "@throws DecodeException if the header doesn't fit in {@code bytes}".to_owned(),
     ]));
     writer.open("public static long versionOf(byte[] bytes) {");
-    writer.line("return new ByteBuffer(bytes, LAYOUT).getVersion();");
+    writer.line("return new TableReader(bytes, LAYOUT).getVersion();");
     writer.close("}");
 }
 
@@ -372,7 +453,7 @@ fn message(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, la
     }
     layout_constant(writer, layout);
     writer.blank();
-    writer.line("private final ByteBuffer buffer;");
+    writer.line("private final TableReader reader;");
     writer.blank();
 
     if layout.version.is_some() {
@@ -381,10 +462,10 @@ fn message(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, la
         ]));
     }
     writer.open(format!("public {name}(byte[] bytes) {{"));
-    writer.line("this.buffer = new ByteBuffer(bytes, LAYOUT);");
+    writer.line("this.reader = new TableReader(bytes, LAYOUT);");
     if layout.version.is_some() {
         writer.blank();
-        writer.line("long version = buffer.getVersion();");
+        writer.line("long version = reader.getVersion();");
         writer.open("if (version != FORMAT_VERSION) {");
         let message = format!(
             "\"Expected format version \" + FORMAT_VERSION + \" of {name}, got \" + version"
@@ -410,7 +491,7 @@ fn message(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, la
         article(name)
     )]));
     writer.open("public static byte[] serialize(Fields fields) {");
-    serialize_body(writer, schema, definition, layout, Output::NewBytes);
+    serialize_body(writer, schema, definition, Output::NewBytes);
     writer.close("}");
     writer.blank();
 
@@ -432,12 +513,12 @@ fn message(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, la
         "    them is written".to_owned(),
     ]));
     writer.open("public static int serializeInto(Fields fields, byte[] bytes) {");
-    serialize_body(writer, schema, definition, layout, Output::GivenBytes);
+    serialize_body(writer, schema, definition, Output::GivenBytes);
     writer.close("}");
 
     if let Some(structure) = struct_fill(schema, definition) {
         writer.blank();
-        serialize_structs(writer, name, &structure.name, layout);
+        serialize_structs(writer, name, &structure.name);
     }
 
     getters(writer, schema, definition, true);
@@ -466,7 +547,7 @@ fn struct_fill<'a>(schema: &'a Schema, definition: &Definition) -> Option<&'a De
 /// writes each struct straight into the table with the struct's static
 /// `write()`, from whatever the caller holds, rather than from records of the
 /// structs in an array
-fn serialize_structs(writer: &mut CodeWriter, name: &str, structure: &str, layout: Layout) {
+fn serialize_structs(writer: &mut CodeWriter, name: &str, structure: &str) {
     writer.lines(&javadoc(&[
         format!(
             "Writes {} of `count` structs, each of which `fill` writes straight into",
@@ -486,10 +567,7 @@ fn serialize_structs(writer: &mut CodeWriter, name: &str, structure: &str, layou
         "@throws IllegalArgumentException if `count` is negative".to_owned(),
     ]));
     writer.open("public static byte[] serialize(int count, TableWriter.StructFill fill) {");
-    let mut arguments = vec![text("1"), text("LAYOUT")];
-    if layout.version.is_some() {
-        arguments.push(text("FORMAT_VERSION"));
-    }
+    let arguments = vec![text("1"), text("LAYOUT")];
     writer.statement(
         &STYLE,
         "var sizer = ",
@@ -525,13 +603,9 @@ fn serialize_body(
     writer: &mut CodeWriter,
     schema: &Schema,
     definition: &Definition,
-    layout: Layout,
     output: Output,
 ) {
-    let mut arguments = vec![text(definition.fields.len().to_string()), text("LAYOUT")];
-    if layout.version.is_some() {
-        arguments.push(text("FORMAT_VERSION"));
-    }
+    let arguments = vec![text(definition.fields.len().to_string()), text("LAYOUT")];
     writer.statement(
         &STYLE,
         "var sizer = ",
@@ -559,7 +633,7 @@ fn layout_constant(writer: &mut CodeWriter, layout: Layout) {
         options.push(".sized(true)".to_owned());
     }
     if layout.version.is_some() {
-        options.push(".versioned(true)".to_owned());
+        options.push(".version(FORMAT_VERSION)".to_owned());
     }
     if layout.offset_type != OffsetType::Uint32 {
         options.push(format!(
@@ -599,11 +673,11 @@ fn table(writer: &mut CodeWriter, schema: &Schema, index: usize) {
         schema.table_alignment(index)
     ));
     writer.blank();
-    writer.line("private final ByteBuffer buffer;");
+    writer.line("private final TableReader reader;");
     writer.line("private final int position;");
     writer.blank();
-    writer.open(format!("{name}(ByteBuffer buffer, int position) {{"));
-    writer.line("this.buffer = buffer;");
+    writer.open(format!("{name}(TableReader reader, int position) {{"));
+    writer.line("this.reader = reader;");
     writer.line("this.position = position;");
     writer.close("}");
     writer.blank();
@@ -934,7 +1008,12 @@ fn sizes(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
     for field in &definition.fields {
         let value = format!("fields.{}()", identifier(&field.name));
         let (method, arguments) = match field.field_type {
+            FieldType::StringVector => ("addStringVector".to_owned(), vec![text(value)]),
             FieldType::Scalar(scalar) => (format!("add{}", method_name(scalar)), vec![]),
+            FieldType::Array(Scalar::Bool) => (
+                "addBoolArray".to_owned(),
+                vec![text(format!("{value}.length"))],
+            ),
             FieldType::Array(scalar) => (
                 format!("add{}Array", method_name(scalar)),
                 vec![text(format!("{value}.length"))],
@@ -988,6 +1067,7 @@ fn writes(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
         let value = format!("fields.{}()", identifier(&field.name));
         let position = text(index.to_string());
         let (method, arguments) = match field.field_type {
+            FieldType::StringVector => ("setStringVector".to_owned(), vec![position, text(value)]),
             FieldType::Scalar(Scalar::Bool) => (
                 "setUint8".to_owned(),
                 vec![position, text(format!("(short) ({value} ? 1 : 0)"))],
@@ -996,6 +1076,10 @@ fn writes(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
                 format!("set{}", method_name(scalar)),
                 vec![position, text(value)],
             ),
+            // Bools, which the writer writes as bytes of 1 and 0
+            FieldType::Array(Scalar::Bool) => {
+                ("setBoolArray".to_owned(), vec![position, text(value)])
+            }
             FieldType::Array(scalar) => (
                 format!("set{}Array", method_name(scalar)),
                 vec![position, text(value)],
@@ -1069,39 +1153,48 @@ fn writes(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
 fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is_root: bool) {
     for (index, field) in definition.fields.iter().enumerate() {
         let offset = if is_root {
-            format!("buffer.rootOffset({index})")
+            format!("reader.rootOffset({index})")
         } else {
-            format!("buffer.fieldOffset(position, {index})")
+            format!("reader.fieldOffset(position, {index})")
         };
 
         writer.blank();
-        writer.lines(&javadoc(&getter_docs(field)));
+        writer.lines(&javadoc(&getter_docs(field, schema)));
         writer.open(format!(
             "public {} {}() {{",
             value_type(field.field_type, schema),
             identifier(&field.name)
         ));
         match field.field_type {
+            // The runtime's view, which reads each string when it's asked for,
+            // as the views of vectors of tables read their items
+            FieldType::StringVector => {
+                writer.line(format!("return new StringVector(reader, {offset});"));
+            }
             FieldType::Scalar(Scalar::Bool) => {
-                writer.line(format!("return buffer.getUint8({offset}) != 0;"));
+                writer.line(format!("return reader.getUint8({offset}) != 0;"));
             }
             FieldType::Scalar(scalar) => {
                 writer.line(format!(
-                    "return buffer.get{}({offset});",
+                    "return reader.get{}({offset});",
                     method_name(scalar)
                 ));
+            }
+            // A bool for each byte, true where it isn't 0, whose bytes the view reads in place
+            FieldType::Array(Scalar::Bool) => {
+                writer.line(format!("return reader.getBoolArray({offset});"));
             }
             FieldType::Array(scalar) => {
                 writer.line(format!(
-                    "return buffer.get{}Array({offset});",
+                    "return reader.get{}Array({offset});",
                     method_name(scalar)
                 ));
             }
-            FieldType::String => writer.line(format!("return buffer.getString({offset});")),
+            FieldType::String => writer.line(format!("return reader.getString({offset});")),
             FieldType::Struct(index) => {
                 let structure = &schema.definition(index).name;
                 writer.line(format!(
-                    "return {structure}.read(buffer.bytes(), {offset});"
+                    "return {structure}.read(reader.bytes(), {offset});"
                 ));
             }
             // The view, which reads each item when it's asked for, so that a
@@ -1110,13 +1203,13 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
             // a loop, which a list or array of every item would hold
             FieldType::StructArray(_) | FieldType::Vector(_) => {
                 writer.line(format!(
-                    "return new {}(buffer, {offset});",
+                    "return new {}(reader, {offset});",
                     value_type(field.field_type, schema)
                 ));
             }
             FieldType::Table(table) => {
                 let table = &schema.definition(table).name;
-                writer.line(format!("return new {table}(buffer, {offset});"));
+                writer.line(format!("return new {table}(reader, {offset});"));
             }
         }
         writer.close("}");
@@ -1127,24 +1220,35 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
     }
 }
 
-/// A getter's Javadoc: the field's documentation, and for a vector or an
-/// array of structs, that the getter returns a view whose items are read, and
-/// fail, when they're asked for
-fn getter_docs(field: &Field) -> Vec<String> {
+/// A getter's Javadoc: the field's documentation, and for a field of an enum
+/// or an array of them, the enum, which the type that it returns doesn't
+/// name, and for a vector or an array of structs, that the getter returns a
+/// view whose items are read, and fail, when they're asked for
+fn getter_docs(field: &Field, schema: &Schema) -> Vec<String> {
     let mut docs = schema_docs(&field.docs);
-    let items = match field.field_type {
-        FieldType::Vector(_) => "the items' ends",
-        FieldType::StructArray(_) => "the structs",
+    if let Some(index) = field.enumeration {
+        let name = &schema.enumeration(index).name;
+        if !docs.is_empty() {
+            docs.push(String::new());
+        }
+        docs.push(match field.field_type {
+            FieldType::Array(_) => format!("Values of {{@link {name}}}, named or not"),
+            _ => format!("A value of {{@link {name}}}, named or not"),
+        });
+    }
+
+    let (view, items) = match field.field_type {
+        FieldType::Vector(_) => (ITEMS_VIEW, "the items' ends"),
+        FieldType::StructArray(_) => (ITEMS_VIEW, "the structs"),
+        FieldType::StringVector => (STRINGS_VIEW, "the strings' ends"),
         _ => return docs,
     };
 
     if !docs.is_empty() {
         docs.push(String::new());
     }
+    docs.extend(view.iter().map(|&line| line.to_owned()));
     docs.extend([
-        "Views the items, reading each one when it's asked for, so that an item whose bytes are"
-            .to_owned(),
-        "corrupt throws a `DecodeException` when it's read, rather than here".to_owned(),
         String::new(),
         format!("@throws DecodeException if the count or {items} aren't within the bytes"),
     ]);
@@ -1152,8 +1256,21 @@ fn getter_docs(field: &Field) -> Vec<String> {
     docs
 }
 
+/// What the getter of a vector or an array of structs says of its view
+const ITEMS_VIEW: [&str; 2] = [
+    "Views the items, reading each one when it's asked for, so that an item whose bytes are",
+    "corrupt throws a `DecodeException` when it's read, rather than here",
+];
+
+/// What the getter of a vector of strings says of its view
+const STRINGS_VIEW: [&str; 2] = [
+    "Views the strings, reading each one when it's asked for, so that a string whose bytes are",
+    "corrupt throws a `DecodeException` when it's read, rather than here",
+];
+
 /// Writes the getter of the view of an array of scalars, `<field>View()`,
-/// beside its getter, which copies them
+/// beside its getter, which copies them. An array of bools is viewed as the
+/// bytes of a `uint8` array, which its getter reads into bools.
 fn array_view_getter(writer: &mut CodeWriter, field: &Field, scalar: Scalar, offset: &str) {
     let getter = identifier(&field.name);
     let elements = format!("Views the elements of `{getter}()` in place, read-only, without");
@@ -1169,9 +1286,14 @@ fn array_view_getter(writer: &mut CodeWriter, field: &Field, scalar: Scalar, off
         ]),
         None => docs.push(format!("{elements} copying them")),
     }
+    if scalar == Scalar::Bool {
+        docs.extend([
+            String::new(),
+            "A byte for each bool, which is true where it isn't 0".to_owned(),
+        ]);
+    }
 
-    // Qualified, so that a schema can declare its own `FloatBuffer`, and
-    // since `ByteBuffer` is tafla's
+    // Qualified, so that a schema can declare its own `FloatBuffer`
     let view = format!("java.nio.{}", nio_buffer(scalar));
 
     writer.blank();
@@ -1181,7 +1303,7 @@ fn array_view_getter(writer: &mut CodeWriter, field: &Field, scalar: Scalar, off
         camel_case(&field.name)
     ));
     writer.line(format!(
-        "return buffer.get{}ArrayView({offset});",
+        "return reader.get{}ArrayView({offset});",
         method_name(scalar)
     ));
     writer.close("}");
@@ -1282,6 +1404,7 @@ const fn scalar_type(scalar: Scalar) -> &'static str {
 
 fn value_type(field_type: FieldType, schema: &Schema) -> String {
     match field_type {
+        FieldType::StringVector => "StringVector".to_owned(),
         FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
         FieldType::Array(scalar) => format!("{}[]", scalar_type(scalar)),
         FieldType::String => "String".to_owned(),
@@ -1294,6 +1417,7 @@ fn value_type(field_type: FieldType, schema: &Schema) -> String {
 
 fn input_type(field_type: FieldType, schema: &Schema) -> String {
     match field_type {
+        FieldType::StringVector => "List<String>".to_owned(),
         FieldType::StructArray(index) => format!("{}[]", schema.definition(index).name),
         FieldType::Table(index) => format!("{}.Fields", schema.definition(index).name),
         FieldType::Vector(index) => format!("List<{}.Fields>", schema.definition(index).name),

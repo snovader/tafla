@@ -1,28 +1,9 @@
 {
+    "extends": [
+        "@snovader/tsconfig/base",
+        "@snovader/tsconfig/composite"
+    ],
     "compilerOptions": {
-        "allowImportingTsExtensions": true,
-        "composite": true,
-        "customConditions": ["tafla-source"],
-        "declarationMap": false,
-        "emitDeclarationOnly": true,
-        "erasableSyntaxOnly": true,
-        "forceConsistentCasingInFileNames": true,
-        "isolatedModules": true,
-        "lib": ["ESNext"],
-        "module": "NodeNext",
-        "moduleDetection": "force",
-        "moduleResolution": "NodeNext",
-        "noImplicitOverride": true,
-        "noUncheckedSideEffectImports": true,
-        "noUnusedLocals": true,
-        "noUnusedParameters": true,
-        "pretty": true,
-        "resolveJsonModule": true,
-        "skipLibCheck": true,
-        "strict": true,
-        "target": "ESNext",
-        "types": [],
-        "useDefineForClassFields": true,
-        "verbatimModuleSyntax": true
+        "customConditions": ["tafla-source"]
     }
 }

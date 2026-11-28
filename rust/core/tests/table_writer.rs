@@ -357,7 +357,7 @@ fn table_bytes(table: &Table, length: u64) -> Result<Vec<u8>, BuildError> {
 
     match table.version {
         Some(version) if table.layout.versioned => {
-            TableWriter::versioned_table_bytes(fields, layout.versioned(), version, length)
+            TableWriter::table_bytes(fields, layout.with_version(version), length)
         }
         _ => TableWriter::table_bytes(fields, layout, length),
     }
@@ -380,6 +380,10 @@ enum Call {
         index: usize,
     },
     F64Array {
+        index: usize,
+        count: usize,
+    },
+    BoolArray {
         index: usize,
         count: usize,
     },
@@ -414,6 +418,10 @@ enum Call {
     CopyTable {
         length: usize,
     },
+    StrVector {
+        index: usize,
+        count: usize,
+    },
 }
 
 fn call() -> impl Strategy<Value = Call> {
@@ -429,6 +437,7 @@ fn call() -> impl Strategy<Value = Call> {
     prop_oneof![
         small().prop_map(|index| Call::U8 { index }),
         (small(), 0..8_usize).prop_map(|(index, count)| Call::F64Array { index, count }),
+        (small(), 0..8_usize).prop_map(|(index, count)| Call::BoolArray { index, count }),
         (small(), 0..8_usize).prop_map(|(index, length)| Call::Str { index, length }),
         (small(), 0..12_usize, 0..4_usize).prop_map(|(index, length, size)| Call::StructArray {
             index,
@@ -442,6 +451,7 @@ fn call() -> impl Strategy<Value = Call> {
         (small(), small()).prop_map(|(index, count)| Call::Vector { index, count }),
         small().prop_map(|item| Call::ItemEnd { item }),
         (0..40_usize).prop_map(|length| Call::CopyTable { length }),
+        (small(), 0..8_usize).prop_map(|(index, count)| Call::StrVector { index, count }),
     ]
 }
 
@@ -455,6 +465,7 @@ impl Call {
         match self {
             Self::U8 { index } => writer.set_u8(index, 1),
             Self::F64Array { index, count } => writer.set_f64_array(index, &vec![-0.0; count]),
+            Self::BoolArray { index, count } => writer.set_bool_array(index, &vec![true; count]),
             Self::Str { index, length } => writer.set_str(index, &"🦀".repeat(length)),
             Self::StructArray {
                 index,
@@ -479,6 +490,10 @@ impl Call {
                 }
             }
             Self::CopyTable { length } => writer.copy_table(&vec![0xa5; length]),
+            Self::StrVector { index, count } => {
+                let strings: Vec<String> = (0..count).map(|length| "é".repeat(length)).collect();
+                writer.set_str_vector(index, &strings);
+            }
         }
     }
 }
@@ -622,15 +637,15 @@ fn test_table_bytes_fail_past_what_their_offsets_address_naming_the_last_field()
         };
 
         assert_eq!(TableWriter::table_bytes(3, layout, max + 1), Err(error));
-        let versioned = layout.sized().versioned();
+        let versioned = layout.sized().with_version(0);
         assert_eq!(
-            TableWriter::versioned_table_bytes(3, versioned, 1, max + 1),
+            TableWriter::table_bytes(3, versioned.with_version(1), max + 1),
             Err(error)
         );
         // Allocating 4 GiB would take long, and fail on 32-bit hosts
         if offset_type != OffsetType::Uint32 {
             let width = offset_type.size();
-            let bytes = TableWriter::versioned_table_bytes(3, versioned, 1, max).unwrap();
+            let bytes = TableWriter::table_bytes(3, versioned.with_version(1), max).unwrap();
             assert_eq!(bytes.len(), 2 * width);
             assert!(bytes[..width].iter().all(|&byte| byte == 0xff));
         }
@@ -649,14 +664,14 @@ fn test_table_bytes_reject_a_header_or_a_version_as_the_sizer_does() {
         TableSizer::new(256, layout).unwrap_err()
     );
 
-    let versioned = layout.versioned();
+    let versioned = layout.with_version(0);
     assert_eq!(
-        TableWriter::versioned_table_bytes(1, versioned, 256, 0).unwrap_err(),
-        TableSizer::versioned(1, versioned, 256).unwrap_err()
+        TableWriter::table_bytes(1, versioned.with_version(256), 0).unwrap_err(),
+        TableSizer::new(1, versioned.with_version(256)).unwrap_err()
     );
     assert_eq!(
-        TableWriter::versioned_table_bytes(255, versioned, 1, 0).unwrap_err(),
-        TableSizer::versioned(255, versioned, 1).unwrap_err()
+        TableWriter::table_bytes(255, versioned.with_version(1), 0).unwrap_err(),
+        TableSizer::new(255, versioned.with_version(1)).unwrap_err()
     );
 }
 
@@ -676,11 +691,11 @@ fn test_rejects_a_header_too_long_for_its_offsets_as_table_builder_does() {
                 TableBuilder::new(fields + 1, layout).unwrap_err()
             );
 
-            let versioned = layout.versioned();
-            assert!(TableSizer::versioned(fields - 1, versioned, 0).is_ok());
+            let versioned = layout.with_version(0);
+            assert!(TableSizer::new(fields - 1, versioned).is_ok());
             assert_eq!(
-                TableSizer::versioned(fields, versioned, 0).unwrap_err(),
-                TableBuilder::versioned(fields, versioned, 0).unwrap_err()
+                TableSizer::new(fields, versioned).unwrap_err(),
+                TableBuilder::new(fields, versioned).unwrap_err()
             );
         }
     }
@@ -696,21 +711,21 @@ fn test_rejects_a_version_too_large_for_its_slot_as_table_builder_does() {
     for (offset_type, version) in [(OffsetType::Uint8, 0x100), (OffsetType::Uint16, 0x1_0000)] {
         let layout = TableLayout::DEFAULT
             .with_offset_type(offset_type)
-            .versioned();
+            .with_version(0);
 
         let error = BuildError::VersionTooLarge {
             version,
             offset_type,
         };
         assert_eq!(
-            TableSizer::versioned(1, layout, version).unwrap_err(),
+            TableSizer::new(1, layout.with_version(version)).unwrap_err(),
             error
         );
         assert_eq!(
-            TableBuilder::versioned(1, layout, version).unwrap_err(),
+            TableBuilder::new(1, layout.with_version(version)).unwrap_err(),
             error
         );
-        assert!(TableSizer::versioned(1, layout, version - 1).is_ok());
+        assert!(TableSizer::new(1, layout.with_version(version - 1)).is_ok());
     }
 }
 

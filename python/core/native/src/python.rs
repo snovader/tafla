@@ -207,6 +207,9 @@ pub struct Objects {
     /// `tafla.elements.as_elements`, which converts what isn't a buffer of
     /// an array's element type
     pub as_elements: Py<PyAny>,
+    /// `tafla.elements.bool_bytes`, which converts what isn't a list or
+    /// tuple of bools to the bytes of an array of them
+    pub bool_bytes: Py<PyAny>,
     /// `array.array`
     pub array: Py<PyAny>,
     /// `array("Q", [0])`, which `get_vector_offsets()` repeats
@@ -253,6 +256,7 @@ pub fn objects(py: Python<'_>) -> PyResult<&Objects> {
         let errors = py.import("tafla.errors")?;
         let decode_error = errors.getattr("DecodeError")?.cast_into::<PyType>()?;
         let structs = py.import("tafla.structs")?;
+        let elements = py.import("tafla.elements")?;
         let array = py.import("array")?.getattr("array")?;
         let zero_offset = array.call1(("Q", [0]))?;
 
@@ -269,10 +273,8 @@ pub fn objects(py: Python<'_>) -> PyResult<&Objects> {
             out_of_range: decode_error.getattr("out_of_range")?.unbind(),
             decode_error: decode_error.unbind(),
             describe_int: errors.getattr("describe_int")?.unbind(),
-            as_elements: py
-                .import("tafla.elements")?
-                .getattr("as_elements")?
-                .unbind(),
+            as_elements: elements.getattr("as_elements")?.unbind(),
+            bool_bytes: elements.getattr("bool_bytes")?.unbind(),
             zero_offset: zero_offset.unbind(),
             array: array.unbind(),
             struct_error: py

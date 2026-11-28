@@ -11,11 +11,11 @@ use std::{fmt::Debug, fs, path::Path, str::FromStr};
 use serde_json::Value as Json;
 use shapes::generated::{
     ColumnsFields, Document, DocumentFields, ItemFields, ItemList, ItemListFields, PairFields,
-    Point, PointFields, Sample,
+    Point, PointFields, Priority, Sample, State, Step, Task, TaskFields,
 };
 use shapes::{
-    describe_document, describe_item_list, describe_point, describe_sample, read_document,
-    read_item_list, read_point,
+    describe_document, describe_item_list, describe_point, describe_sample, describe_task,
+    read_document, read_item_list, read_point, read_task,
 };
 use tables::{Fields, expected};
 use tafla::{BuildError, DecodeError};
@@ -61,6 +61,7 @@ fn case_of(case: &Json) -> Case {
         "Document" => document(fields, &bytes),
         "ItemList" => item_list(fields, &bytes),
         "Sample" => sample(fields, &bytes),
+        "Task" => task(fields, &bytes),
         other => panic!("{name}: shapes.tafla has no {other}"),
     };
 
@@ -174,6 +175,30 @@ fn sample(json: &Json, bytes: &[u8]) -> Outcome {
     )
 }
 
+/// A task of the enums' integers in the JSON, whether the schema names them
+/// or not
+fn task(json: &Json, bytes: &[u8]) -> Outcome {
+    let history = elements(&json["history"], integer);
+    let name = string(&json["name"]);
+    let step = &json["step"];
+    let fields = TaskFields {
+        priority: Priority(signed(&json["priority"])),
+        history: &history,
+        step: Step {
+            state: State(integer(&step["state"])),
+            priority: Priority(signed(&step["priority"])),
+            seconds: integer(&step["seconds"]),
+        },
+        name: &name,
+    };
+
+    (
+        fields.serialize(),
+        Ok(read_task(&Task::new(bytes))),
+        expected(describe_task(&fields)),
+    )
+}
+
 // Values as the JSON holds them: 64-bit integers as decimal strings, floats
 // that JSON has no number for by name, and float32s as the float64s that
 // equal them
@@ -188,6 +213,10 @@ fn elements<T>(value: &Json, element: fn(&Json) -> T) -> Vec<T> {
 
 fn integer<T: TryFrom<u64, Error: Debug>>(value: &Json) -> T {
     T::try_from(value.as_u64().unwrap()).unwrap()
+}
+
+fn signed<T: TryFrom<i64, Error: Debug>>(value: &Json) -> T {
+    T::try_from(value.as_i64().unwrap()).unwrap()
 }
 
 fn parse<T: FromStr<Err: Debug>>(value: &Json) -> T {

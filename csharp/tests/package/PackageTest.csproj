@@ -1,0 +1,35 @@
+<Project>
+    <!-- A project that uses the package Tafla, as a user's would, which scripts/test-package.sh
+         builds and runs, just in time and compiled ahead of time. It restores the package that
+         dotnet pack wrote, at the version that TaflaVersion names, as nuget.config describes. It's
+         outside Tafla.slnx, and imports the SDK itself, so that csharp/'s Directory.Build.props
+         and Directory.Packages.props, which the runtime builds with, don't apply to it. -->
+    <PropertyGroup>
+        <ImportDirectoryBuildProps>false</ImportDirectoryBuildProps>
+        <ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets>
+        <ImportDirectoryPackagesProps>false</ImportDirectoryPackagesProps>
+        <!-- Before the SDK, which reads it there -->
+        <ArtifactsPath>$(MSBuildThisFileDirectory)../../artifacts/package-test</ArtifactsPath>
+    </PropertyGroup>
+
+    <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net10.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+
+        <!-- Native AOT, for dotnet publish, which trims the package and compiles it ahead of time,
+             and whose analysis of it fails on any warning, each reported on its own -->
+        <PublishAot>true</PublishAot>
+        <TrimmerSingleWarn>false</TrimmerSingleWarn>
+        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Tafla" Version="$(TaflaVersion)" />
+    </ItemGroup>
+
+    <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+</Project>

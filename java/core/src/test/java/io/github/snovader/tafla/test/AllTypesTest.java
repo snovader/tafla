@@ -1,6 +1,6 @@
 package io.github.snovader.tafla.test;
 
-import io.github.snovader.tafla.ByteBuffer;
+import io.github.snovader.tafla.TableReader;
 import io.github.snovader.tafla.DecodeException;
 import io.github.snovader.tafla.test.generated.all_types.*;
 import net.jqwik.api.*;
@@ -87,9 +87,29 @@ public class AllTypesTest {
         @ForAll @IntRange(min = 2, max = 0xff) int value
     ) {
         var bytes = Scalars.serialize(withBool(fields, false));
-        bytes[new ByteBuffer(bytes).rootOffset(10)] = (byte) value;
+        bytes[new TableReader(bytes).rootOffset(10)] = (byte) value;
 
         assertEquals(describeScalars(withBool(fields, true)), describeScalars(readScalars(new Scalars(bytes))));
+    }
+
+    @Property
+    void an_array_of_bools_reads_any_byte_but_0_as_true_and_views_its_bytes_as_they_are(
+        @ForAll("arrays") Arrays.Fields fields,
+        @ForAll @IntRange(min = 2, max = 0xff) int value
+    ) {
+        // The bytes of the true bools, which are written as 1, overwritten with another
+        var bools = fields.bool();
+        var elements = new byte[bools.length];
+        for (int i = 0; i < bools.length; i++) {
+            elements[i] = (byte) (bools[i] ? value : 0);
+        }
+
+        var bytes = Arrays.serialize(fields);
+        System.arraycopy(elements, 0, bytes, new TableReader(bytes).rootOffset(10) + Integer.BYTES, elements.length);
+        var arrays = new Arrays(bytes);
+
+        assertEquals(describeArrays(fields), describeArrays(readArrays(arrays)));
+        assertEquals(java.nio.ByteBuffer.wrap(elements), arrays.boolView());
     }
 
     // Tables built by hand
@@ -460,7 +480,7 @@ public class AllTypesTest {
         // view holds as tafla's read-only, little-endian buffer
         var parts = List.of(before, packed.serialize(), documented.serialize(), segment.serialize(), point.serialize());
         var bytes = concatenated(parts);
-        var view = new ByteBuffer(bytes).getStruct(0, bytes.length);
+        var view = new TableReader(bytes).getStruct(0, bytes.length);
 
         var offset = before.length;
         assertEquals(describePacked(packed), describePacked(Packed.read(bytes, offset)));

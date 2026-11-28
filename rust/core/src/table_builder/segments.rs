@@ -15,6 +15,8 @@ const FIRST_SEGMENTS: usize = 4;
 /// of a string, a struct, an array of structs or a nested table
 #[derive(Debug)]
 pub enum Run<'a> {
+    /// Bools, which are written as bytes of 1 and 0
+    Bool(Cow<'a, [bool]>),
     I8(Cow<'a, [i8]>),
     U8(Cow<'a, [u8]>),
     I16(Cow<'a, [i16]>),
@@ -28,9 +30,16 @@ pub enum Run<'a> {
 }
 
 /// Evaluates `$expression` with `$values` bound to the elements of `$run`,
-/// whatever their type, and `$variant` to the run's constructor
+/// whatever their type, and `$variant` to the run's constructor, or
+/// `$bool_expression` with `$bools` bound to a run of bools, which aren't an
+/// `Element`
 macro_rules! with_run {
-    ($run:expr, $variant:ident, $values:ident => $expression:expr) => {
+    (
+        $run:expr,
+        $variant:ident,
+        $values:ident => $expression:expr,
+        $bools:ident => $bool_expression:expr $(,)?
+    ) => {
         match $run {
             Run::I8($values) => {
                 let $variant = Run::I8;
@@ -72,6 +81,7 @@ macro_rules! with_run {
                 let $variant = Run::F64;
                 $expression
             }
+            Run::Bool($bools) => $bool_expression,
         }
     };
 }
@@ -81,13 +91,23 @@ impl Run<'_> {
     pub fn copy_into(&self, to: &mut Vec<u8>) {
         match self {
             Self::U8(bytes) => to.extend_from_slice(bytes),
-            run => with_run!(run, _variant, values => extend_elements(values, to)),
+            run => with_run!(
+                run,
+                _variant,
+                values => extend_elements(values, to),
+                bools => to.extend(bools.iter().map(|&value| u8::from(value))),
+            ),
         }
     }
 
     /// The run, borrowing what it owns
     pub fn reborrow(&self) -> Run<'_> {
-        with_run!(self, variant, values => variant(Cow::Borrowed(values.as_ref())))
+        with_run!(
+            self,
+            variant,
+            values => variant(Cow::Borrowed(values.as_ref())),
+            bools => Run::Bool(Cow::Borrowed(bools.as_ref())),
+        )
     }
 }
 

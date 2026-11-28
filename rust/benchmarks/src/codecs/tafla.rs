@@ -1,18 +1,20 @@
 use std::borrow::Cow;
 
 use tafla::{
-    Alignment, BuildError, ByteBuffer, DecodeError, InPlaceTable, TableBuilder, TableLayout,
+    Alignment, BuildError, DecodeError, InPlaceTable, TableBuilder, TableLayout, TableReader,
 };
 
 use crate::codec::{Codec, DocumentWorkload, Error, Workload};
 use crate::item_access::{ItemAccess, no_items, sum_item};
+use crate::string_workloads::{COUNT, Strings, StringsShape};
 use crate::workloads::{
     Document, DocumentShape, Item, List, ListShape, Record, RecordShape, Sample, SampleShape,
     StructsShape, sum_column,
 };
 
-const DOCUMENT_LAYOUT: TableLayout<true> = TableLayout::DEFAULT.sized().versioned();
 const DOCUMENT_VERSION: u32 = 1;
+const DOCUMENT_LAYOUT: TableLayout<true> =
+    TableLayout::DEFAULT.sized().with_version(DOCUMENT_VERSION);
 
 const SAMPLE_SIZE: usize = 12;
 
@@ -28,9 +30,13 @@ const ITEM_ALIGNMENT: Alignment = Alignment::Four;
 ///
 /// The runtime writes tables, and leaves fixed-size records to the standard
 /// library, as its README says. The fixed-size record is written with
-/// `to_le_bytes()` and read with `ByteBuffer`'s getters, and an array of
+/// `to_le_bytes()` and read with `TableReader`'s getters, and an array of
 /// structs with `to_le_bytes()` and `from_le_bytes()`, as tafla-gen's code
 /// writes and reads an array of them.
+///
+/// The strings comparison's table is a table of 16 string fields, which it
+/// times, rather than a vector of strings. Their `get_str()` checks each
+/// string's UTF-8.
 #[derive(Clone, Copy, Debug)]
 pub struct Tafla;
 
@@ -52,13 +58,13 @@ impl Workload<RecordShape> for Tafla {
     }
 
     fn deserialize(self, bytes: &[u8]) -> Result<Record<'_>, Error> {
-        let buffer = ByteBuffer::new(bytes, TableLayout::DEFAULT);
+        let reader = TableReader::new(bytes, TableLayout::DEFAULT);
 
         Ok(Record {
-            x: buffer.get_f64(buffer.root_offset(0)?)?,
-            y: buffer.get_f64(buffer.root_offset(1)?)?,
-            id: buffer.get_i64(buffer.root_offset(2)?)?,
-            name: Cow::Borrowed(buffer.get_str(buffer.root_offset(3)?)?),
+            x: reader.get_f64(reader.root_offset(0)?)?,
+            y: reader.get_f64(reader.root_offset(1)?)?,
+            id: reader.get_i64(reader.root_offset(2)?)?,
+            name: Cow::Borrowed(reader.get_str(reader.root_offset(3)?)?),
         })
     }
 }
@@ -67,7 +73,7 @@ impl Workload<DocumentShape> for Tafla {
     type Bytes = Vec<u8>;
 
     fn serialize(self, input: &Document<'_>) -> Result<Vec<u8>, Error> {
-        let mut document = TableBuilder::versioned(4, DOCUMENT_LAYOUT, DOCUMENT_VERSION)?;
+        let mut document = TableBuilder::new(4, DOCUMENT_LAYOUT)?;
         document.set_f64(input.x)?;
         document.set_f64(input.y)?;
         document.set_str(input.name.as_ref())?;
@@ -82,22 +88,22 @@ impl Workload<DocumentShape> for Tafla {
     }
 
     fn deserialize(self, bytes: &[u8]) -> Result<Document<'_>, Error> {
-        let buffer = open_document(bytes)?;
-        let columns = buffer.root_offset(3)?;
+        let reader = open_document(bytes)?;
+        let columns = reader.root_offset(3)?;
 
         Ok(Document {
-            x: buffer.get_f64(buffer.root_offset(0)?)?,
-            y: buffer.get_f64(buffer.root_offset(1)?)?,
-            name: Cow::Borrowed(buffer.get_str(buffer.root_offset(2)?)?),
-            base: buffer.get_i64(buffer.field_offset(columns, 0)?)?,
-            keys: buffer
-                .get_u32_array(buffer.field_offset(columns, 1)?)?
+            x: reader.get_f64(reader.root_offset(0)?)?,
+            y: reader.get_f64(reader.root_offset(1)?)?,
+            name: Cow::Borrowed(reader.get_str(reader.root_offset(2)?)?),
+            base: reader.get_i64(reader.field_offset(columns, 0)?)?,
+            keys: reader
+                .get_u32_array(reader.field_offset(columns, 1)?)?
                 .to_cow(),
-            a: buffer
-                .get_f32_array(buffer.field_offset(columns, 2)?)?
+            a: reader
+                .get_f32_array(reader.field_offset(columns, 2)?)?
                 .to_cow(),
-            b: buffer
-                .get_f32_array(buffer.field_offset(columns, 3)?)?
+            b: reader
+                .get_f32_array(reader.field_offset(columns, 3)?)?
                 .to_cow(),
         })
     }
@@ -105,8 +111,8 @@ impl Workload<DocumentShape> for Tafla {
 
 impl DocumentWorkload for Tafla {
     fn sum_a(self, bytes: &[u8]) -> Result<f64, Error> {
-        let buffer = open_document(bytes)?;
-        let a = buffer.get_f32_array(buffer.field_offset(buffer.root_offset(3)?, 2)?)?;
+        let reader = open_document(bytes)?;
+        let a = reader.get_f32_array(reader.field_offset(reader.root_offset(3)?, 2)?)?;
 
         Ok(sum_column(a.iter()))
     }
@@ -125,8 +131,8 @@ impl Workload<ListShape> for Tafla {
     }
 
     fn deserialize(self, bytes: &[u8]) -> Result<List, Error> {
-        let buffer = ByteBuffer::new(bytes, TableLayout::DEFAULT);
-        let vector = buffer.get_vector(buffer.root_offset(0)?)?;
+        let reader = TableReader::new(bytes, TableLayout::DEFAULT);
+        let vector = reader.get_vector(reader.root_offset(0)?)?;
 
         let mut items = Vec::with_capacity(vector.len());
         for item in vector.iter_in_place() {
@@ -156,8 +162,8 @@ impl Workload<StructsShape> for Tafla {
     }
 
     fn deserialize(self, bytes: &[u8]) -> Result<List, Error> {
-        let buffer = ByteBuffer::new(bytes, TableLayout::DEFAULT);
-        let structs = buffer.get_struct_array(buffer.root_offset(0)?, ITEM_SIZE)?;
+        let reader = TableReader::new(bytes, TableLayout::DEFAULT);
+        let structs = reader.get_struct_array(reader.root_offset(0)?, ITEM_SIZE)?;
         let (structs, _) = structs.as_chunks::<ITEM_SIZE>();
 
         let items = structs.iter().map(read_item_struct).collect();
@@ -179,23 +185,47 @@ impl Workload<SampleShape> for Tafla {
     }
 
     fn deserialize(self, bytes: &[u8]) -> Result<Sample, Error> {
-        let buffer = ByteBuffer::new(bytes, TableLayout::DEFAULT);
+        let reader = TableReader::new(bytes, TableLayout::DEFAULT);
 
         Ok(Sample {
-            key: buffer.get_u32(0)?,
-            a: buffer.get_f32(4)?,
-            b: buffer.get_f32(8)?,
+            key: reader.get_u32(0)?,
+            a: reader.get_f32(4)?,
+            b: reader.get_f32(8)?,
         })
     }
 }
 
-/// `ByteBuffer`'s getters by hand, as the codec reads the list
+impl Workload<StringsShape> for Tafla {
+    type Bytes = Vec<u8>;
+
+    fn serialize(self, input: &Strings<'_>) -> Result<Vec<u8>, Error> {
+        let mut builder = TableBuilder::new(COUNT, TableLayout::DEFAULT)?;
+        for string in &input.items {
+            builder.set_str(string.as_ref())?;
+        }
+
+        Ok(builder.to_bytes()?)
+    }
+
+    fn deserialize(self, bytes: &[u8]) -> Result<Strings<'_>, Error> {
+        let reader = TableReader::new(bytes, TableLayout::DEFAULT);
+
+        let mut items = [const { Cow::Borrowed("") }; COUNT];
+        for (index, item) in items.iter_mut().enumerate() {
+            *item = Cow::Borrowed(reader.get_str(reader.root_offset(index)?)?);
+        }
+
+        Ok(Strings { items })
+    }
+}
+
+/// `TableReader`'s getters by hand, as the codec reads the list
 impl ItemAccess for Tafla {
     const NAME: &'static str = "tafla";
 
     fn last_table(self, bytes: &[u8]) -> Result<f64, Error> {
-        let buffer = ByteBuffer::new(bytes, TableLayout::DEFAULT);
-        let vector = buffer.get_vector(buffer.root_offset(0)?)?;
+        let reader = TableReader::new(bytes, TableLayout::DEFAULT);
+        let vector = reader.get_vector(reader.root_offset(0)?)?;
         let last = vector.len().checked_sub(1).ok_or_else(no_items)?;
         let item = vector.get_in_place(last).ok_or_else(no_items)??;
 
@@ -203,8 +233,8 @@ impl ItemAccess for Tafla {
     }
 
     fn every_table(self, bytes: &[u8]) -> Result<f64, Error> {
-        let buffer = ByteBuffer::new(bytes, TableLayout::DEFAULT);
-        let vector = buffer.get_vector(buffer.root_offset(0)?)?;
+        let reader = TableReader::new(bytes, TableLayout::DEFAULT);
+        let vector = reader.get_vector(reader.root_offset(0)?)?;
 
         let mut sum = 0.0;
         for item in vector.iter_in_place() {
@@ -215,16 +245,16 @@ impl ItemAccess for Tafla {
     }
 
     fn last_struct(self, bytes: &[u8]) -> Result<f64, Error> {
-        let buffer = ByteBuffer::new(bytes, TableLayout::DEFAULT);
-        let structs = buffer.get_struct_array(buffer.root_offset(0)?, ITEM_SIZE)?;
+        let reader = TableReader::new(bytes, TableLayout::DEFAULT);
+        let structs = reader.get_struct_array(reader.root_offset(0)?, ITEM_SIZE)?;
         let (structs, _) = structs.as_chunks::<ITEM_SIZE>();
 
         Ok(sum_struct(structs.last().ok_or_else(no_items)?))
     }
 
     fn every_struct(self, bytes: &[u8]) -> Result<f64, Error> {
-        let buffer = ByteBuffer::new(bytes, TableLayout::DEFAULT);
-        let structs = buffer.get_struct_array(buffer.root_offset(0)?, ITEM_SIZE)?;
+        let reader = TableReader::new(bytes, TableLayout::DEFAULT);
+        let structs = reader.get_struct_array(reader.root_offset(0)?, ITEM_SIZE)?;
         let (structs, _) = structs.as_chunks::<ITEM_SIZE>();
 
         Ok(structs
@@ -235,10 +265,10 @@ impl ItemAccess for Tafla {
 }
 
 /// Reads a document's header, which must carry the version it's written in
-fn open_document(bytes: &[u8]) -> Result<ByteBuffer<'_, true>, DecodeError> {
-    let buffer = ByteBuffer::new(bytes, DOCUMENT_LAYOUT);
+fn open_document(bytes: &[u8]) -> Result<TableReader<'_, true>, DecodeError> {
+    let reader = TableReader::new(bytes, DOCUMENT_LAYOUT);
 
-    let version = buffer.version()?;
+    let version = reader.version()?;
     if version != DOCUMENT_VERSION {
         return Err(DecodeError::UnsupportedVersion {
             version,
@@ -246,7 +276,7 @@ fn open_document(bytes: &[u8]) -> Result<ByteBuffer<'_, true>, DecodeError> {
         });
     }
 
-    Ok(buffer)
+    Ok(reader)
 }
 
 fn set_item(table: &mut InPlaceTable<'_, '_>, item: &Item) -> Result<(), BuildError> {
@@ -260,7 +290,7 @@ fn set_item(table: &mut InPlaceTable<'_, '_>, item: &Item) -> Result<(), BuildEr
 /// Reads an item of the vector in place, a table without a header, whose
 /// fields `root_offset()` finds from its start
 fn read_item(bytes: &[u8]) -> Result<Item, DecodeError> {
-    let item = ByteBuffer::new(bytes, TableLayout::DEFAULT);
+    let item = TableReader::new(bytes, TableLayout::DEFAULT);
     let pair = item.root_offset(1)?;
 
     Ok(Item {
@@ -272,7 +302,7 @@ fn read_item(bytes: &[u8]) -> Result<Item, DecodeError> {
 
 /// Sums an item of the vector, as [`read_item()`] reads it
 fn sum_table(bytes: &[u8]) -> Result<f64, DecodeError> {
-    let item = ByteBuffer::new(bytes, TableLayout::DEFAULT);
+    let item = TableReader::new(bytes, TableLayout::DEFAULT);
     let pair = item.root_offset(1)?;
 
     Ok(sum_item(

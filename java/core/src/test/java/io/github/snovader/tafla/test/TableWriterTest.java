@@ -106,7 +106,7 @@ public class TableWriterTest {
 
         var bytes = Tables.write(table);
         assertArrayEquals(Tables.build(table).bytes(), bytes);
-        assertEquals(table, TableReader.strict(bytes, layout).readTable(table));
+        assertEquals(table, DescriptionReader.strict(bytes, layout).readTable(table));
     }
 
     @Property
@@ -145,6 +145,29 @@ public class TableWriterTest {
 
         assertArrayEquals(expected, Tables.write(table), string::toString);
         assertArrayEquals(expected, Tables.build(table).bytes(), string::toString);
+    }
+
+    @Property
+    void the_strings_of_a_vector_are_written_as_the_JDKs_encoder_encodes_them_with_each_lone_surrogate_as_U_FFFD(
+        @ForAll @Size(max = 4) List<@From("utf16Strings") String> strings
+    ) throws CharacterCodingException {
+        var table = new TableDescription(
+            LayoutDescription.headerless(OffsetType.UINT32),
+            OptionalLong.empty(),
+            List.of(new StringVectorField(strings))
+        );
+
+        // A vector whose items are the strings' bytes
+        var items = new byte[strings.size()][];
+        for (int i = 0; i < items.length; i++) {
+            items[i] = utf8(strings.get(i));
+        }
+        var builder = new TableBuilder(1);
+        builder.setVector(items);
+        var expected = builder.bytes();
+
+        assertArrayEquals(expected, Tables.write(table), strings::toString);
+        assertArrayEquals(expected, Tables.build(table).bytes(), strings::toString);
     }
 
     /**
@@ -295,16 +318,10 @@ public class TableWriterTest {
     }
 
     @Example
-    void versions_and_field_counts_are_checked_as_TableBuilder_checks_them() {
-        var versioned = TableLayout.builder().versioned(true).offsetType(OffsetType.UINT8).build();
+    void field_counts_are_checked_as_TableBuilder_checks_them() {
+        var versioned = TableLayout.builder().version(255).offsetType(OffsetType.UINT8).build();
 
-        assertRejectedAlike(
-            () -> new TableBuilder(0, TableLayout.DEFAULT, 1),
-            () -> new TableSizer(0, TableLayout.DEFAULT, 1)
-        );
-        assertRejectedAlike(() -> new TableBuilder(0, versioned), () -> new TableSizer(0, versioned));
-        assertRejectedAlike(() -> new TableBuilder(0, versioned, 256), () -> new TableSizer(0, versioned, 256));
-        assertRejectedAlike(() -> new TableBuilder(0, versioned, -1), () -> new TableSizer(0, versioned, -1));
+        assertRejectedAlike(() -> new TableBuilder(255, versioned), () -> new TableSizer(255, versioned));
         assertRejectedAlike(() -> new TableBuilder(-1), () -> new TableSizer(-1));
     }
 
@@ -485,6 +502,10 @@ public class TableWriterTest {
         assertConverted(TableSizer::addFloat32, writer -> writer.setFloat32(0, (float) 1e300),
             builder -> builder.setFloat32((float) 1e300), 0, 0, 0x80, 0x7f);
 
+        // A bool of an array of bools is written as 1 or 0
+        assertConverted(sizer -> sizer.addBoolArray(3), writer -> writer.setBoolArray(0, new boolean[] {true, false, true}),
+            builder -> builder.setBoolArray(new boolean[] {true, false, true}), 3, 0, 0, 0, 1, 0, 1);
+
         // A lone surrogate is written as U+FFFD
         assertConverted(sizer -> sizer.addString("\ud800"), writer -> writer.setString(0, "\ud800"),
             builder -> builder.setString("\ud800"), 3, 0, 0, 0, 0xef, 0xbf, 0xbd);
@@ -538,10 +559,10 @@ public class TableWriterTest {
                 type.put(expected, value);
             }
 
-            var buffer = new ByteBuffer(bytes, layout);
-            var elements = buffer.rootOffset(0) + offsetType.size();
+            var reader = new TableReader(bytes, layout);
+            var elements = reader.rootOffset(0) + offsetType.size();
             assertArrayEquals(expected.array(), Arrays.copyOfRange(bytes, elements, elements + expected.capacity()));
-            assertEquals(0x12345678, buffer.getInt32(buffer.rootOffset(1)));
+            assertEquals(0x12345678, reader.getInt32(reader.rootOffset(1)));
         }
     }
 

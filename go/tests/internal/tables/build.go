@@ -7,12 +7,7 @@ import (
 // Builder starts a builder of the table's layout, version and number of
 // fields, with no field set.
 func (t Table) Builder() (*tafla.TableBuilder, error) {
-	layout := t.Layout.TableLayout()
-	if t.Layout.Versioned {
-		return tafla.NewVersionedTableBuilder(len(t.Fields), layout, t.Version)
-	}
-
-	return tafla.NewTableBuilder(len(t.Fields), layout)
+	return tafla.NewTableBuilder(len(t.Fields), t.TableLayout())
 }
 
 // Build builds the table, which keeps its values.
@@ -91,7 +86,9 @@ type Target interface {
 	SetUint64Array(values []uint64) error
 	SetFloat32Array(values []float32) error
 	SetFloat64Array(values []float64) error
+	SetBoolArray(values []bool) error
 	SetString(value string) error
+	SetStringVector(values []string) error
 	SetStruct(bytes []byte) error
 	SetStructArray(bytes []byte, size int, alignment tafla.Alignment) error
 	SetTable(table tafla.NestedTable) error
@@ -158,8 +155,12 @@ func set(target Target, field Field, inPlace func(Nested) bool) error {
 		return target.SetFloat32Array(value)
 	case Float64Array:
 		return target.SetFloat64Array(value)
+	case BoolArray:
+		return target.SetBoolArray(value)
 	case String:
 		return target.SetString(string(value))
+	case StringVector:
+		return target.SetStringVector(value)
 	case Struct:
 		return target.SetStruct(StructBytes(value))
 	case StructArray:

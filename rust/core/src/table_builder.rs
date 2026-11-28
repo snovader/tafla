@@ -39,15 +39,15 @@ const MOST_ROOM_FOR_ITEMS: usize = 64 * 1024;
 /// alignment, when it's kept as a segment
 static PADDING: [u8; 7] = [0; 7];
 
-/// Builds a table, which a `ByteBuffer` reads back.
+/// Builds a table, which a `TableReader` reads back.
 ///
 /// A table is a header with one offset per field, after the table's total
 /// length and version when its layout has them, followed by the fields in
 /// the order they're set. Arrays, strings and vectors start with their
 /// count, and a vector then holds the end of each item. Arrays of scalars
 /// and of structs are padded so their elements are aligned from the start of
-/// the table. Fields are read back by index with `ByteBuffer::root_offset()`,
-/// or `ByteBuffer::field_offset()` for a table nested in another.
+/// the table. Fields are read back by index with `TableReader::root_offset()`,
+/// or `TableReader::field_offset()` for a table nested in another.
 ///
 /// Each field is written when it's set, after the fields set before it, and
 /// its offset with it. A vector writes its count and its items' ends, each
@@ -154,38 +154,23 @@ macro_rules! array_setters {
 
 impl<'a> TableBuilder<'a> {
     /// Starts a table of `fields` fields in `layout`, which its readers must
-    /// use too. Nested tables use [`TableLayout::DEFAULT`].
+    /// use too, with the layout's version in its header when it has one.
+    /// Nested tables use [`TableLayout::DEFAULT`].
     ///
     /// # Errors
     ///
-    /// [`BuildError::HeaderTooLong`] if the header alone is too long for the
-    /// layout's offset type.
+    /// [`BuildError::VersionTooLarge`] if the layout's version doesn't fit
+    /// in its offset type, or [`BuildError::HeaderTooLong`] if the header
+    /// alone is too long for it.
     #[inline]
-    pub fn new(fields: usize, layout: TableLayout) -> Result<Self, BuildError> {
-        let header = layout.header_length(fields)?;
-
-        Ok(Self::create(fields, header, layout, None))
-    }
-
-    /// Starts a table of `fields` fields in `layout`, with `version` in its
-    /// header. Readers can check it with `ByteBuffer::version()` before
-    /// reading any field.
-    ///
-    /// # Errors
-    ///
-    /// [`BuildError::VersionTooLarge`] if `version` doesn't fit in the
-    /// layout's offset type, or [`BuildError::HeaderTooLong`] if the header
-    /// alone is too long for the layout's offset type.
-    #[inline]
-    pub fn versioned(
+    pub fn new<const VERSIONED: bool>(
         fields: usize,
-        layout: TableLayout<true>,
-        version: u32,
+        layout: TableLayout<VERSIONED>,
     ) -> Result<Self, BuildError> {
-        layout.check_version(version)?;
+        layout.check_version()?;
         let header = layout.header_length(fields)?;
 
-        Ok(Self::create(fields, header, layout, Some(version)))
+        Ok(Self::create(fields, header, layout))
     }
 
     /// A builder of a table of `fields` fields, whose header of `header`
@@ -198,10 +183,10 @@ impl<'a> TableBuilder<'a> {
         fields: usize,
         header: u32,
         layout: TableLayout<VERSIONED>,
-        version: Option<u32>,
     ) -> Self {
         let offset_type = layout.offset_type();
         let sized = layout.is_sized();
+        let version = layout.header_version();
 
         let mut bytes = Bytes::for_table(header as usize, fields);
         if sized {
@@ -272,6 +257,34 @@ impl<'a> TableBuilder<'a> {
         set_f32_array(f32) => F32, set_f64_array(f64) => F64
     );
 
+    /// Sets an array field of bools, written as a `u8` array of 1 for each
+    /// true value and 0 for each false one, from a slice that the builder
+    /// borrows or a `Vec` that it owns until the table is written
+    ///
+    /// # Errors
+    ///
+    /// [`BuildError::TooManyFields`] if the table holds all its fields
+    /// already, or [`BuildError::TooLong`] if the field would make it too
+    /// long for its offset type.
+    #[inline]
+    pub fn set_bool_array(&mut self, values: impl Into<Cow<'a, [bool]>>) -> Result<(), BuildError> {
+        let values = values.into();
+        let width = self.width();
+        let length = values.len();
+        self.check_field(padded_length(0, width, length))?;
+
+        self.write_offset(self.position());
+        self.push_slot(length);
+        if length >= SEGMENT_BYTES {
+            self.push_segment(Run::Bool(values), length);
+        } else {
+            self.bytes.push_bools(&values);
+        }
+        self.current.set += 1;
+
+        Ok(())
+    }
+
     /// Sets a string field, from a `&str` that the builder borrows or a
     /// `String` that it owns until the table is written
     ///
@@ -289,6 +302,51 @@ impl<'a> TableBuilder<'a> {
         self.write_offset(self.position());
         self.push_slot(length);
         self.push_bytes(str_bytes(string));
+        self.current.set += 1;
+
+        Ok(())
+    }
+
+    /// Sets a vector of strings, from a slice of them that the builder
+    /// borrows or a `Vec` that it owns until the table is written. The
+    /// strings follow the end of each, which lets readers find any string
+    /// without reading the others, and take no more bytes each than their
+    /// end, where a vector of tables of one string takes each table's offset
+    /// and the string's length too.
+    ///
+    /// # Errors
+    ///
+    /// [`BuildError::TooManyFields`] if the table holds all its fields
+    /// already, or [`BuildError::TooLong`] if the field would make it too
+    /// long for its offset type.
+    pub fn set_str_vector(
+        &mut self,
+        strings: impl Into<Cow<'a, [&'a str]>>,
+    ) -> Result<(), BuildError> {
+        let strings = strings.into();
+        let width = self.width() as u64;
+        // The count, and an end for each string beside its bytes, saturating
+        // far past the longest table
+        let byte_length = strings.iter().fold(width, |length, string| {
+            length.saturating_add(width + string.len() as u64)
+        });
+        self.check_field(byte_length)?;
+
+        // Each end counts from the vector's position, which is its count's,
+        // and is known from the strings' lengths, so the ends are written
+        // before the strings
+        self.write_offset(self.position());
+        self.push_slot(strings.len());
+        let mut end = (strings.len() + 1) * self.width();
+        for string in strings.iter() {
+            end += string.len();
+            self.push_slot(end);
+        }
+        // The strings are borrowed for the builder's lifetime, whether the
+        // slice of them is borrowed or owned
+        for &string in strings.iter() {
+            self.push_bytes(Cow::Borrowed(string.as_bytes()));
+        }
         self.current.set += 1;
 
         Ok(())
@@ -351,7 +409,7 @@ impl<'a> TableBuilder<'a> {
     }
 
     /// Embeds a table, from its builder or its bytes, without a length prefix.
-    /// Readers find its fields with `ByteBuffer::field_offset()` from the
+    /// Readers find its fields with `TableReader::field_offset()` from the
     /// field's position, which reads offsets of the parent's offset type, so
     /// the table should have no header and the parent's offset type: that's
     /// [`TableLayout::DEFAULT`] in a parent of `uint32` offsets.
@@ -520,10 +578,11 @@ impl<'a> TableBuilder<'a> {
     ///
     /// [`BuildError::TooManyFields`] if this table holds all its fields
     /// already, or [`BuildError::TooLong`] if the vector's count and its
-    /// items' ends make it too long, before any item is written, and
-    /// otherwise the errors of [`TableBuilder::set_table_with()`] for each
-    /// item, or [`BuildError::TooLong`] if the items make the table too long.
-    /// Each leaves the builder as it was, as a panic in `fill` does.
+    /// items' ends make it too long, before any item is written, with the
+    /// length that they make it, and otherwise the errors of
+    /// [`TableBuilder::set_table_with()`] for each item, or
+    /// [`BuildError::TooLong`] if the items make the table too long. Each
+    /// leaves the builder as it was, as a panic in `fill` does.
     #[allow(clippy::cast_possible_truncation)]
     #[inline]
     pub fn set_vector_with<E, F>(
@@ -1010,11 +1069,13 @@ impl<'a> InPlaceTable<'_, 'a> {
         set_u64_array(values: impl Into<Cow<'a, [u64]>>),
         set_f32_array(values: impl Into<Cow<'a, [f32]>>),
         set_f64_array(values: impl Into<Cow<'a, [f64]>>),
+        set_bool_array(values: impl Into<Cow<'a, [bool]>>),
         set_str(string: impl Into<Cow<'a, str>>),
         set_struct(bytes: impl Into<Cow<'a, [u8]>>),
         set_struct_array(bytes: impl Into<Cow<'a, [u8]>>, size: usize, alignment: Alignment),
         set_table(table: impl Into<NestedTable<'a>>),
         set_table_aligned(table: impl Into<NestedTable<'a>>, alignment: Alignment),
+        set_str_vector(strings: impl Into<Cow<'a, [&'a str]>>),
     );
 
     /// Sets a vector field as [`TableBuilder::set_vector()`] does

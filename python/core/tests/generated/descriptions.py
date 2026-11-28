@@ -43,6 +43,11 @@ def typed_array(kind: str, values: Buffer | Iterable[float]) -> Description:
     return {"type": f"{kind}[]", "value": [to_json(kind, value) for value in elements]}
 
 
+def bool_array(values: Iterable[bool]) -> Description:
+    """An array of bools, which tables hold as a uint8 array of 1 and 0"""
+    return {"type": "bool[]", "value": list(values)}
+
+
 def string(value: str) -> Description:
     return {"type": "string", "value": value}
 

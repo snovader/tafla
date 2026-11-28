@@ -117,6 +117,14 @@ impl Bytes {
         extend_elements(values, &mut self.vec);
     }
 
+    /// Appends bools, as bytes of 1 and 0
+    #[inline(always)]
+    pub fn push_bools(&mut self, values: &[bool]) {
+        self.reserve(values.len());
+        // Converted with `u8::from()`, as `TableWriter` converts them
+        self.vec.extend(values.iter().map(|&value| u8::from(value)));
+    }
+
     /// Removes the bytes past the first `len`
     #[inline(always)]
     pub fn truncate(&mut self, len: usize) {

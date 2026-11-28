@@ -1,5 +1,0 @@
-error: arrays of strings aren't supported
- --> array_of_strings.tafla:2:13
-  |
-2 |     names: [string];
-  |             ^^^^^^

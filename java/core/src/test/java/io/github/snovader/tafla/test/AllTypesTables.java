@@ -70,7 +70,8 @@ final class AllTypesTables {
             arrays.int64(),
             arrays.uint64(),
             arrays.float32(),
-            arrays.float64()
+            arrays.float64(),
+            arrays.bool()
         );
     }
 
@@ -167,7 +168,7 @@ final class AllTypesTables {
 
     /**
      * Reads every array through its view, element by element, with unsigned elements widened from
-     * their bits as the getters widen them
+     * their bits as the getters widen them, and each byte of the bools true where it isn't 0
      */
     static Arrays.Fields readArraysViews(Arrays arrays) {
         var int8 = arrays.int8View();
@@ -230,7 +231,25 @@ final class AllTypesTables {
             float64s[i] = float64.get(i);
         }
 
-        return new Arrays.Fields(int8s, uint8s, int16s, uint16s, int32s, uint32s, int64s, uint64s, float32s, float64s);
+        var bool = arrays.boolView();
+        var bools = new boolean[bool.remaining()];
+        for (int i = 0; i < bools.length; i++) {
+            bools[i] = bool.get(i) != 0;
+        }
+
+        return new Arrays.Fields(
+            int8s,
+            uint8s,
+            int16s,
+            uint16s,
+            int32s,
+            uint32s,
+            int64s,
+            uint64s,
+            float32s,
+            float64s,
+            bools
+        );
     }
 
     private static Keywords.Fields readKeywords(Keywords keywords) {
@@ -275,7 +294,8 @@ final class AllTypesTables {
             int64Array(arrays.int64()),
             uint64Array(arrays.uint64()),
             float32Array(arrays.float32()),
-            float64Array(arrays.float64())
+            float64Array(arrays.float64()),
+            boolArray(arrays.bool())
         );
     }
 
@@ -414,8 +434,8 @@ final class AllTypesTables {
             uint64Arrays()
         ).as(Tuple::of);
 
-        return Combinators.combine(integers, float32Arrays(), float64Arrays()).as(
-            (ints, float32, float64) -> new Arrays.Fields(
+        return Combinators.combine(integers, float32Arrays(), float64Arrays(), boolArrays()).as(
+            (ints, float32, float64, bool) -> new Arrays.Fields(
                 ints.get1(),
                 ints.get2(),
                 ints.get3(),
@@ -425,7 +445,8 @@ final class AllTypesTables {
                 ints.get7(),
                 ints.get8(),
                 float32,
-                float64
+                float64,
+                bool
             )
         );
     }

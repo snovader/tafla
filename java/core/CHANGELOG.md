@@ -20,15 +20,15 @@ repository's first commits, for code built from its source before the release.
   tables of scalars, strings, typed arrays, nested tables, vectors of tables,
   structs and arrays of structs, with a layout that sets the header and the
   offset type (`uint8`, `uint16` or `uint32`). `TableBuilder` and
-  `TableWriter` write tables, and `ByteBuffer` reads them.
+  `TableWriter` write tables, and `TableReader` reads them.
 - Bounds-checked reads, which fail on malformed input with
   `DecodeException`.
 - The runtime reads and rebuilds the golden tables of tafla's conformance
   suite byte for byte, as every implementation of the format does.
-- `ByteBuffer.getVectorItemOffset()`, which finds a vector item from the count
+- `TableReader.getVectorItemOffset()`, which finds a vector item from the count
   that `getVectorLength()` read, so that a reader of several items reads and
   checks the count once.
-- `ByteBuffer.getVectorItemsStart()`, where a vector's items start, and
+- `TableReader.getVectorItemsStart()`, where a vector's items start, and
   `getVectorItemEnd()`, which reads where a vector item ends after checking it
   against where it starts, so that a reader of the items in order carries each
   item's end to the next and reads one end for each item, as
@@ -50,17 +50,63 @@ repository's first commits, for code built from its source before the release.
   leave the builder as it was if the fill throws or leaves fields unset. The
   benchmarks' vector of 100 nested tables took 3.8 µs so, against 4.3 µs
   from a builder per item, and allocated 13.0 KB rather than 29.1 KB.
+- Arrays of bools, stored as `uint8` arrays of 1 and 0:
+  `TableBuilder.setBoolArray()`, `TableSizer.addBoolArray()`,
+  `TableWriter.setBoolArray()` and `TableReader.getBoolArray()`, which reads
+  a `boolean[]`, true where a byte isn't 0. `getUint8Array()` and
+  `getUint8ArrayView()` read the same bytes.
+- Vectors of strings, which the format now has: a count, the end of each
+  string and the strings' UTF-8, one after another.
+  `TableReader.getStringVector()` reads every string into a `String[]`, and
+  `getStringVectorItem()` reads one from its ends and the count that
+  `getVectorLength()` read, without reading the others. `StringVector`
+  views the strings as a random-access, unmodifiable `List`, whose `get()`
+  reads a string from its ends and whose iterator reads each string's end
+  once. Each string is decoded and checked as UTF-8 on its own, so an end
+  that splits a character fails the strings on both sides of it.
+  `TableSizer.addStringVector()`, `TableWriter.setStringVector()` and
+  `TableBuilder.setStringVector()` write them from a `List<String>`, with
+  lone surrogates replaced by U+FFFD, and encode the strings of 64 `char`s
+  or more once, as they do a string field. tafla-gen's `[string]` fields
+  read and write them.
 
 ### Changed
 
+- `TableBuilder` and `TableSizer` encode a string of 32 `char`s or more with
+  `String.getBytes` and copy it, rather than from 64, and write a shorter one
+  a `char` at a time, in place. In the benchmarks' strings suite on JDK 25, a
+  table of 16 strings of 63 ASCII `char`s took 0.27 µs to write with
+  `TableBuilder` rather than 0.65, and of 32 ASCII `char`s 0.23 rather than
+  0.42; strings of 63 `char`s whose last took 3 bytes took 0.81 µs rather than
+  1.15.
+- `TableSizer` and `TableBuilder` check a string of 32 `char`s or more for lone
+  surrogates in a loop that calls only `charAt()`. The code that tafla-gen
+  generates inlines the sizer once for each string field, and C2 stops
+  inlining once a method's graph is large, which could leave one field's loop
+  calling `length()` and `isSurrogate()` for every `char`. In the strings
+  suite on JDK 27, tafla-gen wrote 16 strings of 32 ASCII `char`s in 0.30 µs
+  rather than 0.42, of 63 in 0.33 rather than 0.56, and of 1,024 in 1.5 rather
+  than 5.3; such slow JVMs were 58 of 72 across its long rows, and none with
+  the change.
+- A layout holds its table's version, `TableLayout.builder().version(1)`,
+  rather than only whether the header has a slot for one, and the builder's
+  `versioned()` is gone. `TableBuilder` and `TableSizer` take the version
+  from the layout rather than as a constructor argument, so a version
+  missing from or given for a layout can no longer be written. A version
+  that doesn't fit the offset type throws from the layout's `build()` and
+  `withVersion()`, once, rather than from each builder. `withVersion()`
+  returns a layout for another version of the same format, and `version()`
+  the layout's own. Readers read tables of any version, as before.
 - The project is named tafla rather than buffy.
+- The class that reads a table is `TableReader` rather than `ByteBuffer`,
+  which shared its name with `java.nio.ByteBuffer`.
 - `TableBuilder` writes nested builders 5% faster: the benchmarks' vector of
   100 nested tables took 4.4 µs from a builder per item, against 4.6 µs.
 - A layout's offset width is its offset type, `uint8`, `uint16` or `uint32`,
   in the API and its errors.
-- `ByteBuffer` reads a vector item in place within its message, as the format
+- `TableReader` reads a vector item in place within its message, as the format
   now specifies, including an item whose offsets point past its end.
-- `ByteBuffer` reads scalars, offsets and counts from its bytes through
+- `TableReader` reads scalars, offsets and counts from its bytes through
   `VarHandle`s, rather than through a wrapped `java.nio.ByteBuffer`, with
   the same checks and `DecodeException`s. The benchmarks' hand-written read
   of the vector of 100 nested tables takes 0.48 µs rather than 0.54.
@@ -74,7 +120,7 @@ repository's first commits, for code built from its source before the release.
 
 ### Removed
 
-- `ByteBuffer` only reads tables, and its setters are removed, with
+- `TableReader` only reads tables, and its setters are removed, with
   `allocate()`. Tables are written with `TableBuilder`, or with `TableWriter`
   and `TableSizer`, and structs and other records at fixed offsets with the
   standard library's `VarHandle`s.

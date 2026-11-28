@@ -46,6 +46,18 @@ TAFLA_ALWAYS_INLINE constexpr std::uint64_t vector_bytes(std::uint64_t count, st
     return saturating_product(saturating_sum(count, 1), width);
 }
 
+/// The bytes of a vector of `strings`, of `std::string_view`s or
+/// `std::string`s: its count and the end of each string, of `width` bytes
+/// each, and the strings' bytes
+template <class Strings>
+TAFLA_ALWAYS_INLINE constexpr std::uint64_t string_vector_bytes(const Strings& strings, std::uint64_t width) noexcept {
+    auto length = vector_bytes(strings.size(), width);
+    for (const auto& string : strings) {
+        length = saturating_sum(length, string.size());
+    }
+    return length;
+}
+
 /// The byte length of the header of a table of `fields` fields in a layout:
 /// its slots and an offset per field, which `TableBuilder` and `TableSizer`
 /// start a table with.
