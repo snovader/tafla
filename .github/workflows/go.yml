@@ -277,5 +277,8 @@ jobs:
       - name: Run benchmarks briefly
         run: go run ./cmd/comparison -quick
 
+      - name: Run the lists of strings briefly
+        run: go run ./cmd/lists -quick
+
       - name: Print the encoded sizes
         run: go run ./cmd/encoding

@@ -222,6 +222,21 @@ public struct TableBuilder: Sendable {
         try add(.string(value, utf8Count: value.utf8.count))
     }
 
+    /// Sets a vector of strings, each as its UTF-8, which a `String` always
+    /// holds valid, after the end of each, which lets readers find any string
+    /// without reading the others. It takes no more bytes for each string
+    /// than the end of it, where a vector of tables of one string takes each
+    /// table's offset and the string's count too. Throws as ``setInt8(_:)``
+    /// does.
+    public mutating func setStringVector(_ strings: [String]) throws(BuildError) {
+        var utf8Count: UInt64 = 0
+        for string in strings {
+            utf8Count = saturating(utf8Count, plus: UInt64(string.utf8.count))
+        }
+
+        try add(.stringVector(strings, utf8Count: utf8Count))
+    }
+
     /// Sets a struct field from its bytes: its scalars, little-endian, one
     /// after another, which are written as they are, without padding. Throws
     /// as ``setInt8(_:)`` does.

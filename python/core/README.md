@@ -33,9 +33,9 @@ as `TableBuilder` does.
 [21.75, 18.5]
 ```
 
-The package's docstring, `help(tafla)`, has a longer example, with structs
-and a vector of tables recorded in place, and describes the format and how
-each value converts to its field's type. The tests run both examples as
+The package's docstring, `help(tafla)`, has a longer example, with structs,
+a vector of tables recorded in place and a vector of strings, and describes
+the format and how each value converts to its field's type. The tests run both examples as
 doctests.
 
 The classes that the code that tafla-gen generates calls are native, written

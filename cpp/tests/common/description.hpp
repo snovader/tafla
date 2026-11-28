@@ -10,6 +10,7 @@
 #include <optional>
 #include <ostream>
 #include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -104,6 +105,16 @@ struct VectorField {
     std::vector<Nested> items;
 };
 
+/// A vector of strings, each of UTF-8
+struct StringVectorField {
+    std::vector<std::string> strings;
+
+    /// Views of the strings, which a writer takes
+    [[nodiscard]] std::vector<std::string_view> views() const {
+        return {strings.begin(), strings.end()};
+    }
+};
+
 /// A field of each type that a table holds, with its value. Equal fields
 /// hold floats of the same bits, so that NaN equals itself and -0 doesn't
 /// equal 0.
@@ -113,7 +124,7 @@ struct Field {
                                std::vector<std::uint8_t>, std::vector<std::int16_t>, std::vector<std::uint16_t>,
                                std::vector<std::int32_t>, std::vector<std::uint32_t>, std::vector<std::int64_t>,
                                std::vector<std::uint64_t>, std::vector<float>, std::vector<double>, std::string, Struct,
-                               StructArray, TableField, VectorField>;
+                               StructArray, TableField, VectorField, StringVectorField>;
 
     Value value;
 

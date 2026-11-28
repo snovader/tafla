@@ -819,6 +819,330 @@ public readonly record struct ReservedFields
 }
 
 /// <summary>
+/// Vectors of strings beside other fields, in a nested table and in the
+/// items of a vector
+/// </summary>
+public readonly ref struct StringVectors
+{
+    internal static readonly global::Tafla.TableLayout TableLayout = global::Tafla.TableLayout.Default;
+
+    private readonly global::Tafla.TableReader _reader;
+
+    /// <summary>Reads a <see cref="StringVectors"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
+    public StringVectors(global::System.ReadOnlySpan<byte> bytes)
+    {
+        _reader = new global::Tafla.TableReader(bytes, TableLayout);
+    }
+
+    public uint Id => _reader.GetUInt32(_reader.RootOffset(0));
+
+    /// <summary>
+    /// <para>
+    /// A vector of strings, whose getter reads each string when it's asked
+    /// for
+    /// </para>
+    /// <para>
+    /// Views the strings, reading each one when it's asked for, so that a string whose bytes are corrupt throws a <see cref="global::Tafla.DecodeException"/> when it's read, rather than here.
+    /// </para>
+    /// </summary>
+    /// <exception cref="global::Tafla.DecodeException">The vector's count or the ends of its strings don't lie within the bytes.</exception>
+    public global::Tafla.StringVector Tags => _reader.GetStringVector(_reader.RootOffset(1));
+
+    public Labels Labels => new(_reader, _reader.RootOffset(2));
+
+    /// <summary>Views the items, reading each one when it's asked for, so that an item whose bytes are corrupt throws a <see cref="global::Tafla.DecodeException"/> when it's read, rather than here.</summary>
+    /// <exception cref="global::Tafla.DecodeException">The vector's count or the ends of its items don't lie within the bytes.</exception>
+    public EntryVector Entries => new(_reader.GetVector(_reader.RootOffset(3)));
+}
+
+/// <summary>The fields of a <see cref="StringVectors"/>, to write.</summary>
+public readonly record struct StringVectorsFields
+{
+    public required uint Id { get; init; }
+
+    /// <summary>
+    /// A vector of strings, whose getter reads each string when it's asked
+    /// for
+    /// </summary>
+    public required global::System.ReadOnlyMemory<string> Tags { get; init; }
+
+    public required LabelsFields Labels { get; init; }
+
+    public required global::System.ReadOnlyMemory<EntryFields> Entries { get; init; }
+
+    /// <summary>Writes a <see cref="StringVectors"/> with every field into new bytes of its length.</summary>
+    /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint32, addresses.</exception>
+    public byte[] Serialize()
+    {
+        var sizer = new global::Tafla.TableSizer(4, StringVectors.TableLayout);
+        sizer.AddUInt32();
+        sizer.AddStringVector(Tags.Span);
+        sizer.AddTable(alignment: 1);
+        Labels.AddTo(ref sizer);
+        sizer.AddVector(Entries.Length);
+        foreach (ref readonly var item in Entries.Span)
+        {
+            item.AddTo(ref sizer);
+        }
+
+        var writer = sizer.CreateWriter();
+        writer.SetUInt32(0, Id);
+        writer.SetStringVector(1, Tags.Span);
+        writer.SetTable(2, alignment: 1);
+        Labels.WriteTo(ref writer);
+        var items3 = Entries.Span;
+        var vector3 = writer.SetVector(3, items3.Length);
+        for (var item = 0; item < items3.Length; item++)
+        {
+            items3[item].WriteTo(ref writer);
+            writer.SetItemEnd(vector3, item);
+        }
+
+        return writer.Bytes;
+    }
+
+    /// <summary>
+    /// Writes a <see cref="StringVectors"/> with every field into the start of <paramref name="bytes"/>, as
+    /// <see cref="Serialize"/> writes it into new bytes, and returns its length. The bytes needn't be zero,
+    /// and those after the message keep their values. The caller owns them: writing into them again, as the
+    /// next message does, overwrites this one, and what a reader of them reads.
+    /// </summary>
+    /// <returns>The number of bytes that hold the message, from the start of <paramref name="bytes"/>.</returns>
+    /// <exception cref="global::System.ArgumentException">The bytes are shorter than the message, before any of them is written.</exception>
+    /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint32, addresses.</exception>
+    public int SerializeInto(byte[] bytes)
+    {
+        var sizer = new global::Tafla.TableSizer(4, StringVectors.TableLayout);
+        sizer.AddUInt32();
+        sizer.AddStringVector(Tags.Span);
+        sizer.AddTable(alignment: 1);
+        Labels.AddTo(ref sizer);
+        sizer.AddVector(Entries.Length);
+        foreach (ref readonly var item in Entries.Span)
+        {
+            item.AddTo(ref sizer);
+        }
+
+        var writer = sizer.CreateWriter(bytes);
+        writer.SetUInt32(0, Id);
+        writer.SetStringVector(1, Tags.Span);
+        writer.SetTable(2, alignment: 1);
+        Labels.WriteTo(ref writer);
+        var items3 = Entries.Span;
+        var vector3 = writer.SetVector(3, items3.Length);
+        for (var item = 0; item < items3.Length; item++)
+        {
+            items3[item].WriteTo(ref writer);
+            writer.SetItemEnd(vector3, item);
+        }
+
+        return writer.ByteLength;
+    }
+}
+
+/// <summary>A nested table whose only field is a vector of strings</summary>
+public readonly ref struct Labels
+{
+    private readonly global::Tafla.TableReader _reader;
+    private readonly int _position;
+
+    internal Labels(global::Tafla.TableReader reader, int position)
+    {
+        _reader = reader;
+        _position = position;
+    }
+
+    /// <summary>Views the strings, reading each one when it's asked for, so that a string whose bytes are corrupt throws a <see cref="global::Tafla.DecodeException"/> when it's read, rather than here.</summary>
+    /// <exception cref="global::Tafla.DecodeException">The vector's count or the ends of its strings don't lie within the bytes.</exception>
+    public global::Tafla.StringVector Values => _reader.GetStringVector(_reader.FieldOffset(_position, 0));
+}
+
+/// <summary>The fields of a <see cref="Labels"/>, to write.</summary>
+public readonly record struct LabelsFields
+{
+    public required global::System.ReadOnlyMemory<string> Values { get; init; }
+
+    /// <summary>Adds a <see cref="Labels"/> to its parent's sizer, after the field or vector that holds it.</summary>
+    internal void AddTo(ref global::Tafla.TableSizer sizer)
+    {
+        var parent = sizer.StartTable(1);
+        sizer.AddStringVector(Values.Span);
+        sizer.EndTable(parent);
+    }
+
+    /// <summary>Writes a <see cref="Labels"/> where its parent's writer is, after the field or vector that holds it.</summary>
+    internal void WriteTo(ref global::Tafla.TableWriter writer)
+    {
+        var parent = writer.StartTable(1);
+        writer.SetStringVector(0, Values.Span);
+        writer.EndTable(parent);
+    }
+}
+
+/// <summary>An item of a vector, which holds a string and a vector of strings</summary>
+public readonly ref struct Entry
+{
+    private readonly global::Tafla.TableReader _reader;
+    private readonly int _position;
+
+    internal Entry(global::Tafla.TableReader reader, int position)
+    {
+        _reader = reader;
+        _position = position;
+    }
+
+    public string Key => _reader.GetString(_reader.FieldOffset(_position, 0));
+
+    /// <summary>Views the strings, reading each one when it's asked for, so that a string whose bytes are corrupt throws a <see cref="global::Tafla.DecodeException"/> when it's read, rather than here.</summary>
+    /// <exception cref="global::Tafla.DecodeException">The vector's count or the ends of its strings don't lie within the bytes.</exception>
+    public global::Tafla.StringVector Aliases => _reader.GetStringVector(_reader.FieldOffset(_position, 1));
+}
+
+/// <summary>The fields of an <see cref="Entry"/>, to write.</summary>
+public readonly record struct EntryFields
+{
+    public required string Key { get; init; }
+
+    public required global::System.ReadOnlyMemory<string> Aliases { get; init; }
+
+    /// <summary>Adds an <see cref="Entry"/> to its parent's sizer, after the field or vector that holds it.</summary>
+    internal void AddTo(ref global::Tafla.TableSizer sizer)
+    {
+        var parent = sizer.StartTable(2);
+        sizer.AddString(Key);
+        sizer.AddStringVector(Aliases.Span);
+        sizer.EndTable(parent);
+    }
+
+    /// <summary>Writes an <see cref="Entry"/> where its parent's writer is, after the field or vector that holds it.</summary>
+    internal void WriteTo(ref global::Tafla.TableWriter writer)
+    {
+        var parent = writer.StartTable(2);
+        writer.SetString(0, Key);
+        writer.SetStringVector(1, Aliases.Span);
+        writer.EndTable(parent);
+    }
+}
+
+/// <summary>A vector of <see cref="Entry"/>s, which reads each item when it's asked for.</summary>
+public readonly ref struct EntryVector
+{
+    private readonly global::Tafla.Vector _vector;
+
+    internal EntryVector(global::Tafla.Vector vector)
+    {
+        _vector = vector;
+    }
+
+    /// <summary>The number of items.</summary>
+    public int Count => _vector.Count;
+
+    /// <summary>Reads item <paramref name="index"/>, without reading the others.</summary>
+    /// <exception cref="global::Tafla.DecodeException">The item ends before it starts or past the bytes.</exception>
+    /// <exception cref="global::System.ArgumentOutOfRangeException">The vector has no item <paramref name="index"/>.</exception>
+    public Entry this[int index] => new(new global::Tafla.TableReader(_vector.GetInPlace(index)), 0);
+
+    /// <summary>Returns an enumerator of the items in order, which reads each item's end once.</summary>
+    public Enumerator GetEnumerator() => new(_vector.ItemsInPlace().GetEnumerator());
+
+    /// <summary>
+    /// Reads the items of an <see cref="EntryVector"/> in order. Its <see cref="MoveNext"/> throws a
+    /// <see cref="global::Tafla.DecodeException"/> if the item ends before it starts or past the bytes, and can move on to the next item after it.
+    /// </summary>
+    public ref struct Enumerator
+    {
+        private global::Tafla.VectorItemEnumerator _items;
+
+        internal Enumerator(global::Tafla.VectorItemEnumerator items)
+        {
+            _items = items;
+            Current = default;
+        }
+
+        /// <summary>The item that <see cref="MoveNext"/> moved to.</summary>
+        public Entry Current { get; private set; }
+
+        /// <summary>Moves to the next item, and returns false after the last.</summary>
+        /// <exception cref="global::Tafla.DecodeException">The item ends before it starts or past the bytes.</exception>
+        public bool MoveNext()
+        {
+            if (!_items.MoveNext())
+            {
+                return false;
+            }
+
+            Current = new Entry(new global::Tafla.TableReader(_items.Current), 0);
+            return true;
+        }
+    }
+}
+
+/// <summary>A vector of strings in a message of <c>uint16</c> offsets, before a scalar</summary>
+public readonly ref struct NarrowStringVectors
+{
+    internal static readonly global::Tafla.TableLayout TableLayout = new() { OffsetType = global::Tafla.OffsetType.UInt16 };
+
+    private readonly global::Tafla.TableReader _reader;
+
+    /// <summary>Reads a <see cref="NarrowStringVectors"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
+    public NarrowStringVectors(global::System.ReadOnlySpan<byte> bytes)
+    {
+        _reader = new global::Tafla.TableReader(bytes, TableLayout);
+    }
+
+    /// <summary>Views the strings, reading each one when it's asked for, so that a string whose bytes are corrupt throws a <see cref="global::Tafla.DecodeException"/> when it's read, rather than here.</summary>
+    /// <exception cref="global::Tafla.DecodeException">The vector's count or the ends of its strings don't lie within the bytes.</exception>
+    public global::Tafla.StringVector Names => _reader.GetStringVector(_reader.RootOffset(0));
+
+    public byte Count => _reader.GetUInt8(_reader.RootOffset(1));
+}
+
+/// <summary>The fields of a <see cref="NarrowStringVectors"/>, to write.</summary>
+public readonly record struct NarrowStringVectorsFields
+{
+    public required global::System.ReadOnlyMemory<string> Names { get; init; }
+
+    public required byte Count { get; init; }
+
+    /// <summary>Writes a <see cref="NarrowStringVectors"/> with every field into new bytes of its length.</summary>
+    /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint16, addresses.</exception>
+    public byte[] Serialize()
+    {
+        var sizer = new global::Tafla.TableSizer(2, NarrowStringVectors.TableLayout);
+        sizer.AddStringVector(Names.Span);
+        sizer.AddUInt8();
+
+        var writer = sizer.CreateWriter();
+        writer.SetStringVector(0, Names.Span);
+        writer.SetUInt8(1, Count);
+
+        return writer.Bytes;
+    }
+
+    /// <summary>
+    /// Writes a <see cref="NarrowStringVectors"/> with every field into the start of <paramref name="bytes"/>, as
+    /// <see cref="Serialize"/> writes it into new bytes, and returns its length. The bytes needn't be zero,
+    /// and those after the message keep their values. The caller owns them: writing into them again, as the
+    /// next message does, overwrites this one, and what a reader of them reads.
+    /// </summary>
+    /// <returns>The number of bytes that hold the message, from the start of <paramref name="bytes"/>.</returns>
+    /// <exception cref="global::System.ArgumentException">The bytes are shorter than the message, before any of them is written.</exception>
+    /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint16, addresses.</exception>
+    public int SerializeInto(byte[] bytes)
+    {
+        var sizer = new global::Tafla.TableSizer(2, NarrowStringVectors.TableLayout);
+        sizer.AddStringVector(Names.Span);
+        sizer.AddUInt8();
+
+        var writer = sizer.CreateWriter(bytes);
+        writer.SetStringVector(0, Names.Span);
+        writer.SetUInt8(1, Count);
+
+        return writer.ByteLength;
+    }
+}
+
+/// <summary>
 /// Structs as fields, in place like scalars, and in arrays, which are aligned
 /// to their structs' largest scalar
 /// </summary>

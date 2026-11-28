@@ -135,6 +135,7 @@ protocol FieldTarget: ~Copyable {
         throws(BuildError)
     mutating func setVector(count: Int, fields: Int, _ fill: (Int, inout TableBuilder.Item) throws(BuildError) -> Void)
         throws(BuildError)
+    mutating func setStringVector(_ strings: [String]) throws(BuildError)
 }
 
 extension TableBuilder: FieldTarget {}
@@ -188,6 +189,7 @@ extension FieldTarget where Self: ~Copyable {
                 tables.append(try item.nestedTable())
             }
             try setVector(tables)
+        case .stringVector(let utf8): try setStringVector(utf8.map { String(decoding: $0, as: UTF8.self) })
         }
     }
 

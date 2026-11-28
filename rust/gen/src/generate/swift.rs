@@ -1,6 +1,7 @@
 //! Swift for `Tafla`. Messages and tables are nonescapable views of their
 //! bytes, whose throwing getters read fields lazily, and vectors and arrays of
-//! structs views that read each item when it's asked for; they're written
+//! structs views that read each item when it's asked for, as the runtime's
+//! `StringVector` reads each string of a vector of strings; they're written
 //! from structs of their fields, which a `TableSizer` sizes and a
 //! `TableWriter` writes, nested tables in place. Structs are plain structs
 //! read and written at fixed offsets.
@@ -330,6 +331,7 @@ impl Generator<'_> {
                     | FieldType::StructArray(_)
                     | FieldType::Table(_)
                     | FieldType::Vector(_)
+                    | FieldType::StringVector
             );
 
             let mut docs = field.docs.clone();
@@ -375,6 +377,11 @@ impl Generator<'_> {
     /// `position`
     fn read(&self, field: &Field, position: &str) -> (String, Read) {
         match field.field_type {
+            // A view of the strings, which reads each one when it's asked for
+            FieldType::StringVector => (
+                "StringVector".to_owned(),
+                Read::Expression(format!("try _reader.stringVector(at: {position})")),
+            ),
             FieldType::Scalar(Scalar::Bool) => (
                 "Bool".to_owned(),
                 Read::Expression(format!("try _reader.uint8(at: {position}) != 0")),
@@ -453,6 +460,15 @@ impl Generator<'_> {
                 ),
                 String::new(),
                 "Throws a `DecodeError` if the field, or its structs, lie outside the bytes.".to_owned(),
+            ],
+            FieldType::StringVector => vec![
+                "A view of the strings, which reads each string when it's asked for, and throws then if"
+                    .to_owned(),
+                "its bytes are corrupt or aren't valid UTF-8; `Array(_:)` reads every string.".to_owned(),
+                String::new(),
+                "Throws a `DecodeError` if the field, or the vector's count or the ends of its strings,"
+                    .to_owned(),
+                "lie outside the bytes.".to_owned(),
             ],
             _ => vec!["Throws a `DecodeError` if the field lies outside the bytes.".to_owned()],
         }
@@ -605,6 +621,9 @@ impl Generator<'_> {
         for field in &definition.fields {
             let name = identifier(&field.name);
             match field.field_type {
+                FieldType::StringVector => {
+                    writer.line(format!("sizer.addStringVector(self.{name})"));
+                }
                 FieldType::Scalar(scalar) => {
                     writer.line(format!("sizer.add{}()", method(scalar.stored())));
                 }
@@ -650,6 +669,9 @@ impl Generator<'_> {
         for (index, field) in definition.fields.iter().enumerate() {
             let name = identifier(&field.name);
             match field.field_type {
+                FieldType::StringVector => {
+                    writer.line(format!("writer.setStringVector({index}, self.{name})"));
+                }
                 FieldType::Scalar(Scalar::Bool) => {
                     writer.line(format!("writer.setUInt8({index}, self.{name} ? 1 : 0)"));
                 }
@@ -872,6 +894,7 @@ impl Generator<'_> {
     /// The type of a field in a fields struct or a struct
     fn input_type(&self, field: &Field) -> String {
         match field.field_type {
+            FieldType::StringVector => "[String]".to_owned(),
             FieldType::Scalar(scalar) => self.scalar_type(field, scalar).to_owned(),
             FieldType::Array(scalar) => format!("[{}]", swift_type(scalar)),
             FieldType::String => "String".to_owned(),

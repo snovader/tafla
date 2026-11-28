@@ -7,7 +7,14 @@ from dataclasses import dataclass
 from struct import Struct, error
 from typing import ClassVar, Final, Literal, Protocol, Self, TypedDict, Unpack
 
-from tafla import DecodeError, FixedFields, TableLayout, TableReader, TableWriter
+from tafla import (
+    DecodeError,
+    FixedFields,
+    StringVector,
+    TableLayout,
+    TableReader,
+    TableWriter,
+)
 
 
 class Level(enum.IntEnum):
@@ -1017,6 +1024,377 @@ class ReservedFields(TypedDict):
 
 
 type ReservedFieldValues = tuple[int, int, int, int, int, str]
+
+
+class StringVectors:
+    """Vectors of strings beside other fields, in a nested table and in the
+    items of a vector
+    """
+
+    __slots__ = ("_reader",)
+
+    _LAYOUT: Final = TableLayout.DEFAULT
+
+    def __init__(self, data: Buffer) -> None:
+        """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
+        self._reader = TableReader(data, self._LAYOUT)
+
+    @classmethod
+    def serialize(cls, **fields: Unpack[StringVectorsFields]) -> memoryview:
+        """Writes a ``StringVectors`` with every field"""
+        writer = TableWriter(4, cls._LAYOUT)
+        writer.set_uint32(0, fields["id"])
+        writer.set_string_vector(1, fields["tags"])
+        writer.set_table(2, Labels.ALIGNMENT)
+        Labels.write(writer, fields["labels"])
+        vector = writer.set_vector(3, len(fields["entries"]))
+        for i, item in enumerate(fields["entries"]):
+            Entry.write(writer, item)
+            writer.set_item_end(vector, i)
+
+        return writer.bytes()
+
+    def id(self) -> int:
+        return self._reader.get_uint32(self._reader.root_offset(0))
+
+    def tags(self) -> StringVector:
+        """A vector of strings, whose getter reads each string when it's asked
+        for
+        """
+        return StringVector(self._reader, self._reader.root_offset(1))
+
+    def labels(self) -> Labels:
+        return Labels(self._reader, self._reader.root_offset(2))
+
+    def entries(self) -> EntryVector:
+        return EntryVector(self._reader, self._reader.root_offset(3))
+
+    def field_values(self) -> StringVectorsFieldValues:
+        """Reads every field's value into a tuple, in the fields' order, as its getter
+        returns it, but a vector of strings' as a list of its strings, and a nested
+        table's as its values, in place of it when they're all of fixed size, and in
+        a tuple of their own otherwise.
+
+        It raises ``DecodeError`` for bytes that the getters can't read, as they do.
+        """
+        reader = self._reader
+        id = reader.get_uint32(reader.root_offset(0))
+        tags = reader.get_string_vector(reader.root_offset(1))
+        labels = reader.root_offset(2)
+        return (
+            id,
+            tags,
+            (reader.get_string_vector(reader.field_offset(labels, 0)),),
+            EntryVector(reader, reader.root_offset(3)),
+        )
+
+    @classmethod
+    def read_values(cls, data: Buffer) -> StringVectorsFieldValues:
+        """Reads every field's value from ``data`` as ``field_values()`` reads them,
+        without creating a ``StringVectors``.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
+        bytes that the getters can't read.
+        """
+        reader = TableReader(data, cls._LAYOUT)
+        id = reader.get_uint32(reader.root_offset(0))
+        tags = reader.get_string_vector(reader.root_offset(1))
+        labels = reader.root_offset(2)
+        return (
+            id,
+            tags,
+            (reader.get_string_vector(reader.field_offset(labels, 0)),),
+            EntryVector(reader, reader.root_offset(3)),
+        )
+
+
+class StringVectorsFields(TypedDict):
+    """The fields of a ``StringVectors``, to write"""
+
+    id: int
+    tags: Sequence[str]
+    """A vector of strings, whose getter reads each string when it's asked
+    for
+    """
+    labels: LabelsFields
+    entries: Sequence[EntryFields]
+
+
+type StringVectorsFieldValues = tuple[int, list[str], LabelsFieldValues, EntryVector]
+
+
+class Labels:
+    """A nested table whose only field is a vector of strings"""
+
+    __slots__ = ("_position", "_reader")
+
+    ALIGNMENT: Final = 1
+    """The alignment that a parent pads a ``Labels`` to: the largest
+    alignment of its arrays and nested tables, or 1
+    """
+
+    def __init__(self, reader: TableReader, position: int) -> None:
+        """Reads the table at ``position``, as its parent's getter finds it"""
+        self._reader = reader
+        self._position = position
+
+    @staticmethod
+    def write(writer: TableWriter, fields: LabelsFields) -> None:
+        """Writes a ``Labels`` where its parent's writer is, after the
+        field or vector that holds it
+        """
+        parent = writer.start_table(1)
+        writer.set_string_vector(0, fields["values"])
+        writer.end_table(parent)
+
+    def values(self) -> StringVector:
+        return StringVector(self._reader, self._reader.field_offset(self._position, 0))
+
+    def fields(self) -> LabelsFields:
+        """Reads every field at once, as ``write()`` takes them, with the strings of
+        vectors of strings in lists.
+
+        It raises ``DecodeError`` for bytes that the getters can't read, as they do.
+        """
+        reader = self._reader
+        return {
+            "values": reader.get_string_vector(reader.field_offset(self._position, 0)),
+        }
+
+    def field_values(self) -> LabelsFieldValues:
+        """Reads every field's value into a tuple, in the fields' order, as its getter
+        returns it, but a vector of strings' as a list of its strings.
+
+        It raises ``DecodeError`` for bytes that the getters can't read, as they do.
+        """
+        reader = self._reader
+        return (reader.get_string_vector(reader.field_offset(self._position, 0)),)
+
+
+class LabelsFields(TypedDict):
+    """The fields of a ``Labels``, to write"""
+
+    values: Sequence[str]
+
+
+type LabelsFieldValues = tuple[list[str]]
+
+
+class Entry:
+    """An item of a vector, which holds a string and a vector of strings"""
+
+    __slots__ = ("_position", "_reader")
+
+    ALIGNMENT: Final = 1
+    """The alignment that a parent pads an ``Entry`` to: the largest
+    alignment of its arrays and nested tables, or 1
+    """
+
+    def __init__(self, reader: TableReader, position: int) -> None:
+        """Reads the table at ``position``, as its parent's getter finds it"""
+        self._reader = reader
+        self._position = position
+
+    @staticmethod
+    def write(writer: TableWriter, fields: EntryFields) -> None:
+        """Writes an ``Entry`` where its parent's writer is, after the
+        field or vector that holds it
+        """
+        parent = writer.start_table(2)
+        writer.set_string(0, fields["key"])
+        writer.set_string_vector(1, fields["aliases"])
+        writer.end_table(parent)
+
+    def key(self) -> str:
+        return self._reader.get_string(self._reader.field_offset(self._position, 0))
+
+    def aliases(self) -> StringVector:
+        return StringVector(self._reader, self._reader.field_offset(self._position, 1))
+
+    def fields(self) -> EntryFields:
+        """Reads every field at once, as ``write()`` takes them, with the strings of
+        vectors of strings in lists.
+
+        It raises ``DecodeError`` for bytes that the getters can't read, as they do.
+        """
+        reader = self._reader
+        return {
+            "key": reader.get_string(reader.field_offset(self._position, 0)),
+            "aliases": reader.get_string_vector(reader.field_offset(self._position, 1)),
+        }
+
+    def field_values(self) -> EntryFieldValues:
+        """Reads every field's value into a tuple, in the fields' order, as its getter
+        returns it, but a vector of strings' as a list of its strings.
+
+        It raises ``DecodeError`` for bytes that the getters can't read, as they do.
+        """
+        reader = self._reader
+        return (
+            reader.get_string(reader.field_offset(self._position, 0)),
+            reader.get_string_vector(reader.field_offset(self._position, 1)),
+        )
+
+
+class EntryFields(TypedDict):
+    """The fields of an ``Entry``, to write"""
+
+    key: str
+    aliases: Sequence[str]
+
+
+type EntryFieldValues = tuple[str, list[str]]
+
+
+class EntryVector:
+    """A vector of ``Entry``s, which reads each item when it's asked for, so
+    an item whose bytes are corrupt raises ``DecodeError`` when it's read, rather
+    than when its parent's getter returns the vector
+    """
+
+    __slots__ = ("_length", "_position", "_reader")
+
+    def __init__(self, reader: TableReader, position: int) -> None:
+        """Views the vector at ``position``, as its parent's getter finds it.
+
+        Raises ``DecodeError`` if the vector's count or the ends of its items lie
+        outside the bytes.
+        """
+        self._reader = reader
+        self._position = position
+        self._length = reader.get_vector_length(position)
+
+    def __len__(self) -> int:
+        return self._length
+
+    def __getitem__(self, index: int) -> Entry:
+        """Reads item ``index``, without reading the others, counting from the end if
+        it's negative.
+
+        Raises ``IndexError`` if the vector has no item ``index``, and
+        ``DecodeError`` if the item lies outside the bytes.
+        """
+        if index < 0:
+            index += self._length
+        offset = self._reader.get_vector_item_offset(
+            self._position, self._length, index
+        )
+        return Entry(self._reader, offset)
+
+    def __iter__(self) -> Iterator[Entry]:
+        """Reads the items one after another, after reading every item's end.
+
+        Raises ``DecodeError`` if an item lies outside the bytes, before reading any.
+        """
+        reader = self._reader
+        for offset in reader.get_vector_offsets(self._position):
+            yield Entry(reader, offset)
+
+    def item_field_values(self, index: int) -> EntryFieldValues:
+        """Reads the values of item ``index``, as ``Entry.field_values()`` reads
+        them, without reading the others, counting from the end if it's negative.
+
+        Raises ``IndexError`` if the vector has no item ``index``, and ``DecodeError``
+        for bytes that the item's getters can't read.
+        """
+        return self[index].field_values()
+
+    def field_values(self) -> list[EntryFieldValues]:
+        """Reads every item's values at once, as ``Entry.field_values()`` reads
+        each, in one call when the items' offsets are those that their writer
+        writes, and otherwise item by item
+        """
+        return [item.field_values() for item in self]
+
+    def iter_field_values(self) -> Iterator[EntryFieldValues]:
+        """Reads every item's values one after another, as ``Entry.field_values()`` reads each"""
+        return (item.field_values() for item in self)
+
+
+class NarrowStringVectors:
+    """A vector of strings in a message of ``uint16`` offsets, before a scalar"""
+
+    __slots__ = ("_reader",)
+
+    _LAYOUT: Final = TableLayout(offset_type="uint16")
+
+    def __init__(self, data: Buffer) -> None:
+        """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
+        self._reader = TableReader(data, self._LAYOUT)
+
+    @classmethod
+    def serialize(cls, **fields: Unpack[NarrowStringVectorsFields]) -> memoryview:
+        """Writes a ``NarrowStringVectors`` with every field"""
+        writer = TableWriter(2, cls._LAYOUT)
+        writer.set_string_vector(0, fields["names"])
+        writer.set_uint8(1, fields["count"])
+
+        return writer.bytes()
+
+    @classmethod
+    def serialize_values(cls, names: Sequence[str], count: int, /) -> memoryview:
+        """Writes a ``NarrowStringVectors`` from every field's value, in their order, as
+        ``field_values()`` returns them
+        """
+        writer = TableWriter(2, cls._LAYOUT)
+        writer.set_string_vector(0, names)
+        writer.set_uint8(1, count)
+
+        return writer.bytes()
+
+    def names(self) -> StringVector:
+        return StringVector(self._reader, self._reader.root_offset(0))
+
+    def count(self) -> int:
+        return self._reader.get_uint8(self._reader.root_offset(1))
+
+    def fields(self) -> NarrowStringVectorsFields:
+        """Reads every field at once, as ``serialize()`` takes them, with the strings of
+        vectors of strings in lists.
+
+        It raises ``DecodeError`` for bytes that the getters can't read, as they do.
+        """
+        reader = self._reader
+        return {
+            "names": reader.get_string_vector(reader.root_offset(0)),
+            "count": reader.get_uint8(reader.root_offset(1)),
+        }
+
+    def field_values(self) -> NarrowStringVectorsFieldValues:
+        """Reads every field's value at once into a tuple, in the fields' order, as
+        ``serialize_values()`` takes them, as ``fields()`` reads them into a dict.
+
+        It raises ``DecodeError`` for bytes that the getters can't read, as they do.
+        """
+        reader = self._reader
+        return (
+            reader.get_string_vector(reader.root_offset(0)),
+            reader.get_uint8(reader.root_offset(1)),
+        )
+
+    @classmethod
+    def read_values(cls, data: Buffer) -> NarrowStringVectorsFieldValues:
+        """Reads every field's value from ``data`` as ``field_values()`` reads them,
+        without creating a ``NarrowStringVectors``.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
+        bytes that the getters can't read.
+        """
+        reader = TableReader(data, cls._LAYOUT)
+        return (
+            reader.get_string_vector(reader.root_offset(0)),
+            reader.get_uint8(reader.root_offset(1)),
+        )
+
+
+class NarrowStringVectorsFields(TypedDict):
+    """The fields of a ``NarrowStringVectors``, to write"""
+
+    names: Sequence[str]
+    count: int
+
+
+type NarrowStringVectorsFieldValues = tuple[list[str], int]
 
 
 class Structs:

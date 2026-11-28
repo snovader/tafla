@@ -249,6 +249,21 @@ public struct TableSizer: Sendable {
         add(saturating(UInt64(layout.offsetSize), plus: UInt64(value.utf8.count)))
     }
 
+    /// Adds a vector of strings: its count, the end of each string, and each
+    /// string's UTF-8.
+    @inlinable
+    public mutating func addStringVector(_ strings: [String]) {
+        // The count, and then the end of each string
+        let width = layout.offsetSize
+        var length = saturating(UInt64(width), plus: Tafla.length(of: strings.count, size: width))
+
+        for string in strings {
+            length = saturating(length, plus: UInt64(string.utf8.count))
+        }
+
+        add(length)
+    }
+
     /// Adds a struct field of `size` bytes, which mustn't be negative.
     @inlinable
     public mutating func addStruct(size: Int) {

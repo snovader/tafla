@@ -22,7 +22,6 @@
 #endif
 
 #include "harness.hpp"
-#include "suite.hpp"
 
 namespace tafla::benchmarks {
 

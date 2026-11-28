@@ -6,7 +6,8 @@ TypeScript comparison in `typescript/benchmarks/`, with the same values, so
 that the languages' numbers compare. Build it from `cpp/` with
 `-DTAFLA_BUILD_BENCHMARKS=ON`, as [Running](#running) shows. `tafla_strings`
 compares how the same libraries write and read strings, as
-[Strings](#strings) describes.
+[Strings](#strings) describes, and `tafla_lists` times how tafla writes and
+reads lists of strings, as [Lists of strings](#lists-of-strings) describes.
 
 ## Workloads
 
@@ -466,8 +467,10 @@ blocks of 16 bytes with SIMD, as protobuf's does.
 The codecs are the comparison's, each with an overload for the table of
 strings:
 
-- tafla has no vector of strings, so **tafla** writes a table of 16 string
-  fields with a `TableBuilder` and reads it with `get_string()`, and
+- The suite times string fields, so **tafla** writes a table of 16 string
+  fields, rather than a vector of strings, which
+  [Lists of strings](#lists-of-strings) times, with a `TableBuilder` and
+  reads it with `get_string()`, and
   **tafla-gen**'s code of `strings.tafla`, in `generated/strings/`, writes
   the same table from its generated fields, which view the strings, and
   reads each with its getter. `strings.tafla` is a copy of the TypeScript
@@ -666,3 +669,100 @@ protobuf, and once to 3 times in msgpack-cxx. tafla writes 128 bytes for the
 which its characters follow; FlatBuffers writes 216, protobuf 32 and
 msgpack-cxx 19. For strings of 1,024 bytes the four write 16,512, 16,600,
 16,432 and 16,435 bytes.
+
+## Lists of strings
+
+`tafla_lists` times how the code that tafla-gen generates from
+`lists.tafla`, a copy of the TypeScript suite's schema, into
+`generated/lists/` writes and reads lists of 10, 100 and 10,000 distinct
+strings of 16 and 256 characters of ASCII and of 8 characters of 3 bytes in
+UTF-8. `src/lists.hpp` makes them as the TypeScript suite of lists does, from
+its xorshift with the same seeds, which `tests/benchmarks_test.cpp` checks
+against values that the TypeScript suite printed. Each list is written two
+ways:
+
+- **tafla-gen [string]**, `StringList`, a vector of strings, whose items are
+  the strings' UTF-8, written from a span of `std::string_view`s and read
+  through its getter's `tafla::StringVector`: every string at once with
+  `to_vector()`, which checks the strings' UTF-8 as one run, and the last
+  string from its ends alone with `get()`. The suite checks that it writes the
+  bytes that `TableBuilder::set_string_vector()` writes.
+- **tafla-gen [Name]**, `NameList`, a vector of tables of one string each,
+  which is how a schema holds a list of strings without vectors of strings.
+  Its generic fields write a `std::views::transform()` of the strings into
+  each table's fields as they're written, without allocating them, and each
+  string is read through a reader of its table: every string by iterating
+  the items, which reads each item's end once, and the last with `get()`.
+
+**tafla-gen [string] A/A** times the vector of strings again, an A/A pair
+whose ratio shows the harness's noise. Each list is serialized, deserialized
+into a `std::vector<std::string_view>` of its strings, viewed in the bytes,
+and read for its last string. Before timing, every variant must read back
+every string, and the last one. The method is the comparison's, and the
+program takes its arguments. After the timings, it prints each list's
+encoded size: a vector of strings takes 4 bytes for each string beside the
+strings' UTF-8, and 8 for the table's offset and the vector's count, and a
+vector of tables of one string each takes 12 for each string.
+
+```sh
+cmake --build build --target tafla_lists
+uptime
+build/benchmarks/tafla_lists --markdown
+```
+
+The full run takes about 30 seconds, and `--quick` under a second.
+
+### Results
+
+One full run on 2026-11-27, on an Apple M2 Pro with 32 GB in macOS 27.0.1,
+compiled by Apple clang 21.0.0, through the machine's benchmark lock. The
+1-minute load average was 2.69 at the start and 3.04 at the end, on the 10
+cores. The median round was within 3% of the fastest for 78 of the 81
+variants' runs; the writes of 10,000 strings of 256 characters were 15–19%
+above it in every variant, of 2.6 MB tables that each call allocates. The
+A/A pair agreed within 2%.
+
+Fastest round in µs per call, and its ratio to the vector of strings':
+
+| Benchmark | tafla-gen [string] | tafla-gen [Name] | tafla-gen [string] A/A |
+| --- | ---: | ---: | ---: |
+| 10 × 16 chars of ASCII: serialize | 0.0573 | 0.0733 (1.28×) | 0.0565 (0.99×) |
+| 10 × 16 chars of ASCII: deserialize | 0.0336 | 0.0354 (1.05×) | 0.0336 (1.00×) |
+| 10 × 16 chars of ASCII: read the last string | 0.00209 | 0.00247 (1.18×) | 0.00208 (1.00×) |
+| 10 × 256 chars of ASCII: serialize | 0.0690 | 0.0826 (1.20×) | 0.0693 (1.00×) |
+| 10 × 256 chars of ASCII: deserialize | 0.0718 | 0.0751 (1.05×) | 0.0720 (1.00×) |
+| 10 × 256 chars of ASCII: read the last string | 0.00576 | 0.00638 (1.11×) | 0.00574 (1.00×) |
+| 10 × 8 chars of 3 bytes: serialize | 0.0608 | 0.0739 (1.21×) | 0.0611 (1.00×) |
+| 10 × 8 chars of 3 bytes: deserialize | 0.168 | 0.177 (1.05×) | 0.168 (1.00×) |
+| 10 × 8 chars of 3 bytes: read the last string | 0.0152 | 0.0157 (1.03×) | 0.0152 (1.00×) |
+| 100 × 16 chars of ASCII: serialize | 0.400 | 0.526 (1.31×) | 0.402 (1.00×) |
+| 100 × 16 chars of ASCII: deserialize | 0.125 | 0.196 (1.57×) | 0.125 (1.00×) |
+| 100 × 16 chars of ASCII: read the last string | 0.00208 | 0.00247 (1.19×) | 0.00208 (1.00×) |
+| 100 × 256 chars of ASCII: serialize | 0.556 | 0.674 (1.21×) | 0.556 (1.00×) |
+| 100 × 256 chars of ASCII: deserialize | 0.523 | 0.591 (1.13×) | 0.522 (1.00×) |
+| 100 × 256 chars of ASCII: read the last string | 0.00575 | 0.00638 (1.11×) | 0.00573 (1.00×) |
+| 100 × 8 chars of 3 bytes: serialize | 0.426 | 0.553 (1.30×) | 0.432 (1.01×) |
+| 100 × 8 chars of 3 bytes: deserialize | 1.374 | 1.546 (1.12×) | 1.374 (1.00×) |
+| 100 × 8 chars of 3 bytes: read the last string | 0.0152 | 0.0158 (1.04×) | 0.0152 (1.00×) |
+| 10,000 × 16 chars of ASCII: serialize | 38.879 | 51.133 (1.32×) | 38.934 (1.00×) |
+| 10,000 × 16 chars of ASCII: deserialize | 10.727 | 16.864 (1.57×) | 10.805 (1.01×) |
+| 10,000 × 16 chars of ASCII: read the last string | 0.00209 | 0.00247 (1.18×) | 0.00209 (1.00×) |
+| 10,000 × 256 chars of ASCII: serialize | 82.013 | 92.187 (1.12×) | 83.579 (1.02×) |
+| 10,000 × 256 chars of ASCII: deserialize | 50.991 | 56.115 (1.10×) | 51.773 (1.02×) |
+| 10,000 × 256 chars of ASCII: read the last string | 0.00574 | 0.00642 (1.12×) | 0.00576 (1.00×) |
+| 10,000 × 8 chars of 3 bytes: serialize | 41.605 | 54.002 (1.30×) | 41.866 (1.01×) |
+| 10,000 × 8 chars of 3 bytes: deserialize | 136.3 | 153.3 (1.12×) | 137.0 (1.01×) |
+| 10,000 × 8 chars of 3 bytes: read the last string | 0.0151 | 0.0157 (1.04×) | 0.0151 (1.00×) |
+
+- The vector of strings is written in 0.76–0.89 times the time of the
+  vector of tables of one string each.
+- Every string is read in 0.64–0.95 times the time: 0.64 for 100 and 10,000
+  strings of 16 characters of ASCII, whose run `to_vector()` checks at once,
+  0.88–0.95 for strings of 3 bytes and of 256 characters, and 0.95 for any
+  list of 10.
+- The last string is found in 0.84–0.97 times the time, without a reader of
+  a table around it.
+
+A vector of strings takes 4 bytes for each string beside its UTF-8, and a
+vector of tables 12: 208 bytes against 288 for 10 strings of 16
+characters, and 200,008 against 280,008 for 10,000.

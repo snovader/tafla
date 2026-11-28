@@ -216,6 +216,15 @@ public struct TableWriter: ~Copyable {
         output.writeUTF8(of: value, count: count)
     }
 
+    /// Writes field `index`, a vector of strings: its count, the end of each
+    /// string, counted from the vector's position, and then each string's
+    /// UTF-8, one after another.
+    @inlinable
+    public mutating func setStringVector(_ index: Int, _ strings: [String]) {
+        setOffset(index)
+        output.writeStringVector(strings, offsetType: offsetType)
+    }
+
     /// Writes struct field `index` from its bytes: its scalars,
     /// little-endian, one after another, which are written as they are,
     /// without padding.

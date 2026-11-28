@@ -53,11 +53,6 @@ struct Inputs {
     Sample sample = kSample;
 };
 
-struct Benchmark {
-    std::string name;
-    std::vector<Variant> variants;
-};
-
 template <class Function>
 void for_each_codec(Function function) {
     std::apply([&](const auto&... codec) { (function(codec), ...); }, Codecs{});

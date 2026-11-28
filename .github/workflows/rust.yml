@@ -92,6 +92,21 @@ jobs:
               - "java/benchmarks/src/main/java/io/github/snovader/tafla/benchmarks/generated/strings/**"
               - "typescript/benchmarks/strings/strings.tafla"
               - "typescript/benchmarks/strings/generated/tafla/**"
+              # The lists suites' schemas and generated code
+              - "cpp/benchmarks/lists.tafla"
+              - "cpp/benchmarks/generated/lists/**"
+              - "csharp/benchmarks/lists.tafla"
+              - "csharp/benchmarks/Tafla.Benchmarks/Generated/Lists/**"
+              - "go/benchmarks/lists.tafla"
+              - "go/benchmarks/generated/lists/**"
+              - "java/benchmarks/src/main/tafla/lists.tafla"
+              - "java/benchmarks/src/main/java/io/github/snovader/tafla/benchmarks/generated/lists/**"
+              - "python/benchmarks/src/tafla_benchmarks/generated/lists.tafla"
+              - "python/benchmarks/src/tafla_benchmarks/generated/lists/**"
+              - "swift/benchmarks/lists.tafla"
+              - "swift/benchmarks/Sources/GeneratedLists/**"
+              - "typescript/benchmarks/strings/lists/lists.tafla"
+              - "typescript/benchmarks/strings/lists/generated/**"
             # The runtime and what its tests read, which the jobs that test only
             # the runtime, under Miri and on a 32-bit target, run for
             runtime:

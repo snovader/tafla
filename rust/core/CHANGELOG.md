@@ -31,6 +31,18 @@ first commits, for code built from its source before the release.
   returns an error, leaves fields unset or panics. The benchmarks' vector of
   100 nested tables took 4.4 µs so, rather than 8.8 µs from a builder per
   item, in 4 allocations rather than 208.
+- Vectors of strings, which `SPEC.md` adds to the format: a count, the end
+  of each string and the strings' UTF-8, one after another.
+  `TableReader::get_str_vector()` returns a `StringVector`, which reads one
+  string from its ends with `get()`, each in turn with `iter()`, and every
+  string into a `Vec<&str>` with `to_vec()`, borrowed from the bytes.
+  `to_vec()` checks the strings' run of bytes as UTF-8 at once, and read
+  lists of ASCII in 0.34–0.92 times the time of reading each string.
+  `TableReader::get_str_vector_item()` reads one string from a count that
+  the caller keeps. Each string is checked as UTF-8 on its own, so an end
+  that splits a character fails both strings around it.
+  `TableSizer::add_str_vector()`, `TableWriter::set_str_vector()` and
+  `TableBuilder::set_str_vector()` write them from a list of strings.
 - `TableSizer::add_table_bytes()`, a public `TableWriter::copy_table()`, and
   `TableWriter::table_bytes()` and `versioned_table_bytes()`, for the code
   that tafla-gen generates: they add and copy whole a table whose length its

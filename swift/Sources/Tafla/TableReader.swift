@@ -304,6 +304,18 @@ public struct TableReader: ~Escapable {
         return Vector(bytes: bytes, position: position, count: count, offsetType: layout.offsetType)
     }
 
+    /// Reads the vector of strings at `position`, checking that its count and
+    /// the ends of its strings lie within the bytes, as ``vector(at:)``
+    /// checks a vector's. Each string is checked when it's read.
+    ///
+    /// Throws ``DecodeError/outOfRange(position:byteLength:available:)`` if
+    /// the count or the ends don't lie within the bytes.
+    @inlinable
+    @_lifetime(copy self)
+    public func stringVector(at position: Int) throws(DecodeError) -> StringVector {
+        StringVector(try vector(at: position))
+    }
+
     /// Returns the bytes of the elements after the count at `position`
     @inlinable
     @_lifetime(copy self)

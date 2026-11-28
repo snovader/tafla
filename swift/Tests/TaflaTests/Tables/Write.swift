@@ -109,6 +109,7 @@ extension TableSizer {
             for item in items {
                 add(nested: item.table)
             }
+        case .stringVector(let utf8): addStringVector(utf8.map { String(decoding: $0, as: UTF8.self) })
         }
     }
 
@@ -165,6 +166,7 @@ extension TableWriter {
                 write(nested: nested.table)
                 setItemEnd(vector, item: item)
             }
+        case .stringVector(let utf8): setStringVector(index, utf8.map { String(decoding: $0, as: UTF8.self) })
         }
     }
 

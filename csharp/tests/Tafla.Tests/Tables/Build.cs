@@ -82,6 +82,10 @@ public static class Build
                 target.SetString(value.Value);
                 break;
 
+            case StringVectorField value:
+                target.SetStringVector(value.Values.ToArray());
+                break;
+
             case StructField value:
                 target.SetStruct(Scalars.StructBytes(value.Scalars));
                 break;

@@ -10,9 +10,10 @@ using Tafla.Benchmarks;
 
 // Times tafla's C# runtime and the libraries that it's compared with on every workload, interleaved,
 // and prints each benchmark's fastest call, its ratio to tafla's, the median call and what a call
-// allocates, or, with encoding, each codec's encoded sizes. ../README.md describes the method.
+// allocates, or, with encoding, each codec's encoded sizes. With lists, it times the lists suite's
+// lists of strings instead. ../README.md describes the method.
 //
-//   dotnet run -c Release -- [--run regex] [--rounds n] [--warmup n] [--sample ms] [--tiering n] [--quick] [--tsv path] [--markdown path]
+//   dotnet run -c Release -- [lists] [--run regex] [--rounds n] [--warmup n] [--sample ms] [--tiering n] [--quick] [--tsv path] [--markdown path]
 //   dotnet run -c Release -- encoding
 
 var arguments = Arguments.Parse(args);
@@ -40,7 +41,8 @@ var options = arguments.Quick
     );
 
 var selected = new Regex(arguments.Run, RegexOptions.CultureInvariant);
-var benchmarks = Comparison.All().Where(benchmark => selected.IsMatch(benchmark.Name)).ToList();
+var suite = arguments.Lists ? StringLists.All() : Comparison.All();
+var benchmarks = suite.Where(benchmark => selected.IsMatch(benchmark.Name)).ToList();
 foreach (var benchmark in benchmarks)
 {
     Comparison.Check(benchmark);
@@ -85,6 +87,7 @@ return 0;
 /// <summary>The command's options.</summary>
 internal sealed record Arguments(
     bool Encoding,
+    bool Lists,
     string Run,
     int Rounds,
     int Warmup,
@@ -99,6 +102,7 @@ internal sealed record Arguments(
     {
         var parsed = new Arguments(
             Encoding: false,
+            Lists: false,
             Run: "",
             Rounds: 30,
             Warmup: 3,
@@ -113,6 +117,7 @@ internal sealed record Arguments(
             parsed = args[index] switch
             {
                 "encoding" when index == 0 => parsed with { Encoding = true },
+                "lists" when index == 0 => parsed with { Lists = true },
                 "--run" => parsed with { Run = args[++index] },
                 "--rounds" => parsed with { Rounds = int.Parse(args[++index], CultureInfo.InvariantCulture) },
                 "--warmup" => parsed with { Warmup = int.Parse(args[++index], CultureInfo.InvariantCulture) },

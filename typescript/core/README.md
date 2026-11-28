@@ -122,6 +122,11 @@ and then the fields in the order they were set:
   without reading the items before it. `getVectorItemOffset()` finds it from
   the count that `getVectorLength()` returned, so that reading many items
   reads and checks the count once, as the generated views do.
+- A vector of strings lays out its count and ends as a vector of tables
+  does, and then each string's UTF-8, without a count of its own.
+  `setStringVector()` writes one from an array of strings,
+  `getStringVector()` reads every string, and a `StringVector` reads one
+  string from its ends with `get(i)` and every string with `toArray()`.
 
 The repository's `conformance` directory holds golden tables of every part of
 the format, which every implementation of tafla reads and rebuilds byte for
@@ -228,9 +233,10 @@ Validation is always on:
 
 - Every read checks its range against the bytes the `TableReader` was given,
   even when the backing `ArrayBuffer` is larger, and throws a `DecodeError`
-  if it would leave them. Strings must be valid UTF-8. A truncated or
-  corrupted buffer therefore throws rather than returning values from outside
-  it.
+  if it would leave them. Strings must be valid UTF-8, and so must each
+  string of a vector of strings, which is checked when it's read. A
+  truncated or corrupted buffer therefore throws rather than returning values
+  from outside it.
 - Once the bytes' `ArrayBuffer` is detached, or a resizable one has shrunk
   below bytes of fixed length, every read throws a `DecodeError`. Bytes made
   over a resizable buffer without a length track its length instead, so once

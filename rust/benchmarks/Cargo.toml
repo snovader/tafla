@@ -32,6 +32,10 @@ harness = false
 name = "strings"
 harness = false
 
+[[bench]]
+name = "lists"
+harness = false
+
 [dependencies]
 tafla = { path = "../core" }
 flatbuffers = "25.12.19"

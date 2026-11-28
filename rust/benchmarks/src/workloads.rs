@@ -214,7 +214,8 @@ pub fn sum_column(values: impl IntoIterator<Item = f32>) -> f64 {
 
 /// The TypeScript generator's xorshift, in [0, 1), so every run sees the same
 /// values. Its state is a `u32`, whose bits JavaScript's 32-bit shifts keep
-/// the same. The strings' generator uses it too, with its own seeds.
+/// the same. The strings' generator uses it too, with its own seeds, and the
+/// lists suite's shapes, as TypeScript's do.
 pub(crate) struct Xorshift {
     state: u32,
 }
@@ -298,4 +299,20 @@ fn same_floats(left: &[f32], right: &[f32]) -> bool {
             .iter()
             .zip(right)
             .all(|(left, right)| left.to_bits() == right.to_bits())
+}
+
+/// Formats `100000` as `100,000`, as the other languages name the groups of
+/// the benchmarks, and as `toLocaleString('en-US')` names TypeScript's
+pub fn thousands(value: usize) -> String {
+    let digits = value.to_string();
+    let mut formatted = String::with_capacity(digits.len() + digits.len() / 3);
+
+    for (i, digit) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            formatted.push(',');
+        }
+        formatted.push(digit);
+    }
+
+    formatted
 }

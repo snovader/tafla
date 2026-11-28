@@ -18,7 +18,14 @@ from dataclasses import dataclass
 from math import copysign, isinf, isnan
 from typing import Any, Literal, cast
 
-from tafla import OffsetType, TableBuilder, TableLayout, TableReader, TableWriter
+from tafla import (
+    OffsetType,
+    StringVector,
+    TableBuilder,
+    TableLayout,
+    TableReader,
+    TableWriter,
+)
 
 # A table, field, layout or vector item as cases.json describes it
 type Description = dict[str, Any]
@@ -169,6 +176,8 @@ def set_field(builder: TableBuilder, field: Description) -> None:
             packing.pack(*_item_values(types, item)) for item in field["items"]
         )
         builder.set_struct_array(data, packing.size, struct_alignment(types))
+    elif kind == "string[]":
+        builder.set_string_vector(field["value"])
     elif kind.endswith("[]"):
         element = kind.removesuffix("[]")
         getattr(builder, f"set_{element}_array")(_array_values(element, field))
@@ -323,6 +332,8 @@ def write_field(writer: TableWriter, index: int, field: Description) -> None:
             packing.pack(*_item_values(types, item)) for item in field["items"]
         )
         writer.set_struct_array(index, data, packing.size, struct_alignment(types))
+    elif kind == "string[]":
+        writer.set_string_vector(index, field["value"])
     elif kind.endswith("[]"):
         element = kind.removesuffix("[]")
         getattr(writer, f"set_{element}_array")(index, _array_values(element, field))
@@ -387,7 +398,7 @@ def alignment_of(field: Description) -> Alignment:
             alignments.append(alignment_of(nested))
         elif kind == "struct[]":
             alignments.append(struct_alignment(nested["fields"]))
-        elif kind.endswith("[]"):
+        elif kind.endswith("[]") and kind != "string[]":
             alignments.append(ELEMENT_SIZES[kind.removesuffix("[]")])
 
     return cast(Alignment, max(alignments))
@@ -573,6 +584,9 @@ class DescriptionReader:
                 "items": self.__read_struct_array(position, field["fields"]),
             }
 
+        if kind == "string[]":
+            return {**field, "value": self.__read_string_vector(position)}
+
         if kind.endswith("[]"):
             element = kind.removesuffix("[]")
             values = getattr(self.__reader, f"get_{element}_array")(position)
@@ -613,6 +627,31 @@ class DescriptionReader:
             )
 
         return read
+
+    def __read_string_vector(self, position: int) -> list[str]:
+        """Reads every string of a vector of strings, and then each from its
+        ends alone, with the reader and with a ``StringVector``, and raises
+        ``MismatchError`` if one of those reads another string, or another
+        number of them"""
+        reader = self.__reader
+        strings = reader.get_string_vector(position)
+        count = reader.get_vector_length(position)
+        vector = StringVector(reader, position)
+        if count != len(strings) or len(vector) != len(strings):
+            raise MismatchError(
+                f"The vector holds {count} strings, a view of it {len(vector)}, "
+                f"and reading them all {len(strings)}"
+            )
+
+        for index, string in enumerate(strings):
+            found = reader.get_string_vector_item(position, count, index)
+            if found != string or vector[index] != string:
+                raise MismatchError(
+                    f"String {index} of the vector isn't the same from its ends "
+                    "as among every string"
+                )
+
+        return strings
 
     def __read_struct(
         self, position: int, scalars: list[Description]

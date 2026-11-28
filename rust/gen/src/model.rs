@@ -138,6 +138,9 @@ pub enum FieldType {
     Scalar(Scalar),
     Array(Scalar),
     String,
+    /// A vector of strings: a count, the end of each string, and the
+    /// strings' UTF-8, one after another
+    StringVector,
     /// A struct, in place, by its index in [`Schema::definitions`]
     Struct(usize),
     /// An array of structs, by the structs' index in [`Schema::definitions`]
@@ -353,6 +356,7 @@ fn alignment_within(definitions: &[Definition], index: usize, alignments: &mut [
             FieldType::Table(nested) => alignment_within(definitions, nested, alignments),
             FieldType::Scalar(_)
             | FieldType::String
+            | FieldType::StringVector
             | FieldType::Struct(_)
             | FieldType::Vector(_) => 1,
         };

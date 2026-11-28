@@ -24,7 +24,7 @@ namespace Tafla;
 /// Arrays, structs and vector items are read in place, as spans of the bytes rather than copies, so
 /// they show changes made to the bytes later. On a big-endian host, and on 32-bit Arm, arrays of
 /// elements wider than a byte are copied instead, since their bytes can't be read in place there. A
-/// string is decoded into a new <see cref="string"/>.
+/// string, and each string of a vector of strings, is decoded into a new <see cref="string"/>.
 /// </para>
 /// <para>
 /// A <see cref="TableReader"/> is a <c>ref struct</c> over a span of the bytes, which can be those of
@@ -419,6 +419,41 @@ public readonly ref struct TableReader
         Range(bytes, (long)position + width, (long)count * width);
 
         return new Vector(_bytes, position, (int)count, _layout.OffsetType);
+    }
+
+    /// <summary>
+    /// Reads the vector of strings at <paramref name="position"/>, after checking that its count and the
+    /// ends of its strings lie within the bytes, as <see cref="GetVector"/> checks a vector's. Each
+    /// string is read, and checked as UTF-8, when it's asked for.
+    /// </summary>
+    /// <exception cref="DecodeException">The count or the ends don't lie within the bytes.</exception>
+    public StringVector GetStringVector(int position) => new(GetVector(position));
+
+    /// <summary>
+    /// Decodes <paramref name="bytes"/>, a string of a vector of strings that starts at
+    /// <paramref name="position"/>, which must be valid UTF-8, into a new <see cref="string"/>, as
+    /// <see cref="GetString"/> decodes a string, with its decode errors
+    /// </summary>
+    // Not inlined, so that each string's chars on the stack are freed when it returns, rather than
+    // kept in the frame of StringVector's loops. GetString keeps its own copy of the short path:
+    // calling this from it took tables of ASCII strings of 8 to 256 bytes 1.01 to 1.04 times as long.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal static string DecodeString(ReadOnlySpan<byte> bytes, int position)
+    {
+        if (bytes.Length > MaxStackStringLength)
+        {
+            return bytes.Length <= MaxMediumStringLength ? DecodeMediumString(bytes, position) : DecodeLongString(bytes, position);
+        }
+
+        // In one pass into chars on the stack, as GetString decodes a short string
+        Span<char> chars = stackalloc char[bytes.Length];
+        var status = Utf8.ToUtf16(bytes, chars, out _, out var length, replaceInvalidSequences: false);
+        if (status != OperationStatus.Done)
+        {
+            throw InvalidUtf8(bytes, position);
+        }
+
+        return new string(chars[..length]);
     }
 
     /// <summary>Returns the <paramref name="size"/> bytes of a scalar at <paramref name="position"/>.</summary>

@@ -88,6 +88,11 @@ and then the fields in the order they were set:
   item from two ends without reading the others. An item without a header and
   with its parent's offset type is read in place, from the bytes that
   `Vector.GetInPlace()` returns, which run on to the end of its parent's.
+- A vector of strings is a vector whose items are strings' UTF-8, without a
+  count of their own, one after another without padding, so a
+  `StringVector`'s indexer finds any string from two ends too. It takes each
+  string's end, where a vector of tables of one string each takes the
+  string's count and the table's offset too.
 
 `ConformanceTests` reads and rebuilds the repository's conformance suite,
 which covers the whole format, byte for byte.
@@ -134,7 +139,15 @@ which covers the whole format, byte for byte.
   decoded into 1,024 chars that each thread allocates once, and from them
   copied into the `string`. They hold the last such string that the thread
   read until it reads another, or ends, so a secret read as a string may
-  stay in memory after the `string` itself is collected.
+  stay in memory after the `string` itself is collected. Each read of a
+  string of a vector of strings checks and decodes it too, in the same way.
+  `GetStringVector()` returns the vector as a `StringVector`, a `ref struct`
+  over the bytes, as a `Vector` is: its indexer decodes one string from its
+  two ends, and `ToArray()` and its enumerator decode every string, in
+  order. Each string is checked on its own, so an end that splits a
+  character fails both strings around it, and reading every string fails
+  where reading any one of them fails, with its error. The setters take a
+  `ReadOnlySpan<string>`, such as an array's.
 
 ## Recording nested tables in place
 
@@ -254,9 +267,10 @@ bytes: use them as locals, or pass them by `ref`.
 
 ## Errors
 
-Every read of a `TableReader` or a `Vector` checks its range against the bytes
-that it was given, and throws a `DecodeException` if it would leave them,
-whose `Kind` says why and whose properties describe the read:
+Every read of a `TableReader`, a `Vector` or a `StringVector` checks its
+range against the bytes that it was given, and throws a `DecodeException` if
+it would leave them, whose `Kind` says why and whose properties describe the
+read:
 
 - `OutOfRange`: a read of `ByteLength` bytes at `Position` that would leave
   the `Available` bytes. An array's count is checked against the bytes
@@ -266,13 +280,15 @@ whose `Kind` says why and whose properties describe the read:
   `TableReader`, as tafla-gen's structs read theirs, throws
   `DecodeException.OutOfRange()`.
 - `InvalidUtf8`: a string that isn't valid UTF-8, such as one with an
-  overlong encoding or a surrogate.
+  overlong encoding or a surrogate, or a string of a vector of strings, whose
+  `Position` is where it starts.
 - `StringTooLong`: a string of `ByteLength` bytes that hold more characters
   than a .NET `string` can, 1,073,741,791. A table of `UInt32` offsets can
   hold a longer string, so the bytes may be valid, but .NET can't decode it.
   Only a string of more bytes than that can fail so, and its characters are
   counted before anything is allocated for it.
-- `ItemEndsBeforeStart`: a vector item that ends before the item before it.
+- `ItemEndsBeforeStart`: a vector item, or a string of a vector of strings,
+  that ends before the item before it.
 - `UnsupportedVersion`: `TableReader` doesn't compare versions. A reader
   throws `DecodeException.UnsupportedVersion()` when `GetVersion()` isn't its
   own, as the example does, so that every failure to decode is a
@@ -327,10 +343,11 @@ throw the argument exceptions of .NET's own APIs:
 | `GetStruct()`, `GetStructArray()`               | `ArgumentOutOfRangeException` for a negative size, or a size of 0 of an array of structs  |
 | `GetVersion()`                                  | `InvalidOperationException` for a layout without a version                                |
 | `Vector.Get()`, `Vector.GetInPlace()`           | `ArgumentOutOfRangeException` for an index that isn't an item's                           |
+| `StringVector`'s indexer                        | `ArgumentOutOfRangeException` for an index that isn't a string's                          |
 | `TableLayout.OffsetType`                        | `ArgumentOutOfRangeException` for a value that isn't an offset type                       |
 | `new TableBuilder()`                            | `ArgumentOutOfRangeException` for a negative number of fields |
 | `SetTable()`, `SetStructArray()`                | `ArgumentOutOfRangeException` for an alignment other than 1, 2, 4 or 8, or a struct size below 1 |
-| `SetString()`, `SetTable()`, `NestedTable`      | `ArgumentNullException` for a null string, builder or array                               |
+| `SetString()`, `SetStringVector()`, `SetTable()`, `NestedTable` | `ArgumentNullException` for a null string, builder or array                 |
 | `SetTable()` and `SetVector()` with a `fill`    | `ArgumentOutOfRangeException` for a negative number of fields or count, `ArgumentNullException` for a null `fill`, and while `fill` runs, `ToArray()` and nesting the builder throw `InvalidOperationException` |
 | `new TableSizer()`                              | As `new TableBuilder()`                                                                   |
 | `TableSizer`'s and `TableWriter`'s methods      | `ArgumentOutOfRangeException` for a negative count, number of fields or struct size, a size of 0 of an array of structs, or an alignment other than 1, 2, 4 or 8, and `ArgumentNullException` for a null string |
@@ -348,7 +365,7 @@ converts a value to it, as C# converts:
 | An integer outside its field's range   | A cast keeps the low bits in an unchecked context, C#'s default: `unchecked((byte)300)` is 44. A checked one throws an `OverflowException`, and a constant out of range doesn't compile |
 | A fraction or NaN for an integer field | A cast truncates toward zero, and saturates at the type's limits, with NaN as 0, since .NET 9                  |
 | A `double` too large for a `float`     | `(float)` makes it infinity of its sign, and rounds other values to the nearest `float`                        |
-| A lone surrogate in a string           | U+FFFD, as `Encoding.UTF8` writes it, which TypeScript and Java write too                                      |
+| A lone surrogate in a string, or in a vector of strings | U+FFFD, as `Encoding.UTF8` writes it, which TypeScript and Java write too                     |
 
 Floats keep all their bits, a NaN's payload too, in both directions.
 
@@ -390,7 +407,7 @@ band. Run the commands below from this directory:
 
 ```sh
 dotnet format --verify-no-changes
-dotnet format whitespace --folder --include-generated --verify-no-changes --include tests/Tafla.Generated/ tests/names/ benchmarks/Tafla.Benchmarks/Generated/TaflaGen/
+dotnet format whitespace --folder --include-generated --verify-no-changes --include tests/Tafla.Generated/ tests/names/ benchmarks/Tafla.Benchmarks/Generated/TaflaGen/ benchmarks/Tafla.Benchmarks/Generated/Lists/
 dotnet build
 dotnet test
 dotnet test -p:TaflaPortable=true
@@ -481,8 +498,8 @@ The tests in `tests/Tafla.Tests` are:
   their valid case's values, and invalid tables fail with a
   `DecodeException` at their field.
 - `RoundTripTests`, `FormatTests`, `DecodeExceptionTests`,
-  `TableBuilderTests` and `TableWriterTests`: properties of tables built,
-  and sized and written, from the conformance
+  `TableBuilderTests`, `TableWriterTests` and `StringVectorTests`:
+  properties of tables built, and sized and written, from the conformance
   suite's descriptions, which `Tables/` parses, generates with CsCheck, builds
   and reads, as Go's `tests/internal/tables` does, and examples of the errors
   and of every boundary: signed zero, NaN, integer limits, empty arrays, the
@@ -512,10 +529,11 @@ that escapes a target is a finding, as are a hang and a run out of memory:
 
 - `table_reader` reads the rest of its input with every getter of
   `TableReader` at a position, in an offset type and header, which the
-  input's first four bytes choose, and reads every array, struct array and
-  vector there. Each read must return the value or bytes that lie where the
-  format puts them, exactly when they lie within the input, and otherwise
-  throw a `DecodeException` that describes the very read that leaves it.
+  input's first four bytes choose, and reads every array, struct array,
+  vector and vector of strings there. Each read must return the value or
+  bytes that lie where the format puts them, exactly when they lie within
+  the input, and otherwise throw a `DecodeException` that describes the very
+  read that leaves it.
   Arrays must be spans of the input where the runtime reads them in place,
   and copies outside it where it doesn't. Any other exception, such as an
   `ArgumentOutOfRangeException` or an `IndexOutOfRangeException`, is a

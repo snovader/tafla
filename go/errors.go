@@ -13,9 +13,9 @@ const (
 	OutOfRange DecodeErrorKind = iota + 1
 	// InvalidUTF8 is a string at Position that isn't valid UTF-8.
 	InvalidUTF8
-	// ItemEndsBeforeStart is a vector item that starts at Position and ends
-	// before it, at End. An item starts where the item before it ends, and
-	// the first after the ends.
+	// ItemEndsBeforeStart is a vector item, or a string of a vector of
+	// strings, that starts at Position and ends before it, at End. An item
+	// starts where the item before it ends, and the first after the ends.
 	ItemEndsBeforeStart
 	// UnsupportedVersion is a header that carries format Version, which the
 	// reader can't read, since it reads version Supported. [TableReader]
@@ -42,8 +42,8 @@ func (k DecodeErrorKind) String() string {
 
 // DecodeError is returned when bytes can't be read as the table, array,
 // string, struct, vector or value that a read expects. Every read of a
-// [TableReader], an [ArrayView]'s bytes and a [Vector] returns it, as a
-// *DecodeError, which errors.As finds.
+// [TableReader], an [ArrayView]'s bytes, a [Vector] and a [StringVector]
+// returns it, as a *DecodeError, which errors.As finds.
 //
 // Every read checks its range against the supplied bytes before it returns,
 // so a truncated or corrupted buffer returns this rather than values from
@@ -55,7 +55,8 @@ func (k DecodeErrorKind) String() string {
 type DecodeError struct {
 	Kind DecodeErrorKind
 	// Position is where the read starts, for OutOfRange, where the string's
-	// length lies, for InvalidUTF8, and where the item starts, for
+	// length lies, or where a string of a vector of strings starts, for
+	// InvalidUTF8, and where the item or string starts, for
 	// ItemEndsBeforeStart.
 	Position int
 	// ByteLength is the length of the read, for OutOfRange. It can exceed

@@ -121,6 +121,10 @@ class Nested;
 class Tree;
 class Keywords;
 class Reserved;
+class Labels;
+class StringVectors;
+class Entry;
+class NarrowStringVectors;
 class Path;
 class Structs;
 class Enums;
@@ -133,6 +137,10 @@ struct NestedFields;
 struct TreeFields;
 struct KeywordsFields;
 struct ReservedFields;
+struct LabelsFields;
+struct StringVectorsFields;
+struct EntryFields;
+struct NarrowStringVectorsFields;
 struct PathFields;
 struct StructsFields;
 struct EnumsFields;
@@ -471,6 +479,9 @@ struct Mark {
 
 /** A vector of `Tree`s, which reads each item when it's asked for */
 using TreeVector = ::tafla::TableVector<Tree>;
+
+/** A vector of `Entry`s, which reads each item when it's asked for */
+using EntryVector = ::tafla::TableVector<Entry>;
 
 /** An array of `Segment`s, which reads each struct when it's asked for */
 using SegmentArray = ::tafla::StructArray<Segment>;
@@ -965,6 +976,234 @@ struct ReservedFields {
     /**
      * Writes a `Reserved` as `serialize()` does, but into the start of `bytes_` rather than into new bytes, and returns
      * its length, the number of bytes that hold it, leaving the bytes after it as they were. Throws
+     * `std::invalid_argument` if `bytes_` are shorter than it, before writing any of them.
+     */
+    [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
+};
+
+/** A nested table whose only field is a vector of strings */
+class Labels {
+public:
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
+    constexpr Labels(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
+
+    /**
+     * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
+     * before they're read
+     */
+    constexpr Labels() noexcept = default;
+
+    /**
+     * Views the strings, reading each one when it's asked for, which throws a `tafla::DecodeError` if it lies outside
+     * the bytes or isn't valid UTF-8, and `to_vector()` reads every string. Throws a `tafla::DecodeError` if the field,
+     * or the vector's count or the ends of its strings, lie outside the bytes.
+     */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::StringVector values() const;
+
+private:
+    std::span<const std::uint8_t> bytes_;
+};
+
+/** The fields of a `Labels`, to write */
+struct LabelsFields {
+    std::span<const std::string_view> values{};
+
+    /** The alignment that a parent pads a `Labels` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Labels` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Labels` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+/**
+ * Vectors of strings beside other fields, in a nested table and in the
+ * items of a vector
+ */
+class StringVectors {
+public:
+    /** The layout of the table, which its writer writes and its reader reads */
+    static constexpr auto LAYOUT = ::tafla::TableLayout();
+
+    /** Reads a `StringVectors` from `bytes`, which it views */
+    explicit constexpr StringVectors(std::span<const std::uint8_t> bytes) noexcept : bytes_(bytes) {}
+
+    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint32_t id() const;
+
+    /**
+     * A vector of strings, whose getter reads each string when it's asked
+     * for
+     *
+     * Views the strings, reading each one when it's asked for, which throws a `tafla::DecodeError` if it lies outside
+     * the bytes or isn't valid UTF-8, and `to_vector()` reads every string. Throws a `tafla::DecodeError` if the field,
+     * or the vector's count or the ends of its strings, lie outside the bytes.
+     */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::StringVector tags() const;
+
+    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Labels labels() const;
+
+    /**
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
+     */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE EntryVector entries() const;
+
+private:
+    std::span<const std::uint8_t> bytes_;
+};
+
+/** The fields of a `StringVectors`, to write */
+struct StringVectorsFields {
+    std::uint32_t id{};
+    /**
+     * A vector of strings, whose getter reads each string when it's asked
+     * for
+     */
+    std::span<const std::string_view> tags{};
+    LabelsFields labels;
+    std::span<const EntryFields> entries{};
+
+    /**
+     * Writes a `StringVectors` with every field, or throws a `tafla::BuildError` if it's longer than its offset type,
+     * `uint32`, addresses
+     */
+    [[nodiscard]] ::tafla::Bytes serialize() const;
+
+    /**
+     * Writes a `StringVectors` as `serialize()` does, but into the start of `bytes_` rather than into new bytes, and
+     * returns its length, the number of bytes that hold it, leaving the bytes after it as they were. Throws
+     * `std::invalid_argument` if `bytes_` are shorter than it, before writing any of them.
+     */
+    [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
+};
+
+namespace generic {
+/**
+ * The fields of a `StringVectors`, to write, as `StringVectorsFields` holds them, but whose `entries` can be a view of
+ * any items that convert into its items rather than a span of them
+ */
+template <class T = std::span<const EntryFields>>
+struct StringVectorsFields {
+    std::uint32_t id{};
+    /**
+     * A vector of strings, whose getter reads each string when it's asked
+     * for
+     */
+    std::span<const std::string_view> tags{};
+    LabelsFields labels;
+    /**
+     * A view of `EntryFields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `EntryFields` unless `T` is another
+     */
+    T entries{};
+
+    /**
+     * Writes a `StringVectors` with every field, or throws a `tafla::BuildError` if it's longer than its offset type,
+     * `uint32`, addresses
+     */
+    [[nodiscard]] ::tafla::Bytes serialize() const;
+
+    /**
+     * Writes a `StringVectors` as `serialize()` does, but into the start of `bytes_` rather than into new bytes, and
+     * returns its length, the number of bytes that hold it, leaving the bytes after it as they were. Throws
+     * `std::invalid_argument` if `bytes_` are shorter than it, before writing any of them.
+     */
+    [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
+};
+
+}  // namespace generic
+
+/** An item of a vector, which holds a string and a vector of strings */
+class Entry {
+public:
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
+    constexpr Entry(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
+
+    /**
+     * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
+     * before they're read
+     */
+    constexpr Entry() noexcept = default;
+
+    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::string_view key() const;
+
+    /**
+     * Views the strings, reading each one when it's asked for, which throws a `tafla::DecodeError` if it lies outside
+     * the bytes or isn't valid UTF-8, and `to_vector()` reads every string. Throws a `tafla::DecodeError` if the field,
+     * or the vector's count or the ends of its strings, lie outside the bytes.
+     */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::StringVector aliases() const;
+
+private:
+    std::span<const std::uint8_t> bytes_;
+};
+
+/** The fields of an `Entry`, to write */
+struct EntryFields {
+    std::string_view key{};
+    std::span<const std::string_view> aliases{};
+
+    /** The alignment that a parent pads an `Entry` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds an `Entry` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes an `Entry` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+/** A vector of strings in a message of `uint16` offsets, before a scalar */
+class NarrowStringVectors {
+public:
+    /** The layout of the table, which its writer writes and its reader reads */
+    static constexpr auto LAYOUT = ::tafla::TableLayout().with_offset_type(::tafla::OffsetType::uint16);
+
+    /** Reads a `NarrowStringVectors` from `bytes`, which it views */
+    explicit constexpr NarrowStringVectors(std::span<const std::uint8_t> bytes) noexcept : bytes_(bytes) {}
+
+    /**
+     * Views the strings, reading each one when it's asked for, which throws a `tafla::DecodeError` if it lies outside
+     * the bytes or isn't valid UTF-8, and `to_vector()` reads every string. Throws a `tafla::DecodeError` if the field,
+     * or the vector's count or the ends of its strings, lie outside the bytes.
+     */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::StringVector names() const;
+
+    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint8_t count() const;
+
+private:
+    std::span<const std::uint8_t> bytes_;
+};
+
+/** The fields of a `NarrowStringVectors`, to write */
+struct NarrowStringVectorsFields {
+    std::span<const std::string_view> names{};
+    std::uint8_t count{};
+
+    /**
+     * Writes a `NarrowStringVectors` with every field, or throws a `tafla::BuildError` if it's longer than its offset
+     * type, `uint16`, addresses
+     */
+    [[nodiscard]] ::tafla::Bytes serialize() const;
+
+    /**
+     * Writes a `NarrowStringVectors` as `serialize()` does, but into the start of `bytes_` rather than into new bytes,
+     * and returns its length, the number of bytes that hold it, leaving the bytes after it as they were. Throws
      * `std::invalid_argument` if `bytes_` are shorter than it, before writing any of them.
      */
     [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
@@ -2017,6 +2256,222 @@ inline std::size_t ReservedFields::serialize_into(std::span<std::uint8_t> bytes_
     auto writer_ = sizer_.writer(bytes_);
     writer_.set_table(0, KeywordsFields::ALIGNMENT);
     keywords.write(writer_);
+
+    return writer_.finish_into();
+}
+
+inline ::tafla::StringVector Labels::values() const {
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return reader.get_string_vector(position);
+}
+
+inline void LabelsFields::size(::tafla::TableSizer& sizer_) const {
+    const auto parent_ = sizer_.start_table(1);
+    sizer_.add_string_vector(values);
+    sizer_.end_table(parent_);
+}
+
+inline void LabelsFields::write(::tafla::TableWriter& writer_) const {
+    const auto parent_ = writer_.start_table(1);
+    writer_.set_string_vector(0, values);
+    writer_.end_table(parent_);
+}
+
+inline std::uint32_t StringVectors::id() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(0);
+    return reader.get_uint32(position);
+}
+
+inline ::tafla::StringVector StringVectors::tags() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(1);
+    return reader.get_string_vector(position);
+}
+
+inline Labels StringVectors::labels() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(2);
+    return Labels(reader.get_table(position), 0);
+}
+
+inline EntryVector StringVectors::entries() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(3);
+    return EntryVector(reader.get_vector(position));
+}
+
+inline ::tafla::Bytes StringVectorsFields::serialize() const {
+    ::tafla::TableSizer sizer_(4, StringVectors::LAYOUT);
+    sizer_.add_uint32();
+    sizer_.add_string_vector(tags);
+    sizer_.add_table(LabelsFields::ALIGNMENT);
+    labels.size(sizer_);
+    sizer_.add_vector(entries.size());
+    for (const auto& item_ : entries) {
+        item_.size(sizer_);
+    }
+
+    auto writer_ = sizer_.writer();
+    writer_.set_uint32(0, id);
+    writer_.set_string_vector(1, tags);
+    writer_.set_table(2, LabelsFields::ALIGNMENT);
+    labels.write(writer_);
+    const auto vector3_ = writer_.set_vector(3, entries.size());
+    for (std::size_t index_ = 0; index_ < entries.size(); ++index_) {
+        entries[index_].write(writer_);
+        writer_.set_item_end(vector3_, index_);
+    }
+
+    return writer_.finish();
+}
+
+inline std::size_t StringVectorsFields::serialize_into(std::span<std::uint8_t> bytes_) const {
+    ::tafla::TableSizer sizer_(4, StringVectors::LAYOUT);
+    sizer_.add_uint32();
+    sizer_.add_string_vector(tags);
+    sizer_.add_table(LabelsFields::ALIGNMENT);
+    labels.size(sizer_);
+    sizer_.add_vector(entries.size());
+    for (const auto& item_ : entries) {
+        item_.size(sizer_);
+    }
+
+    auto writer_ = sizer_.writer(bytes_);
+    writer_.set_uint32(0, id);
+    writer_.set_string_vector(1, tags);
+    writer_.set_table(2, LabelsFields::ALIGNMENT);
+    labels.write(writer_);
+    const auto vector3_ = writer_.set_vector(3, entries.size());
+    for (std::size_t index_ = 0; index_ < entries.size(); ++index_) {
+        entries[index_].write(writer_);
+        writer_.set_item_end(vector3_, index_);
+    }
+
+    return writer_.finish_into();
+}
+
+template <class T>
+inline ::tafla::Bytes generic::StringVectorsFields<T>::serialize() const {
+    static_assert(::tafla::ViewOf<T, EntryFields>);
+
+    ::tafla::TableSizer sizer_(4, StringVectors::LAYOUT);
+    sizer_.add_uint32();
+    sizer_.add_string_vector(tags);
+    sizer_.add_table(LabelsFields::ALIGNMENT);
+    labels.size(sizer_);
+    sizer_.add_vector(std::ranges::size(entries));
+    for (const auto& element_ : entries) {
+        const EntryFields& item_ = element_;
+        item_.size(sizer_);
+    }
+
+    auto writer_ = sizer_.writer();
+    writer_.set_uint32(0, id);
+    writer_.set_string_vector(1, tags);
+    writer_.set_table(2, LabelsFields::ALIGNMENT);
+    labels.write(writer_);
+    const auto vector3_ = writer_.set_vector(3, std::ranges::size(entries));
+    for (std::size_t index_ = 0; const auto& element_ : entries) {
+        const EntryFields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector3_, index_);
+        ++index_;
+    }
+
+    return writer_.finish();
+}
+
+template <class T>
+inline std::size_t generic::StringVectorsFields<T>::serialize_into(std::span<std::uint8_t> bytes_) const {
+    static_assert(::tafla::ViewOf<T, EntryFields>);
+
+    ::tafla::TableSizer sizer_(4, StringVectors::LAYOUT);
+    sizer_.add_uint32();
+    sizer_.add_string_vector(tags);
+    sizer_.add_table(LabelsFields::ALIGNMENT);
+    labels.size(sizer_);
+    sizer_.add_vector(std::ranges::size(entries));
+    for (const auto& element_ : entries) {
+        const EntryFields& item_ = element_;
+        item_.size(sizer_);
+    }
+
+    auto writer_ = sizer_.writer(bytes_);
+    writer_.set_uint32(0, id);
+    writer_.set_string_vector(1, tags);
+    writer_.set_table(2, LabelsFields::ALIGNMENT);
+    labels.write(writer_);
+    const auto vector3_ = writer_.set_vector(3, std::ranges::size(entries));
+    for (std::size_t index_ = 0; const auto& element_ : entries) {
+        const EntryFields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector3_, index_);
+        ++index_;
+    }
+
+    return writer_.finish_into();
+}
+
+inline std::string_view Entry::key() const {
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return reader.get_string(position);
+}
+
+inline ::tafla::StringVector Entry::aliases() const {
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return reader.get_string_vector(position);
+}
+
+inline void EntryFields::size(::tafla::TableSizer& sizer_) const {
+    const auto parent_ = sizer_.start_table(2);
+    sizer_.add_string(key);
+    sizer_.add_string_vector(aliases);
+    sizer_.end_table(parent_);
+}
+
+inline void EntryFields::write(::tafla::TableWriter& writer_) const {
+    const auto parent_ = writer_.start_table(2);
+    writer_.set_string(0, key);
+    writer_.set_string_vector(1, aliases);
+    writer_.end_table(parent_);
+}
+
+inline ::tafla::StringVector NarrowStringVectors::names() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(0);
+    return reader.get_string_vector(position);
+}
+
+inline std::uint8_t NarrowStringVectors::count() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(1);
+    return reader.get_uint8(position);
+}
+
+inline ::tafla::Bytes NarrowStringVectorsFields::serialize() const {
+    ::tafla::TableSizer sizer_(2, NarrowStringVectors::LAYOUT);
+    sizer_.add_string_vector(names);
+    sizer_.add_uint8();
+
+    auto writer_ = sizer_.writer();
+    writer_.set_string_vector(0, names);
+    writer_.set_uint8(1, count);
+
+    return writer_.finish();
+}
+
+inline std::size_t NarrowStringVectorsFields::serialize_into(std::span<std::uint8_t> bytes_) const {
+    ::tafla::TableSizer sizer_(2, NarrowStringVectors::LAYOUT);
+    sizer_.add_string_vector(names);
+    sizer_.add_uint8();
+
+    auto writer_ = sizer_.writer(bytes_);
+    writer_.set_string_vector(0, names);
+    writer_.set_uint8(1, count);
 
     return writer_.finish_into();
 }

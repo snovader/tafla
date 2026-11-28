@@ -64,6 +64,17 @@ first commits, for code built from its source before the release.
   each value fits the type and has a name and an integer of its own, and
   that an enum has no more values than the constant pool of its Java class
   holds.
+- `[string]`, a vector of strings, which `SPEC.md` adds to the format, in
+  every target. Its getter returns the runtime's `StringVector`, which reads
+  one string from its ends or every string, and the code writes it from a
+  list of strings: a `readonly string[]` in TypeScript and JavaScript, a
+  `Sequence[str]` in Python, a `List<String>` in Java, a `&[&str]` in Rust,
+  a `[]string` in Go, a `std::span<const std::string_view>` in C++, a
+  `[String]` in Swift and a `ReadOnlyMemory<string>` in C#. Whole reads,
+  where a target has them, give a list of strings. `StringVector` is a
+  reserved name in the targets that name it unqualified: TypeScript,
+  JavaScript, Python, Java, Rust and Swift. The checker rejected `[string]`
+  before.
 - A static `versionOf()` on every versioned message that tafla-gen generates
   (`version_of()` in Python and Rust), which reads the version in the header
   so that an application can choose the reader of that version.

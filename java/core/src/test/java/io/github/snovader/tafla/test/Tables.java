@@ -44,6 +44,7 @@ final class Tables {
             );
             case TableField table -> setTable(builder, table);
             case VectorField vector -> setVector(builder, vector.items());
+            case StringVectorField vector -> builder.setStringVector(vector.values());
         }
     }
 
@@ -182,6 +183,7 @@ final class Tables {
                     addNested(sizer, item.table());
                 }
             }
+            case StringVectorField vector -> sizer.addStringVector(vector.values());
         }
     }
 
@@ -219,6 +221,7 @@ final class Tables {
                 writeNested(writer, table.table(), indices);
             }
             case VectorField vector -> writeVector(writer, index, vector.items(), indices);
+            case StringVectorField vector -> writer.setStringVector(index, vector.values());
         }
     }
 

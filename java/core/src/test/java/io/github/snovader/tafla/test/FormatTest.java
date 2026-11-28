@@ -158,8 +158,8 @@ public class FormatTest {
     }
 
     /**
-     * {@return the bytes of a scalar, bool, array, string, struct or array of structs, as the JDK
-     * writes them little-endian}, or nothing for a nested table or vector
+     * {@return the bytes of a scalar, bool, array, string, struct, array of structs or vector of
+     * strings, as the JDK writes them little-endian}, or nothing for a nested table or vector
      */
     private static Optional<byte[]> littleEndian(FieldDescription field, int width) {
         return switch (field) {
@@ -171,6 +171,7 @@ public class FormatTest {
             case StructArrayField array -> Optional.of(littleEndian(array, width));
             case TableField ignored -> Optional.empty();
             case VectorField ignored -> Optional.empty();
+            case StringVectorField vector -> Optional.of(littleEndian(vector, width));
         };
     }
 
@@ -202,6 +203,27 @@ public class FormatTest {
         var view = littleEndianView(bytes);
         putUnsigned(view, width, utf8.length);
         view.put(utf8);
+
+        return bytes;
+    }
+
+    /**
+     * {@return a vector of strings' count, then the end of each string, counted from the vector's
+     * position, and then the strings' UTF-8, one after another}
+     */
+    private static byte[] littleEndian(StringVectorField vector, int width) {
+        var strings = vector.values().stream().map(string -> string.getBytes(StandardCharsets.UTF_8)).toList();
+        var ends = (strings.size() + 1) * width;
+        var bytes = new byte[ends + strings.stream().mapToInt(utf8 -> utf8.length).sum()];
+
+        var view = littleEndianView(bytes);
+        putUnsigned(view, width, strings.size());
+        var end = ends;
+        for (var utf8 : strings) {
+            end += utf8.length;
+            putUnsigned(view, width, end);
+        }
+        strings.forEach(view::put);
 
         return bytes;
     }

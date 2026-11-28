@@ -5,7 +5,7 @@ They cover every layout, element type and kind of field: integers at their
 limits, 64-bit ones included; floats of both widths with -0.0, NaN and the
 infinities, and float32s that are exact; strings with characters outside the
 Basic Multilingual Plane and U+FEFF, but no lone surrogates, which
-``set_string()`` rejects; structs of one to four scalars of any type, alone and
+``set_string()`` rejects, alone and in vectors of strings, empty too; structs of one to four scalars of any type, alone and
 in arrays, empty too; nested tables from builders and from bytes, with and
 without an alignment; and vectors of tables of any layout.
 
@@ -58,6 +58,7 @@ MAX_DEPTH = 2
 MAX_FIELDS = 6
 MAX_ELEMENTS = 8
 MAX_ITEMS = 3
+MAX_STRINGS = 6
 MAX_STRUCT_SCALARS = 4
 MAX_STRUCTS = 4
 
@@ -141,6 +142,11 @@ ARRAY_FIELDS: SearchStrategy[Description] = one_of(
 
 STRING_FIELDS: SearchStrategy[Description] = fixed_dictionaries(
     {"type": just("string"), "value": STRINGS}
+)
+
+# Vectors of strings, empty too, and of empty strings
+STRING_VECTOR_FIELDS: SearchStrategy[Description] = fixed_dictionaries(
+    {"type": just("string[]"), "value": lists(STRINGS, max_size=MAX_STRINGS)}
 )
 
 # A struct's scalars are described as scalar fields are
@@ -251,6 +257,7 @@ def _field_lists(
         STRING_FIELDS,
         STRUCT_FIELDS,
         STRUCT_ARRAY_FIELDS,
+        STRING_VECTOR_FIELDS,
     ]
     if depth > 0:
         kinds += [
@@ -319,6 +326,11 @@ def _longest_field_length(field: Description, offset_size: int) -> int:
 
     if kind == "string":
         return offset_size + len(field["value"].encode())
+
+    if kind == "string[]":
+        strings = field["value"]
+        utf8 = sum(len(string.encode()) for string in strings)
+        return offset_size * (1 + len(strings)) + utf8
 
     if kind == "struct":
         return struct_of(scalar["type"] for scalar in field["fields"]).size

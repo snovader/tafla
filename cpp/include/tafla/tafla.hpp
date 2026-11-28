@@ -10,6 +10,7 @@
 #include "element.hpp"
 #include "errors.hpp"
 #include "layout.hpp"
+#include "string_vector.hpp"
 #include "structs.hpp"
 #include "table_builder.hpp"
 #include "table_reader.hpp"

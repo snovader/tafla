@@ -53,19 +53,20 @@ func LayoutsOf(offsetTypes *rapid.Generator[tafla.OffsetType]) *rapid.Generator[
 }
 
 // limits are the most fields, array elements, characters, structs in an
-// array and vector items that a table holds. A table of uint8 offsets, or
-// nested in one, holds few enough to fit in its 255 bytes more often than
-// not, and others hold enough for uint16 lengths and offsets past 255.
+// array, vector items and strings in a vector of strings that a table holds.
+// A table of uint8 offsets, or nested in one, holds few enough to fit in its
+// 255 bytes more often than not, and others hold enough for uint16 lengths
+// and offsets past 255.
 type limits struct {
-	fields, elements, characters, structs, items int
+	fields, elements, characters, structs, items, strings int
 }
 
 func limitsOf(small bool) limits {
 	if small {
-		return limits{fields: 5, elements: 6, characters: 6, structs: 2, items: 2}
+		return limits{fields: 5, elements: 6, characters: 6, structs: 2, items: 2, strings: 3}
 	}
 
-	return limits{fields: 8, elements: 24, characters: 16, structs: 6, items: 4}
+	return limits{fields: 8, elements: 24, characters: 16, structs: 6, items: 4, strings: 6}
 }
 
 // drawTable draws a table of layouts whose fields hold tables depth deep, and
@@ -105,11 +106,11 @@ func drawField(t *rapid.T, offsetType tafla.OffsetType, depth int, small bool) F
 	})
 }
 
-// drawValue draws a scalar, array, string or struct, which hold values rather
-// than tables
+// drawValue draws a scalar, array, string, vector of strings or struct,
+// which hold values rather than tables
 func drawValue(t *rapid.T, limits limits) Field {
 	elements := limits.elements
-	choices := make([]choice[Field], 0, 23)
+	choices := make([]choice[Field], 0, 24)
 	for _, scalar := range ScalarTypes {
 		choices = append(choices, choice[Field]{1, func(t *rapid.T) Field { return drawScalar(t, scalar) }})
 	}
@@ -127,6 +128,7 @@ func drawValue(t *rapid.T, limits limits) Field {
 		choice[Field]{1, func(t *rapid.T) Field { return Float64Array(drawSlice(t, elements, float64s)) }},
 		// Each as likely as three types of number
 		choice[Field]{3, func(t *rapid.T) Field { return String(drawString(t, limits.characters)) }},
+		choice[Field]{3, func(t *rapid.T) Field { return DrawStringVector(t, limits.strings, limits.characters) }},
 		choice[Field]{3, func(t *rapid.T) Field { return Struct(drawScalars(t, drawStructTypes(t))) }},
 		choice[Field]{3, func(t *rapid.T) Field { return drawStructArray(t, limits.structs) }},
 	)
@@ -302,6 +304,12 @@ func drawString(t *rapid.T, most int) string {
 	return string(runes)
 }
 
+// DrawStringVector draws a vector of up to most strings of up to characters
+// characters each, as drawString draws them: empty too, and of empty strings.
+func DrawStringVector(t *rapid.T, most, characters int) StringVector {
+	return StringVector(drawSlice(t, most, func(t *rapid.T) string { return drawString(t, characters) }))
+}
+
 // drawNestedTable draws a table nested with SetTable, which has no header,
 // from its builder or bytes, aligned by default or explicitly. It's read in
 // place when its offsets are as wide as its parent's, as they are more often
@@ -430,6 +438,12 @@ func longest(field Field, width uint64) uint64 {
 		return array(len(value), 8)
 	case String:
 		return width + uint64(len(value))
+	case StringVector:
+		length := (uint64(len(value)) + 1) * width
+		for _, string := range value {
+			length += uint64(len(string))
+		}
+		return length
 	case Struct:
 		return uint64(StructSize(StructTypes(value)))
 	case StructArray:

@@ -27,9 +27,9 @@ namespace tafla::benchmarks {
 /// with `store_le()` and `load_le()`, as tafla-gen's code writes and reads an
 /// array of them.
 ///
-/// tafla has no vector of strings, so the strings suite's 16 strings are a
-/// table of 16 string fields, written with `set_string()` and read with
-/// `get_string()`, which checks that each is UTF-8 and views it.
+/// The strings suite's 16 strings are a table of 16 string fields, which it
+/// times, rather than a vector of strings, written with `set_string()` and
+/// read with `get_string()`, which checks that each is UTF-8 and views it.
 struct Tafla {
     static constexpr std::string_view name = "tafla";
 

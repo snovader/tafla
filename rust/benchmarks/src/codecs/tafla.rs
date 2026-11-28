@@ -34,8 +34,9 @@ const ITEM_ALIGNMENT: Alignment = Alignment::Four;
 /// structs with `to_le_bytes()` and `from_le_bytes()`, as tafla-gen's code
 /// writes and reads an array of them.
 ///
-/// tafla has no vector of strings, so the strings comparison's table is a
-/// table of 16 string fields, whose `get_str()` checks each string's UTF-8.
+/// The strings comparison's table is a table of 16 string fields, which it
+/// times, rather than a vector of strings. Their `get_str()` checks each
+/// string's UTF-8.
 #[derive(Clone, Copy, Debug)]
 pub struct Tafla;
 

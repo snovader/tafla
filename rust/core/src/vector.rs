@@ -56,6 +56,15 @@ impl<'a> Vector<'a> {
         self.len == 0
     }
 
+    /// The bytes from the vector's position to the end of the buffer
+    pub(crate) const fn bytes(&self) -> &'a [u8] {
+        self.bytes
+    }
+
+    pub(crate) const fn offset_type(&self) -> OffsetType {
+        self.offset_type
+    }
+
     /// Returns the bytes of item `index`, from its start to its end, to read
     /// it as a table of its own, or `None` past the end. Only the ends of the
     /// item and the one before it are read.
@@ -107,7 +116,7 @@ impl<'a> Vector<'a> {
     // callers rather than one, LLVM called it out of line, and a generated
     // view took half as long again to read the last item
     #[inline]
-    fn bounds(&self, index: usize) -> Option<Result<(usize, usize), DecodeError>> {
+    pub(crate) fn bounds(&self, index: usize) -> Option<Result<(usize, usize), DecodeError>> {
         if index >= self.len {
             return None;
         }
@@ -120,7 +129,7 @@ impl<'a> Vector<'a> {
         Some(start.and_then(|start| Ok((start, self.end(index)?))))
     }
 
-    const fn ends(&self) -> Ends<'a> {
+    pub(crate) const fn ends(&self) -> Ends<'a> {
         Ends {
             vector: *self,
             index: 0,
@@ -130,7 +139,7 @@ impl<'a> Vector<'a> {
 
     /// Where item 0 starts, from the vector's position: after the count and
     /// the ends
-    const fn items_start(&self) -> usize {
+    pub(crate) const fn items_start(&self) -> usize {
         // The count and the ends lie within the bytes, so this doesn't
         // overflow
         (self.len + 1) * self.offset_type.size()
@@ -154,7 +163,7 @@ impl<'a> Vector<'a> {
     /// Returns the bytes of the item from `start` to `end`, from the
     /// vector's position
     #[inline]
-    fn item(&self, start: usize, end: usize) -> Result<&'a [u8], DecodeError> {
+    pub(crate) fn item(&self, start: usize, end: usize) -> Result<&'a [u8], DecodeError> {
         if start > end {
             return Err(self.ends_before_start(start, end));
         }
@@ -196,7 +205,7 @@ impl<'a> Vector<'a> {
     /// The position in the buffer of `offset` from the vector's position,
     /// which an error reports. Saturating, since only a 32-bit host can
     /// overflow, at a position past any bytes.
-    const fn position_of(&self, offset: usize) -> usize {
+    pub(crate) const fn position_of(&self, offset: usize) -> usize {
         self.position.saturating_add(offset)
     }
 
@@ -281,12 +290,19 @@ impl FusedIterator for ItemsInPlace<'_> {}
 /// An iterator over where a [`Vector`]'s items start and end, from the
 /// vector's position, which reads each item's end once
 #[derive(Clone, Debug)]
-struct Ends<'a> {
+pub struct Ends<'a> {
     vector: Vector<'a>,
     index: usize,
     /// Where the next item starts, from the vector's position, which is
     /// where the item before it ends
     start: usize,
+}
+
+impl<'a> Ends<'a> {
+    /// The vector whose items' bounds it iterates over
+    pub(crate) const fn vector(&self) -> Vector<'a> {
+        self.vector
+    }
 }
 
 impl Iterator for Ends<'_> {

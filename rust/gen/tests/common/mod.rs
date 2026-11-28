@@ -244,6 +244,60 @@ pub const STRINGS_SCHEMAS: [BenchmarkSchema; 4] = [
     },
 ];
 
+/// The schemas of the suites of lists of strings, which are copies of one
+/// schema, since the suites write and read the same lists. Each directory
+/// holds the generated code and nothing else.
+pub const LISTS_SCHEMAS: &[BenchmarkSchema] = &[
+    BenchmarkSchema {
+        target: "typescript",
+        schema: "typescript/benchmarks/strings/lists/lists.tafla",
+        directory: "typescript/benchmarks/strings/lists/generated",
+        package: None,
+    },
+    BenchmarkSchema {
+        target: "java",
+        schema: "java/benchmarks/src/main/tafla/lists.tafla",
+        directory: "java/benchmarks/src/main/java",
+        package: Some("io.github.snovader.tafla.benchmarks.generated.lists"),
+    },
+    BenchmarkSchema {
+        target: "go",
+        schema: "go/benchmarks/lists.tafla",
+        directory: "go/benchmarks/generated/lists",
+        package: None,
+    },
+    BenchmarkSchema {
+        target: "csharp",
+        schema: "csharp/benchmarks/lists.tafla",
+        directory: "csharp/benchmarks/Tafla.Benchmarks/Generated/Lists",
+        package: None,
+    },
+    BenchmarkSchema {
+        target: "swift",
+        schema: "swift/benchmarks/lists.tafla",
+        directory: "swift/benchmarks/Sources/GeneratedLists",
+        package: None,
+    },
+    BenchmarkSchema {
+        target: "cpp",
+        schema: "cpp/benchmarks/lists.tafla",
+        directory: "cpp/benchmarks/generated/lists",
+        package: None,
+    },
+    BenchmarkSchema {
+        target: "python",
+        schema: "python/benchmarks/src/tafla_benchmarks/generated/lists.tafla",
+        directory: "python/benchmarks/src/tafla_benchmarks/generated/lists",
+        package: None,
+    },
+    BenchmarkSchema {
+        target: "rust",
+        schema: "rust/benchmarks/lists.tafla",
+        directory: "rust/benchmarks/src/lists/generated",
+        package: None,
+    },
+];
+
 impl BenchmarkSchema {
     pub fn source(&self) -> String {
         read(&Path::new(REPOSITORY).join(self.schema))

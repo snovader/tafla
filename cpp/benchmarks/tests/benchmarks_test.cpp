@@ -1,16 +1,20 @@
-// Checks that every codec reads back exactly what it wrote on every workload
-// and every shape of strings, that the item access ways sum the items alike,
-// and that the generators make the TypeScript suites' values, which these
-// were printed from, so that the languages' benchmarks time the same work
+// Checks that every codec reads back exactly what it wrote on every workload,
+// every shape of strings and every list of strings, that the item access
+// ways sum the items alike, and that the generators make the TypeScript
+// suites' values, which these were printed from, so that the languages'
+// benchmarks time the same work
 
 #include <gtest/gtest.h>
 
 #include <bit>
 #include <cstdint>
 #include <iterator>
+#include <string>
 #include <string_view>
 #include <type_traits>
+#include <vector>
 
+#include "lists.hpp"
 #include "suite.hpp"
 
 namespace tafla::benchmarks {
@@ -221,6 +225,65 @@ TEST(Strings, OnlyProtobufCopiesTheStrings) {
             }
         }
     });
+}
+
+/// Builds every benchmark of the suite of lists of strings, which checks that
+/// each variant reads back every string and the last, and runs each once
+TEST(Lists, EveryVariantReadsBackWhatItWroteAndEveryBenchmarkRuns) {
+    const auto shapes = lists_of_strings();
+    const auto all = list_benchmarks(shapes);
+    EXPECT_EQ(all.size(), 27U);
+
+    for (const auto& benchmark : all) {
+        EXPECT_EQ(benchmark.variants.size(), 3U) << benchmark.name;
+        for (const auto& variant : benchmark.variants) {
+            variant.loop(1);
+        }
+    }
+}
+
+/// Hashes the strings' UTF-8, one after another, as the TypeScript script
+/// that printed these did with 32-bit integers
+std::uint32_t hash_utf8(const std::vector<std::string>& strings) {
+    std::uint32_t hash = 0;
+    for (const auto& string : strings) {
+        for (const auto byte : string) {
+            hash = hash * 31 + static_cast<std::uint8_t>(byte);
+        }
+    }
+    return hash;
+}
+
+TEST(Lists, GeneratesTheTypeScriptListsOfStrings) {
+    struct Expected {
+        const char* name;
+        std::size_t count;
+        const char* first;
+        std::uint32_t hash;
+    };
+    // The first 8 characters of each list's first string
+    const std::vector<Expected> expected{
+        {"10 × 16 chars of ASCII", 10, "2FsyeXxp", 772'871'957},
+        {"10 × 256 chars of ASCII", 10, "2GYBM2rv", 112'022'847},
+        {"10 × 8 chars of 3 bytes", 10, "鑡絞眙蜩榩眳矝愞", 297'373'238},
+        {"100 × 16 chars of ASCII", 100, "2N45gJLJ", 4'043'576'274},
+        {"100 × 256 chars of ASCII", 100, "2OC9KSUH", 1'275'637'513},
+        {"100 × 8 chars of 3 bytes", 100, "鑗蝝姘徃栲鈞甕顽", 2'874'631'186},
+        {"10,000 × 16 chars of ASCII", 10'000, "2VGBSOLG", 3'888'143'744},
+        {"10,000 × 256 chars of ASCII", 10'000, "2WgxnHUM", 1'626'208'024},
+        {"10,000 × 8 chars of 3 bytes", 10'000, "鑶鄷攴臚鷑靆畖鱯", 2'475'471'517},
+    };
+
+    const auto shapes = lists_of_strings();
+    ASSERT_EQ(shapes.size(), expected.size());
+    for (std::size_t index = 0; index < shapes.size(); ++index) {
+        const auto& shape = shapes[index];
+        const std::string first = expected[index].first;
+        EXPECT_EQ(shape.name, expected[index].name);
+        EXPECT_EQ(shape.strings.size(), expected[index].count) << shape.name;
+        EXPECT_EQ(shape.strings.front().substr(0, first.size()), first) << shape.name;
+        EXPECT_EQ(hash_utf8(shape.strings), expected[index].hash) << shape.name;
+    }
 }
 
 }  // namespace
