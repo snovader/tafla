@@ -13,12 +13,15 @@
 
 #if defined(__GNUC__) || defined(__clang__)
 #define TAFLA_COLD [[gnu::cold, gnu::noinline]]
+#define TAFLA_NOINLINE [[gnu::noinline]]
 #define TAFLA_ALWAYS_INLINE [[gnu::always_inline]] inline
 #elif defined(_MSC_VER)
 #define TAFLA_COLD __declspec(noinline)
+#define TAFLA_NOINLINE __declspec(noinline)
 #define TAFLA_ALWAYS_INLINE __forceinline
 #else
 #define TAFLA_COLD
+#define TAFLA_NOINLINE
 #define TAFLA_ALWAYS_INLINE inline
 #endif
 

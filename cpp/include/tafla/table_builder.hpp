@@ -1062,6 +1062,20 @@ public:
 
     NestedTable(const TableBuilder&& builder) = delete;
 
+    // Out of line, so that GCC 15 for 32-bit x86 doesn't warn, with
+    // -Wmaybe-uninitialized, of the other alternatives of a table that a
+    // `std::vector` of tables moves as it grows. Only growing moves a table.
+    TAFLA_NOINLINE NestedTable(NestedTable&& other) noexcept : table_(std::move(other.table_)) {}
+
+    TAFLA_NOINLINE NestedTable& operator=(NestedTable&& other) noexcept {
+        table_ = std::move(other.table_);
+        return *this;
+    }
+
+    NestedTable(const NestedTable&) = delete;
+    NestedTable& operator=(const NestedTable&) = delete;
+    ~NestedTable() = default;
+
     template <detail::Temporary Range>
     NestedTable(Range&& bytes) = delete;
     // NOLINTEND(google-explicit-constructor)

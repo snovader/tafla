@@ -1139,6 +1139,35 @@ RC_GTEST_PROP(TableBuilder, EveryWayOfTakingATableWritesTheSameTable, ()) {
     }
 }
 
+/// The README's example: a table written in place, a list of strings, and
+/// the table lent by `finish()`, read back
+TEST(TableBuilder, WritesTheReadmesExample) {
+    constexpr std::uint32_t format_version = 1;
+    constexpr auto layout = TableLayout().sized().with_version(format_version);
+    const std::vector<std::uint32_t> timestamps{0, 60, 120};
+    const std::vector<float> values{21.5F, 21.75F, 22.0F};
+
+    TableBuilder builder(4, layout);
+    builder.set_float64(59.3293);
+    builder.set_string("Europe/Stockholm");
+    builder.set_table(2, [&](TableBuilder::Item& series) {
+        series.set_uint32_array(timestamps);
+        series.set_float32_array(values);
+    });
+    builder.set_string_vector({"sensor", "outdoor"});
+    const std::span<const std::uint8_t> bytes = builder.finish();
+
+    const TableReader reader(bytes, layout);
+    EXPECT_EQ(reader.version(), format_version);
+    EXPECT_EQ(reader.get_float64(reader.root_offset(0)), 59.3293);
+    EXPECT_EQ(reader.get_string(reader.root_offset(1)), "Europe/Stockholm");
+    const auto table = reader.root_offset(2);
+    EXPECT_EQ(reader.get_uint32_array(reader.field_offset(table, 0)).to_vector(), timestamps);
+    EXPECT_EQ(reader.get_float32_array(reader.field_offset(table, 1)).to_vector(), values);
+    const auto tags = reader.get_string_vector(reader.root_offset(3));
+    EXPECT_EQ(tags.get(tags.size() - 1), "outdoor");
+}
+
 /// `finish()` writes a sized table's length and lends the table where the
 /// builder wrote it, and rejects an incomplete table, as `into_buffer()` does,
 /// which leaves the builder as it was
