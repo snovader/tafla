@@ -8,8 +8,8 @@ import (
 	"github.com/snovader/tafla/go/benchmarks/workloads"
 )
 
-// FlatBuffers builds each message with a new Builder, which starts empty and
-// doubles as it grows, and each table with the functions that flatc --go
+// FlatBuffers builds each message with a new Builder, which starts with the
+// shape's capacity and doubles if it grows past it, and each table with the functions that flatc --go
 // generates, in generated/fbs. Columns are written element by element, in
 // reverse, as the builder writes vectors back to front, and so is the vector
 // of structs. A message is the builder's bytes from where it finished, from
@@ -25,7 +25,7 @@ var errMissing = errors.New("a field is missing")
 func (FlatBuffers) Name() string { return "flatbuffers" }
 
 func (FlatBuffers) SerializeRecord(record workloads.Record) ([]byte, error) {
-	builder := flatbuffers.NewBuilder(0)
+	builder := flatbuffers.NewBuilder(record.Capacity())
 	name := builder.CreateString(record.Name)
 
 	fbs.RecordStart(builder)
@@ -50,7 +50,7 @@ func (FlatBuffers) DeserializeRecord(bytes []byte) (workloads.Record, error) {
 }
 
 func (FlatBuffers) SerializeDocument(document workloads.Document) ([]byte, error) {
-	builder := flatbuffers.NewBuilder(0)
+	builder := flatbuffers.NewBuilder(document.Capacity())
 	name := builder.CreateString(document.Name)
 
 	fbs.ColumnsStartKeysVector(builder, len(document.Keys))
@@ -138,7 +138,7 @@ func (FlatBuffers) SumA(bytes []byte) (float64, error) {
 }
 
 func (FlatBuffers) SerializeList(list workloads.List) ([]byte, error) {
-	builder := flatbuffers.NewBuilder(0)
+	builder := flatbuffers.NewBuilder(list.Capacity())
 
 	items := make([]flatbuffers.UOffsetT, len(list.Items))
 	for index, item := range list.Items {
@@ -183,7 +183,7 @@ func (FlatBuffers) DeserializeList(bytes []byte) (workloads.List, error) {
 }
 
 func (FlatBuffers) SerializeStructs(list workloads.List) ([]byte, error) {
-	builder := flatbuffers.NewBuilder(0)
+	builder := flatbuffers.NewBuilder(list.StructsCapacity())
 
 	fbs.TriplesStartItemsVector(builder, len(list.Items))
 	for index := len(list.Items) - 1; index >= 0; index-- {
@@ -215,7 +215,7 @@ func (FlatBuffers) DeserializeStructs(bytes []byte) (workloads.List, error) {
 }
 
 func (FlatBuffers) SerializeSample(sample workloads.Sample) ([]byte, error) {
-	builder := flatbuffers.NewBuilder(0)
+	builder := flatbuffers.NewBuilder(sample.Capacity())
 
 	fbs.SampleStart(builder)
 	fbs.SampleAddKey(builder, sample.Key)

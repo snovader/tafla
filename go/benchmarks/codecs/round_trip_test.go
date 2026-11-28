@@ -2,7 +2,7 @@ package codecs_test
 
 // Every codec reads back exactly what it wrote, with floats compared by
 // their bits, and sums column a to the same bits, which the benchmarks check
-// again before timing them
+// again before timing them, and writes no more than the shape's capacity
 
 import (
 	"bytes"
@@ -23,12 +23,12 @@ func TestEveryCodecReadsBackWhatItWrote(t *testing.T) {
 	for _, codec := range codecs.All() {
 		t.Run(codec.Name(), func(t *testing.T) {
 			if codec, ok := codec.(codecs.RecordCodec); ok {
-				check(t, "record", workloads.TheRecord, codec.SerializeRecord, codec.DeserializeRecord, workloads.Record.Same)
+				check(t, "record", workloads.TheRecord, workloads.TheRecord.Capacity(), codec.SerializeRecord, codec.DeserializeRecord, workloads.Record.Same)
 			}
 
 			if codec, ok := codec.(codecs.DocumentCodec); ok {
 				for _, document := range documents {
-					check(t, "document", document, codec.SerializeDocument, codec.DeserializeDocument, workloads.Document.Same)
+					check(t, "document", document, document.Capacity(), codec.SerializeDocument, codec.DeserializeDocument, workloads.Document.Same)
 
 					bytes, err := codec.SerializeDocument(document)
 					if err != nil {
@@ -48,15 +48,15 @@ func TestEveryCodecReadsBackWhatItWrote(t *testing.T) {
 			}
 
 			if codec, ok := codec.(codecs.ListCodec); ok {
-				check(t, "vector of nested tables", list, codec.SerializeList, codec.DeserializeList, workloads.List.Same)
+				check(t, "vector of nested tables", list, list.Capacity(), codec.SerializeList, codec.DeserializeList, workloads.List.Same)
 			}
 
 			if codec, ok := codec.(codecs.StructsCodec); ok {
-				check(t, "array of structs", list, codec.SerializeStructs, codec.DeserializeStructs, workloads.List.Same)
+				check(t, "array of structs", list, list.StructsCapacity(), codec.SerializeStructs, codec.DeserializeStructs, workloads.List.Same)
 			}
 
 			if codec, ok := codec.(codecs.SampleCodec); ok {
-				check(t, "fixed-size record", workloads.TheSample, codec.SerializeSample, codec.DeserializeSample, workloads.Sample.Same)
+				check(t, "fixed-size record", workloads.TheSample, workloads.TheSample.Capacity(), codec.SerializeSample, codec.DeserializeSample, workloads.Sample.Same)
 			}
 		})
 	}
@@ -85,16 +85,19 @@ func checkInto(t *testing.T, codec codecs.DocumentIntoCodec, document workloads.
 	}
 
 	if reader, ok := codec.(codecs.DocumentCodec); ok {
-		check(t, "document written into bytes", document, func(document workloads.Document) ([]byte, error) {
+		check(t, "document written into bytes", document, document.Capacity(), func(document workloads.Document) ([]byte, error) {
 			return codec.SerializeDocumentInto(document, make([]byte, 0, len(written)))
 		}, reader.DeserializeDocument, workloads.Document.Same)
 	}
 }
 
+// check checks that a codec reads back what it wrote, which is no longer
+// than the value's capacity, which the codecs whose API takes one are given
 func check[T any](
 	t *testing.T,
 	name string,
 	value T,
+	capacity int,
 	serialize func(T) ([]byte, error),
 	deserialize func([]byte) (T, error),
 	same func(T, T) bool,
@@ -104,6 +107,9 @@ func check[T any](
 	bytes, err := serialize(value)
 	if err != nil {
 		t.Fatalf("%s: %v", name, err)
+	}
+	if len(bytes) > capacity {
+		t.Errorf("%s: wrote %d bytes, past its capacity of %d", name, len(bytes), capacity)
 	}
 
 	read, err := deserialize(bytes)

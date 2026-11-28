@@ -11,8 +11,8 @@ import (
 
 // Tafla writes tables with TableBuilder, writing nested tables in place into
 // their parent builder's bytes with SetTableFunc() and SetVectorFunc(). The
-// builders copy each array in bulk into their buffer, which Bytes() returns
-// without a copy. It reads the tables with TableReader's getters, with
+// builders copy each array in bulk into new bytes of the shape's capacity,
+// which Reset() gives them, and Bytes() returns them without a copy. It reads the tables with TableReader's getters, with
 // strings and columns in place.
 type Tafla struct{}
 
@@ -24,12 +24,12 @@ const documentVersion = 1
 func (Tafla) Name() string { return "tafla" }
 
 func (Tafla) SerializeRecord(record workloads.Record) ([]byte, error) {
-	builder, err := tafla.NewTableBuilder(4, tafla.TableLayout{})
-	if err != nil {
+	var builder tafla.TableBuilder
+	if err := builder.Reset(make([]byte, 0, record.Capacity()), 4, tafla.TableLayout{}); err != nil {
 		return nil, err
 	}
 
-	err = errors.Join(
+	err := errors.Join(
 		builder.SetFloat64(record.X),
 		builder.SetFloat64(record.Y),
 		builder.SetInt64(record.ID),
@@ -79,11 +79,11 @@ func (Tafla) DeserializeRecord(bytes []byte) (workloads.Record, error) {
 }
 
 func (Tafla) SerializeDocument(document workloads.Document) ([]byte, error) {
-	builder, err := tafla.NewTableBuilder(4, documentLayout)
-	if err != nil {
+	var builder tafla.TableBuilder
+	if err := builder.Reset(make([]byte, 0, document.Capacity()), 4, documentLayout); err != nil {
 		return nil, err
 	}
-	err = errors.Join(
+	err := errors.Join(
 		builder.SetFloat64(document.X),
 		builder.SetFloat64(document.Y),
 		builder.SetString(document.Name),
@@ -212,11 +212,11 @@ func (Tafla) SumA(bytes []byte) (float64, error) {
 }
 
 func (Tafla) SerializeList(list workloads.List) ([]byte, error) {
-	builder, err := tafla.NewTableBuilder(1, tafla.TableLayout{})
-	if err != nil {
+	var builder tafla.TableBuilder
+	if err := builder.Reset(make([]byte, 0, list.Capacity()), 1, tafla.TableLayout{}); err != nil {
 		return nil, err
 	}
-	err = builder.SetVectorFunc(len(list.Items), 2, func(index int, item tafla.Item) error {
+	err := builder.SetVectorFunc(len(list.Items), 2, func(index int, item tafla.Item) error {
 		return setListItem(item, list.Items[index])
 	})
 	if err != nil {
@@ -309,8 +309,8 @@ func (Tafla) SerializeStructs(list workloads.List) ([]byte, error) {
 		structs = binary.LittleEndian.AppendUint32(structs, math.Float32bits(item.Second))
 	}
 
-	builder, err := tafla.NewTableBuilder(1, tafla.TableLayout{})
-	if err != nil {
+	var builder tafla.TableBuilder
+	if err := builder.Reset(make([]byte, 0, list.StructsCapacity()), 1, tafla.TableLayout{}); err != nil {
 		return nil, err
 	}
 	if err := builder.SetStructArray(structs, tripleSize, tafla.Align4); err != nil {

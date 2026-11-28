@@ -24,7 +24,15 @@ tafla-gen's code writes and reads lists of strings, which
 
 Each shape is serialized into new bytes and deserialized into the types of
 `workloads/`, whose strings and columns share the bytes where a library reads
-them in place, and are copies otherwise. Column `a` of each document is also
+them in place, and are copies otherwise. A library whose API takes a
+capacity is given the shape's, as the other languages' comparisons give it:
+tafla's `TableBuilder.Reset()`, FlatBuffers' `NewBuilder()`, and msgpack,
+which packs into a buffer of it as `Marshal()` packs into one that grows.
+`workloads/capacity.go` estimates it from what a caller knows before
+writing, the counts of rows or items and the strings' lengths, at as many
+bytes for each as the most that any format writes, after 128 bytes for
+headers, offsets and names, and the codecs' test checks that none writes
+more. protobuf, vtprotobuf and tafla-gen size their bytes exactly already. Column `a` of each document is also
 summed through each library's per-element accessor. `workloads/` ports the
 TypeScript generator, so the inputs are the same values, which its test
 checks against values that the TypeScript generator printed.
