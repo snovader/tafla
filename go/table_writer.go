@@ -10,8 +10,9 @@ import (
 // it into bytes of exactly that length.
 //
 // It's for code that knows a table's fields before it writes them, such as
-// the code that tafla-gen generates, which writes tables without recording
-// their fields as [TableBuilder] does.
+// the code that tafla-gen generates, which writes tables straight into bytes
+// of their exact length, rather than into a buffer that grows, as
+// [TableBuilder] does, and then copying them.
 //
 // The fields are added in order, each with its type's method, which takes
 // what decides its length: nothing for a scalar, the count of an array, the
@@ -416,10 +417,10 @@ func elements(count int) uint64 {
 // TableWriter writes a table forward into bytes of exactly its length, which
 // a [TableSizer] counted.
 //
-// It doesn't record the fields first, as [TableBuilder] does before it writes
-// them through a writer of its own. It comes from [TableSizer.Writer] or
-// [TableSizer.AppendWriter], and takes the fields that the sizer added, in
-// the same order, each with its index in its table.
+// It writes straight into the table's bytes, rather than into a buffer that
+// grows, as [TableBuilder] does, and then copying them. It comes from
+// [TableSizer.Writer] or [TableSizer.AppendWriter], and takes the fields that
+// the sizer added, in the same order, each with its index in its table.
 //
 // Each field's offset is written as the writer reaches the field. A nested
 // table follows its parent's [TableWriter.SetTable], between
@@ -483,9 +484,8 @@ type VectorPosition struct {
 }
 
 // newTableWriter writes the header of the root table of fields fields after
-// dst, into length bytes that it appends, which the sizer or TableBuilder
-// checked are at least the header and at most what the offset type
-// addresses
+// dst, into length bytes that it appends, which the sizer checked are at
+// least the header and at most what the offset type addresses
 func newTableWriter(dst []byte, length, fields int, layout TableLayout) TableWriter {
 	whole, table := appendBytes(dst, length)
 	if layout.sized || layout.versioned {
@@ -836,15 +836,6 @@ func (w *TableWriter) SetItemEnd(vector VectorPosition, item int) {
 	// Each end counts from the vector's position, which is its count's
 	slot := vector.position + (item+1)*w.width
 	w.putSlot(slot, uint32(w.position-vector.position))
-}
-
-// copyTable writes a finished table's bytes as they are, in place of the
-// fields that StartTable and EndTable would enclose: after its parent's
-// SetTable, or as a vector item before its SetItemEnd. It's for the tables
-// that TableBuilder can't write in place: tables nested as bytes, and
-// builders with a header or another offset type.
-func (w *TableWriter) copyTable(table []byte) {
-	w.position += copy(w.bytes[w.position:w.position+len(table)], table)
 }
 
 // reserveArray writes the offset and count of an array of count elements,

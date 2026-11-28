@@ -37,10 +37,10 @@ func (t Table) Bytes() ([]byte, error) {
 }
 
 // BytesInPlace writes the table with a TableBuilder, as Bytes does, but
-// records each table nested from a builder that it writes in place with
-// SetTableFunc, and each vector of them whose items hold as many fields with
-// SetVectorFunc, rather than from their builders. Its bytes and errors are
-// those of Bytes.
+// writes each table nested from a builder without a header and of the
+// table's offset type in place, with SetTableFunc, and each vector of them
+// whose items hold as many fields with SetVectorFunc, rather than from their
+// builders. Its bytes and errors are those of Bytes.
 func (t Table) BytesInPlace() ([]byte, error) {
 	builder, err := t.Builder()
 	if err != nil {
@@ -64,7 +64,7 @@ func (t Table) BytesInPlace() ([]byte, error) {
 }
 
 // Target is what a field is set on: a *tafla.TableBuilder, or a tafla.Item
-// of a table that one records in place.
+// of a table that one writes in place.
 type Target interface {
 	SetInt8(value int8) error
 	SetUint8(value uint8) error
@@ -103,13 +103,13 @@ var (
 	_ Target = tafla.Item{}
 )
 
-// Set sets a field on builder, which keeps its value, or the bytes of
-// structs.
-func Set(builder *tafla.TableBuilder, field Field) error {
-	return set(builder, field, nil)
+// Set sets a field on a builder or an item, with the tables nested in it
+// from their builders or their bytes.
+func Set(target Target, field Field) error {
+	return set(target, field, nil)
 }
 
-// set sets a field on target, as Set does, and records the tables nested in
+// set sets a field on target, as Set does, and writes the tables nested in
 // it that inPlace accepts in place, as BytesInPlace does
 func set(target Target, field Field, inPlace func(Nested) bool) error {
 	switch value := field.(type) {
@@ -218,7 +218,7 @@ func setAll(target Target, fields []Field, inPlace func(Nested) bool) error {
 }
 
 // allInPlace returns whether inPlace accepts each item, and they hold as
-// many fields, so that SetVectorFunc records them
+// many fields, so that SetVectorFunc writes them
 func (v Vector) allInPlace(inPlace func(Nested) bool) bool {
 	for _, item := range v {
 		if !inPlace(item) || len(item.Table.Fields) != v.itemFields() {
