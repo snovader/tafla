@@ -6,6 +6,7 @@
 #include <array>
 #include <cstdint>
 #include <span>
+#include <utility>
 #include <vector>
 
 #include <tafla/tafla.hpp>
@@ -16,10 +17,12 @@ namespace tafla::benchmarks {
 
 /// tafla's runtime, as its README shows.
 ///
-/// Nested tables are recorded in place among their parent builder's fields,
+/// Nested tables are written in place into their parent builder's buffer,
 /// with `set_table(fields, fill)` and `set_vector(count, fields, fill)`. The
-/// builders view the columns, and arrays are read in place as `ArrayView`s, whose `as_span()` views them when
-/// they're aligned on a little-endian host.
+/// builder copies the columns when they're set, and hands over its buffer,
+/// as long as the table, with `into_buffer()`. Arrays are read in place as
+/// `ArrayView`s, whose `as_span()` views them when they're aligned on a
+/// little-endian host.
 ///
 /// The runtime writes tables, and leaves fixed-size records to
 /// `tafla::store_le()` and `load_le()`. The fixed-size record is written with
@@ -40,13 +43,13 @@ struct Tafla {
     static constexpr std::size_t kItemSize = 12;
     static constexpr auto kItemAlignment = Alignment::four;
 
-    [[nodiscard]] Bytes serialize(RecordShape, const Record& input) const {
+    [[nodiscard]] std::vector<std::uint8_t> serialize(RecordShape, const Record& input) const {
         TableBuilder builder(4, TableLayout());
         builder.set_float64(input.x);
         builder.set_float64(input.y);
         builder.set_int64(input.id);
         builder.set_string(input.name.view());
-        return builder.to_bytes();
+        return std::move(builder).into_buffer();
     }
 
     [[nodiscard]] Record deserialize(RecordShape, std::span<const std::uint8_t> bytes) const {
@@ -59,7 +62,7 @@ struct Tafla {
         };
     }
 
-    [[nodiscard]] Bytes serialize(DocumentShape, const Document& input) const {
+    [[nodiscard]] std::vector<std::uint8_t> serialize(DocumentShape, const Document& input) const {
         TableBuilder document(4, kDocumentLayout);
         document.set_float64(input.x);
         document.set_float64(input.y);
@@ -70,7 +73,7 @@ struct Tafla {
             columns.set_float32_array(input.a.span());
             columns.set_float32_array(input.b.span());
         });
-        return document.to_bytes();
+        return std::move(document).into_buffer();
     }
 
     [[nodiscard]] Document deserialize(DocumentShape, std::span<const std::uint8_t> bytes) const {
@@ -93,13 +96,13 @@ struct Tafla {
         return sum_column(reader.get_float32_array(reader.field_offset(reader.root_offset(3), 2)));
     }
 
-    [[nodiscard]] Bytes serialize(ListShape, const List& input) const {
+    [[nodiscard]] std::vector<std::uint8_t> serialize(ListShape, const List& input) const {
         const auto& items = input.items;
 
         TableBuilder builder(1, TableLayout());
         builder.set_vector(items.size(), 2,
                            [&](std::size_t index, TableBuilder::Item& item) { set_item(item, items[index]); });
-        return builder.to_bytes();
+        return std::move(builder).into_buffer();
     }
 
     [[nodiscard]] List deserialize(ListShape, std::span<const std::uint8_t> bytes) const {
@@ -117,7 +120,7 @@ struct Tafla {
     /// Writes the structs one after another into a vector, which the builder
     /// views until it writes the table. tafla-gen's code writes them straight
     /// into the table, with `TableWriter::set_structs()`.
-    [[nodiscard]] Bytes serialize(StructsShape, const List& input) const {
+    [[nodiscard]] std::vector<std::uint8_t> serialize(StructsShape, const List& input) const {
         std::vector<std::uint8_t> structs(input.items.size() * kItemSize);
         for (std::size_t index = 0; index < input.items.size(); ++index) {
             write_item_struct(input.items[index], structs.data() + index * kItemSize);
@@ -125,7 +128,7 @@ struct Tafla {
 
         TableBuilder builder(1, TableLayout());
         builder.set_struct_array(std::span<const std::uint8_t>(structs), kItemSize, kItemAlignment);
-        return builder.to_bytes();
+        return std::move(builder).into_buffer();
     }
 
     [[nodiscard]] List deserialize(StructsShape, std::span<const std::uint8_t> bytes) const {
@@ -152,12 +155,12 @@ struct Tafla {
         return {reader.get_uint32(0), reader.get_float32(4), reader.get_float32(8)};
     }
 
-    [[nodiscard]] Bytes serialize(StringsShape, const Strings& input) const {
+    [[nodiscard]] std::vector<std::uint8_t> serialize(StringsShape, const Strings& input) const {
         TableBuilder builder(kStrings, TableLayout());
         for (const auto& string : input) {
             builder.set_string(string.view());
         }
-        return builder.to_bytes();
+        return std::move(builder).into_buffer();
     }
 
     [[nodiscard]] Strings deserialize(StringsShape, std::span<const std::uint8_t> bytes) const {

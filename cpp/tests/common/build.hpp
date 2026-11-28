@@ -15,6 +15,17 @@
 
 namespace tafla::test {
 
+/// Calls `start(fields, layout)` with the table's number of fields and its
+/// layout, with its version if it has one, and returns what it returns
+template <class Start>
+decltype(auto) start_table(const Table& table, Start start) {
+    const auto layout = table.layout.unversioned();
+    if (table.layout.versioned) {
+        return start(table.fields.size(), layout.with_version(table.version.value()));
+    }
+    return start(table.fields.size(), layout);
+}
+
 /// Starts a builder of the table's layout, version and number of fields, with
 /// no field set
 TableBuilder builder_of(const Table& table);
@@ -25,21 +36,24 @@ TableBuilder build(const Table& table);
 /// Writes the table with `TableBuilder`
 Bytes to_bytes(const Table& table);
 
-/// Sets the field on `builder`, which borrows its value, or owns the bytes of
-/// structs and a copy of the strings of a vector of strings
+/// Sets the field on `builder`, which copies its value
 void set_field(const Field& field, TableBuilder& builder);
 
 /// Builds the table to nest, as its builder or its bytes
 NestedTable build_nested(const Nested& nested);
 
 /// Writes the table with `TableBuilder`, writing each table nested from a
-/// builder that it can in place with `set_table(fields, fill)`, and each
-/// vector of them, when its items hold as many fields, with
-/// `set_vector(count, fields, fill)`, rather than from their builders. Its
-/// bytes and errors are `to_bytes()`'s, but for a vector whose count and
-/// items' ends alone make its table too long, which fails before its items
-/// are recorded.
+/// builder that it can in place with `set_table(fields, fill)`, or with
+/// `set_table(fields, alignment, fill)` when it's nested with an alignment
+/// at least its own, and each vector of them, when its items hold as many
+/// fields, with `set_vector(count, fields, fill)`, rather than from their
+/// builders. Its bytes and errors are `to_bytes()`'s, but for a vector whose
+/// count and items' ends alone make its table too long, which fails before
+/// its items are written.
 Bytes to_bytes_in_place(const Table& table);
+
+/// The alignment of the table's builder, or 1 if it fails
+Alignment alignment_of(const Table& table);
 
 /// Whether the table nested from `nested` is written in place in a table of
 /// `in_place` offsets: from a builder without a header and of those offsets
@@ -116,14 +130,25 @@ void set_field_on(const Field& field, Target& target, std::optional<OffsetType> 
                 }
                 target.set_struct_array(std::move(bytes), struct_size(value.types), struct_alignment(value.types));
             } else if constexpr (std::is_same_v<T, TableField>) {
-                if (!value.alignment && writes_in_place(value.nested, in_place)) {
+                if (writes_in_place(value.nested, in_place)) {
                     const auto& fields = value.nested.table.fields;
-                    target.set_table(fields.size(), [&](TableBuilder::Item& item) {
+                    const auto fill = [&](TableBuilder::Item& item) {
                         for (const auto& nested : fields) {
                             set_field_on(nested, item, in_place);
                         }
-                    });
-                    return;
+                    };
+
+                    if (!value.alignment) {
+                        target.set_table(fields.size(), fill);
+                        return;
+                    }
+                    // A smaller alignment than its fields' is moved to
+                    // theirs, where a builder is padded for the alignment
+                    // that it's given
+                    if (*value.alignment >= alignment_of(value.nested.table)) {
+                        target.set_table(fields.size(), *value.alignment, fill);
+                        return;
+                    }
                 }
 
                 auto table = build_nested(value.nested);
