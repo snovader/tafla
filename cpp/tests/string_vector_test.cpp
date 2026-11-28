@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 #include <rapidcheck/gtest.h>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -392,13 +393,16 @@ TEST(StringVector, RejectsAnImpossibleCountBeforeAnythingAllocatesForIt) {
     EXPECT_EQ(error.byte_length(), 4ULL * 0xffff'ffff);
 }
 
-TEST(StringVector, ABuilderOwnsTheStringsOfAVectorGivenAsAnRvalue) {
+/// A builder copies the strings when they're set, from a vector of strings,
+/// of views or a list, so they may then change or be destroyed
+TEST(StringVector, ABuilderCopiesTheStringsWhenTheyreSet) {
     TableBuilder builder(1, TableLayout());
     {
         // Short strings, which a std::string holds within itself, and a long
         // one
         std::vector<std::string> strings{"a", "", std::string(100, 'c')};
-        builder.set_string_vector(std::move(strings));
+        builder.set_string_vector(strings);
+        strings[0] = "changed";
     }
     const auto bytes = builder.to_bytes();
 
@@ -407,20 +411,26 @@ TEST(StringVector, ABuilderOwnsTheStringsOfAVectorGivenAsAnRvalue) {
     TableBuilder listed(1, TableLayout());
     listed.set_string_vector({"a", "", std::string(100, 'c')});
     EXPECT_EQ(listed.to_bytes(), bytes);
+
+    TableBuilder viewed(1, TableLayout());
+    viewed.set_string_vector(std::vector<std::string_view>{"a", "", std::string(100, 'c')});
+    EXPECT_EQ(viewed.to_bytes(), bytes);
 }
 
 template <class Value>
 concept SetsStringVector =
     requires(TableBuilder& builder, Value&& value) { builder.set_string_vector(std::forward<Value>(value)); };
 
-// Views and the containers that the builder owns are set, and a temporary of
-// views, which the builder would view after it's destroyed, doesn't compile
+// A builder copies the strings, so it takes views and strings, in a
+// container or a temporary
 static_assert(SetsStringVector<std::vector<std::string_view>&>);
 static_assert(SetsStringVector<const std::vector<std::string_view>&>);
 static_assert(SetsStringVector<std::span<const std::string_view>>);
 static_assert(SetsStringVector<std::vector<std::string>>);
-static_assert(!SetsStringVector<std::vector<std::string_view>>);
-static_assert(!SetsStringVector<const std::vector<std::string>>);
+static_assert(SetsStringVector<const std::vector<std::string>&>);
+static_assert(SetsStringVector<std::vector<std::string_view>>);
+static_assert(SetsStringVector<const std::vector<std::string>>);
+static_assert(SetsStringVector<std::array<std::string, 2>>);
 
 }  // namespace
 }  // namespace tafla::test

@@ -1,6 +1,6 @@
 // A setter that throws leaves its builder as it was, even when an allocation
-// fails partway through it: growing its bytes, keeping a value where it is or
-// owning it, or moving a table written in place by its padding. The test
+// fails partway through it: growing its buffer, or moving a table written in
+// place by its padding. The test
 // replaces the global `operator new`, so that it can fail each allocation of
 // a setter in turn, and every other unaligned form of `new` and `delete`, so
 // that memory from any of them is freed by its own, as AddressSanitizer
@@ -115,12 +115,11 @@ private:
 /// `arm()`, so that only the setter's allocations fail
 using Setter = void (*)(TableBuilder& parent, const Arm& arm);
 
-/// Values that the builders borrow, long enough that a builder keeps them
-/// where they are rather than copying them
+/// Values longer than a builder's first buffer
 const std::vector<double> kDoubles(100, 2.5);
 const std::vector<std::uint8_t> kBytes(300, 7);
 
-/// A builder of a table without a header, which owns a string and an array
+/// A builder of a table without a header, of a string and an array
 TableBuilder owning() {
     TableBuilder builder(2, TableLayout());
     builder.set_string(std::string(40, 's'));
@@ -128,7 +127,7 @@ TableBuilder owning() {
     return builder;
 }
 
-/// A builder of a sized table, which borrows a long array
+/// A builder of a sized table, with a long array
 TableBuilder sized() {
     TableBuilder builder(2, TableLayout().sized());
     builder.set_string(std::string(40, 'z'));
@@ -136,8 +135,8 @@ TableBuilder sized() {
     return builder;
 }
 
-/// Setters of every value that a builder copies, keeps or owns, and of
-/// tables, nested and written in place, whose bytes grow and move
+/// Setters of every kind of value, and of tables, nested and written in
+/// place, whose bytes grow and move
 const std::vector<Setter> setters{
     [](TableBuilder& parent, const Arm& arm) {
         std::string value(40, 's');
@@ -343,6 +342,73 @@ TEST(Allocation, AVectorTooLongForItsTableKeepsNoMoreThanItCould) {
 
     builder.set_vector(1, 1, [&](std::size_t, TableBuilder::Item& item) { item.set_string(std::string_view(string)); });
     EXPECT_EQ(builder.to_bytes().size(), 2U + 2 * 2 + 2 + 2 + 250);
+}
+
+/// Fails every allocation while it lives, so that one that's made throws
+class NoAllocations {
+public:
+    NoAllocations() noexcept {
+        allocations_left = 0;
+    }
+
+    NoAllocations(const NoAllocations&) = delete;
+    NoAllocations& operator=(const NoAllocations&) = delete;
+
+    ~NoAllocations() {
+        allocations_left = -1;
+    }
+};
+
+/// Sets a string, an array, a table and a vector written in place, and a
+/// table nested from a builder, of `string`'s length
+void set_fields(TableBuilder& builder, std::string_view string, const TableBuilder& nested) {
+    builder.set_string(string);
+    builder.set_float64_array(std::span<const double>(kDoubles));
+    builder.set_table(2, [&](TableBuilder::Item& item) {
+        item.set_uint8(1);
+        item.set_string(string);
+    });
+    builder.set_vector(3, 1, [&](std::size_t, TableBuilder::Item& item) { item.set_string(string); });
+    builder.set_table(nested);
+}
+
+/// A builder of the caller's bytes allocates nothing, nor does a builder
+/// reset for a table that fits in its buffer, to the table's end
+TEST(Allocation, ABuilderOfTheCallersBytesOrResetForATableThatFitsAllocatesNothing) {
+    const std::string string(500, 's');
+    const auto nested = owning();
+
+    std::vector<std::uint8_t> bytes(8 << 10);
+    TableBuilder reused(5, TableLayout().sized());
+    set_fields(reused, string, nested);
+    static_cast<void>(reused.finish());
+    {
+        const NoAllocations none;
+
+        auto builder = TableBuilder::with_bytes(bytes, 5, TableLayout().sized());
+        set_fields(builder, string, nested);
+        EXPECT_EQ(builder.finish().data(), bytes.data());
+
+        reused.reset(5, TableLayout().sized());
+        set_fields(reused, std::string_view(string).substr(0, 400), nested);
+        static_cast<void>(reused.finish());
+    }
+}
+
+/// A reset whose allocation fails leaves the builder as it was
+TEST(Allocation, AResetWhoseAllocationFailsLeavesTheBuilderAsItWas) {
+    TableBuilder expected(2, TableLayout());
+    expected.set_uint8(1);
+    expected.set_string("two");
+
+    TableBuilder builder(2, TableLayout());
+    builder.set_uint8(1);
+    allocations_left = 0;
+    EXPECT_THROW(builder.reset(10'000, TableLayout()), std::bad_alloc);
+    allocations_left = -1;
+
+    builder.set_string("two");
+    EXPECT_EQ(builder.to_bytes(), expected.to_bytes());
 }
 
 }  // namespace

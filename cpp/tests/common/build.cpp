@@ -1,5 +1,6 @@
 #include "common/build.hpp"
 
+#include <cstddef>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -7,13 +8,15 @@
 namespace tafla::test {
 
 TableBuilder builder_of(const Table& table) {
-    const auto layout = table.layout.unversioned();
-    const auto fields = table.fields.size();
+    return start_table(table, [](std::size_t fields, auto layout) { return TableBuilder(fields, layout); });
+}
 
-    if (table.layout.versioned) {
-        return {fields, layout.with_version(table.version.value())};
+Alignment alignment_of(const Table& table) {
+    try {
+        return build(table).alignment();
+    } catch (const BuildError&) {
+        return Alignment::one;
     }
-    return {fields, layout};
 }
 
 TableBuilder build(const Table& table) {

@@ -120,7 +120,7 @@ inline Benchmark sum_column_benchmark(const std::string& name, const Document& i
         }
     });
 
-    const auto bytes = std::make_shared<const Bytes>(Tafla().serialize(DocumentShape{}, input));
+    const auto bytes = std::make_shared<const Bytes>(Bytes::copy_of(Tafla().serialize(DocumentShape{}, input)));
     sum.variants.push_back(
         variant(std::string(kTaflaAgain), [bytes] { return Tafla().sum_a(bytes_of(*opaque(bytes.get()))); }));
     return sum;
@@ -154,8 +154,8 @@ inline Benchmark serialize_into_benchmark(const std::string& name, const Documen
 /// vector of nested tables and of the array of structs, by hand and through
 /// the generated getters twice, an A/A pair that shows the harness's noise
 inline std::array<Benchmark, 4> item_access(const List& list) {
-    const auto tables = std::make_shared<const Bytes>(Tafla().serialize(ListShape{}, list));
-    const auto structs = std::make_shared<const Bytes>(Tafla().serialize(StructsShape{}, list));
+    const auto tables = std::make_shared<const Bytes>(Bytes::copy_of(Tafla().serialize(ListShape{}, list)));
+    const auto structs = std::make_shared<const Bytes>(Bytes::copy_of(Tafla().serialize(StructsShape{}, list)));
 
     std::array<Benchmark, 4> groups{
         Benchmark{"vector of 100 nested tables: read the last item", {}},
