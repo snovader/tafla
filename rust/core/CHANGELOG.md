@@ -114,6 +114,18 @@ first commits, for code built from its source before the release.
   tables, which `get()` returns as tables of their own, was read with
   `TableReader` by hand in 4.1 ns rather than 6.1 ns. Its values and errors
   are unchanged.
+- `TableReader::get_str()` and `StringVector`'s reads of one string check a
+  string shorter than 64 bytes for ASCII where they're inlined, a word at a
+  time as the standard library's `is_ascii()` does, and call `is_ascii()`
+  for longer ones. LLVM called `is_ascii()` out of line from larger callers,
+  such as a read of a record's fields. The benchmarks' record was read in
+  5.0 ns rather than 5.6 ns, by hand and through tafla-gen's getters, their
+  document of 100 rows in 0.94 to 0.97 of the time, and a table of 16
+  strings shorter than 64 bytes, through tafla-gen's getters, in 0.86 to
+  0.95. 16 strings of 64 bytes or more took 1.02 to 1.10 times as long
+  through tafla-gen's getters, whose read grew by 16 inlined checks, and 16
+  empty strings 1.06 times as long by hand. Their values and errors are
+  unchanged.
 - `TableBuilder` makes room to record at least 8 fields when it starts, its
   own and those of the tables that it records in place, rather than only its
   own. Recording a table in place grew a small table's record by a

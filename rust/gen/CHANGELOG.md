@@ -287,9 +287,10 @@ first commits, for code built from its source before the release.
   function called several, returning each `Result` through memory. The
   benchmarks' document of 100 rows read in 10.3 ns rather than 12.6 ns, a
   table of 16 strings in 0.64 to 0.97 of the time, and a vector of tables of
-  a string each in 0.67 to 0.92. The record read takes 5.5 ns rather than
-  5.0 ns, as by hand, and reading the vector of 100 nested tables into the
-  workload's items 296 ns rather than 277 ns.
+  a string each in 0.67 to 0.92. Reading the vector of 100 nested tables
+  into the workload's items took 296 ns rather than 277 ns. The record read
+  took 5.5 ns rather than 5.0 ns, as by hand, until the runtime checked
+  short strings for ASCII where it reads them, which brought both to 5.0 ns.
 - Generated TypeScript and JavaScript write a nested table whose fields'
   sizes the schema fixes whole, with its `writeAt()`, where its parent's
   writer reserves its `SIZE` bytes, and size a vector of them in one call, as

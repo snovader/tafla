@@ -1190,8 +1190,9 @@ impl Generator<'_> {
             // getters of their table of strings, which `#[inline]` didn't
             // change. Inlined, the document read in 10.3 ns rather than
             // 12.6 ns, and 16 empty strings in 41 ns rather than 61 ns. The
-            // record read takes 5.5 ns rather than 5.0 ns, as by hand, since
-            // LLVM no longer inlines `is_ascii()` into its string's getter.
+            // record read took 5.5 ns rather than 5.0 ns, as by hand, since
+            // LLVM had inlined `is_ascii()` into its string's getter alone,
+            // until the runtime checked short strings in its callers itself.
             writer.line("#[inline(always)]");
             let name = identifier(&field.name);
             let result = format!("Result<{}, DecodeError>", self.value_type(field));
