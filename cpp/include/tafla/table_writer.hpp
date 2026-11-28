@@ -31,11 +31,7 @@ static_assert(sizeof(bool) == 1 && std::bit_cast<std::uint8_t>(false) == 0 && st
 
 namespace tafla {
 
-template <bool Checked>
-class BasicTableWriter;
-
-/// The writer that `TableSizer::writer()` returns, which checks each write
-using TableWriter = BasicTableWriter<true>;
+class TableWriter;
 
 /// A view of items that convert into `Item`, from which tafla-gen's generic
 /// fields structs write a vector or an array of structs: a `std::span` of
@@ -105,8 +101,8 @@ TAFLA_ALWAYS_INLINE void store_zeros(std::uint8_t* to) noexcept {
 /// Writes `length` zeros. Up to 16, such as a nested table's offsets or an
 /// array's padding, are two stores of the same width, which may overlap,
 /// rather than a call to `memset()`, across which the caller would keep the
-/// writer in registers that the call preserves, or in memory: `TableBuilder`
-/// wrote the benchmarks' vector of 100 nested tables in 21% less time so. No
+/// writer in registers that the call preserves, or in memory: writing the
+/// benchmarks' vector of 100 nested tables took 21% less time so. No
 /// padding, the most common, is a single compare, as it was before the call.
 TAFLA_ALWAYS_INLINE void zero(std::uint8_t* to, std::size_t length) noexcept {
     if (length == 0) {
@@ -129,6 +125,23 @@ TAFLA_ALWAYS_INLINE void zero(std::uint8_t* to, std::size_t length) noexcept {
     } else if (length == 1) {
         *to = 0;
     }
+}
+
+/// Stores `value`, a count, length, offset or item end, in a slot of
+/// `offset_type`, little-endian, as a single store of the slot's width. The
+/// value fits in the slot, or the table it's in is discarded.
+TAFLA_ALWAYS_INLINE void store_slot(std::uint8_t* at, std::size_t value, OffsetType offset_type) noexcept {
+    switch (offset_type) {
+        case OffsetType::uint8:
+            *at = static_cast<std::uint8_t>(value);
+            return;
+        case OffsetType::uint16:
+            store(at, static_cast<std::uint16_t>(value));
+            return;
+        case OffsetType::uint32:
+            break;
+    }
+    store(at, static_cast<std::uint32_t>(value));
 }
 
 }  // namespace detail
@@ -162,8 +175,9 @@ private:
 /// bytes of exactly that length.
 ///
 /// It's for code that knows a table's fields before it writes them, such as
-/// the code that tafla-gen generates, which writes tables without recording
-/// their fields as `TableBuilder` does.
+/// the code that tafla-gen generates, which writes each table straight into
+/// bytes of its exact length, rather than into bytes that grow as each field
+/// is set, as `TableBuilder` does, and that are then copied.
 ///
 /// The fields are added in order, each with its type's method, which takes
 /// what decides its length: nothing for a scalar, the count of an array, the
@@ -479,10 +493,7 @@ private:
 /// `TableWriter::end_table()` takes back
 class [[nodiscard]] WriterParent {
 private:
-    template <bool>
-    friend class BasicTableWriter;
-    /// Keeps them in the stack of its walk of the tables nested in place
-    friend class TableBuilder;
+    friend class TableWriter;
 
     WriterParent() noexcept = default;
 
@@ -496,9 +507,7 @@ private:
 /// count, which `TableWriter::set_item_end()` takes
 class VectorPosition {
 private:
-    template <bool>
-    friend class BasicTableWriter;
-    friend class TableBuilder;
+    friend class TableWriter;
 
     VectorPosition() noexcept = default;
 
@@ -512,10 +521,8 @@ private:
 /// `TableSizer` counted: new bytes, which `finish()` returns, or the start of
 /// bytes that the caller gave, whose table `finish_into()` checks.
 ///
-/// It doesn't record the fields first, as `TableBuilder` does before it
-/// writes them through a writer of its own. It comes from
-/// `TableSizer::writer()`, and takes the fields that the sizer added, in the
-/// same order, each with its index in its table.
+/// It comes from `TableSizer::writer()`, and takes the fields that the sizer
+/// added, in the same order, each with its index in its table.
 ///
 /// Each field's offset is written as the writer reaches the field. A nested
 /// table follows its parent's `set_table()`, between `start_table()` and
@@ -535,19 +542,12 @@ private:
 /// whatever it's given. Like Rust's, it also reports an index past its
 /// table's fields, or an item past its vector's count; the contract that the
 /// runtimes share leaves the table's bytes undefined for them.
-///
-/// `TableWriter` is `BasicTableWriter<true>`. `TableBuilder` writes through
-/// `BasicTableWriter<false>`, which no other code constructs, and which
-/// skips those checks of room, indexes and items, since the builder's
-/// setters checked each field as they recorded it. Its `finish()` still
-/// checks the length that it wrote.
-template <bool Checked>
-class BasicTableWriter {
+class TableWriter {
 public:
     /// Moves `other`'s bytes and position, and leaves it without bytes, so
     /// that it writes nothing and its `finish()` or `finish_into()` throws,
     /// unless its table is empty
-    BasicTableWriter(BasicTableWriter&& other) noexcept
+    TableWriter(TableWriter&& other) noexcept
         : bytes_(std::move(other.bytes_)),
           begin_(other.begin_),
           cursor_(other.cursor_),
@@ -563,7 +563,7 @@ public:
         other.forget_bytes();
     }
 
-    BasicTableWriter& operator=(BasicTableWriter&& other) noexcept {
+    TableWriter& operator=(TableWriter&& other) noexcept {
         if (this != &other) {
             bytes_ = std::move(other.bytes_);
             begin_ = other.begin_;
@@ -582,9 +582,9 @@ public:
         return *this;
     }
 
-    BasicTableWriter(const BasicTableWriter&) = delete;
-    BasicTableWriter& operator=(const BasicTableWriter&) = delete;
-    ~BasicTableWriter() = default;
+    TableWriter(const TableWriter&) = delete;
+    TableWriter& operator=(const TableWriter&) = delete;
+    ~TableWriter() = default;
 
     /// Returns the table's bytes, and leaves the writer without them.
     ///
@@ -634,7 +634,7 @@ public:
         // Without room for its slots, the table has no fields to write, so
         // that no slot is looked for past the bytes
         const std::size_t width = offset_size(offset_type_);
-        if (!Checked || fields <= room() / width) {
+        if (fields <= room() / width) {
             push_zeros(fields * width);
             fields_ = fields;
         } else {
@@ -788,7 +788,7 @@ public:
     TAFLA_ALWAYS_INLINE void set_struct(std::size_t index, const T& value) noexcept(
         noexcept(value.to_bytes(std::declval<std::uint8_t*>()))) {
         set_offset(index);
-        if (!Checked || T::SIZE <= room()) [[likely]] {
+        if (T::SIZE <= room()) [[likely]] {
             value.to_bytes(cursor_);
             cursor_ += T::SIZE;
         } else {
@@ -847,7 +847,7 @@ public:
             const auto count = static_cast<std::size_t>(std::ranges::size(structs));
             start_array(index, count, alignment);
 
-            if (Checked && count > room() / Size) [[unlikely]] {
+            if (count > room() / Size) [[unlikely]] {
                 fail();
                 return;
             }
@@ -877,7 +877,7 @@ public:
         // the item. Without room for them, the vector has no items to end.
         const std::size_t position = written();
         const std::size_t width = offset_size(offset_type_);
-        if (Checked && count >= room() / width) [[unlikely]] {
+        if (count >= room() / width) [[unlikely]] {
             fail();
             return {position, 0};
         }
@@ -890,7 +890,7 @@ public:
 
     /// Writes the end of item `item` of the vector, which was just written
     TAFLA_ALWAYS_INLINE void set_item_end(VectorPosition vector, std::size_t item) noexcept {
-        if (Checked && item >= vector.count_) [[unlikely]] {
+        if (item >= vector.count_) [[unlikely]] {
             fail();
             return;
         }
@@ -914,7 +914,7 @@ public:
         const std::size_t vector = written();
         const std::size_t count = strings.size();
         const std::size_t width = offset_size(offset_type_);
-        if (Checked && count >= room() / width) [[unlikely]] {
+        if (count >= room() / width) [[unlikely]] {
             fail();
             return;
         }
@@ -925,7 +925,7 @@ public:
 
         for (const auto string : strings) {
             push(string.data(), string.size());
-            store_slot(end, written() - vector);
+            detail::store_slot(end, written() - vector, offset_type_);
             end += width;
         }
     }
@@ -941,13 +941,12 @@ public:
 
 private:
     friend class TableSizer;
-    friend class TableBuilder;
 
     /// Writes the header of the root table of `fields` fields, into new bytes
-    /// of `length`, which the sizer or `TableBuilder` checked are at least the
-    /// header and at most what the offset type addresses
-    TAFLA_ALWAYS_INLINE BasicTableWriter(std::size_t length, std::size_t fields, bool sized,
-                                         std::optional<std::uint32_t> version, OffsetType offset_type)
+    /// of `length`, which the sizer checked are at least the header and at
+    /// most what the offset type addresses
+    TAFLA_ALWAYS_INLINE TableWriter(std::size_t length, std::size_t fields, bool sized,
+                                    std::optional<std::uint32_t> version, OffsetType offset_type)
         : bytes_(Bytes::for_overwrite(length)),
           length_(length),
           offset_type_(offset_type),
@@ -959,8 +958,8 @@ private:
 
     /// Writes the header as the constructor above does, into the start of
     /// `bytes`, which the sizer checked are at least `length`
-    TAFLA_ALWAYS_INLINE BasicTableWriter(std::span<std::uint8_t> bytes, std::size_t length, std::size_t fields,
-                                         bool sized, std::optional<std::uint32_t> version, OffsetType offset_type)
+    TAFLA_ALWAYS_INLINE TableWriter(std::span<std::uint8_t> bytes, std::size_t length, std::size_t fields, bool sized,
+                                    std::optional<std::uint32_t> version, OffsetType offset_type)
         : length_(length),
           offset_type_(offset_type),
           given_(true),
@@ -987,7 +986,7 @@ private:
         }
 
         // Each field's offset is written as the writer reaches the field
-        if (!Checked || fields <= room() / offset_size(offset_type_)) {
+        if (fields <= room() / offset_size(offset_type_)) {
             push_zeros(fields * offset_size(offset_type_));
         } else {
             fail();
@@ -1021,7 +1020,7 @@ private:
     /// Appends a scalar, little-endian, if the table has room for it
     template <class T>
     TAFLA_ALWAYS_INLINE void push_scalar(T value) noexcept {
-        if (!Checked || sizeof(T) <= room()) [[likely]] {
+        if (sizeof(T) <= room()) [[likely]] {
             detail::store(cursor_, value);
             cursor_ += sizeof(T);
         } else {
@@ -1033,7 +1032,7 @@ private:
     /// room for them
     template <class T>
     TAFLA_ALWAYS_INLINE void push_elements(const T* values, std::size_t count) noexcept {
-        if (Checked && count > room() / sizeof(T)) [[unlikely]] {
+        if (count > room() / sizeof(T)) [[unlikely]] {
             fail();
             return;
         }
@@ -1050,7 +1049,7 @@ private:
     TAFLA_ALWAYS_INLINE void set_elements(std::size_t index, std::span<const T> values) noexcept {
         start_array(index, values.size(), static_cast<Alignment>(sizeof(T)));
 
-        if (Checked && values.size() > room() / sizeof(T)) [[unlikely]] {
+        if (values.size() > room() / sizeof(T)) [[unlikely]] {
             fail();
             return;
         }
@@ -1079,7 +1078,7 @@ private:
     /// Writes the offset of field `index` of the table being written, which
     /// is where the field starts
     TAFLA_ALWAYS_INLINE void set_offset(std::size_t index) noexcept {
-        if (Checked && index >= fields_) [[unlikely]] {
+        if (index >= fields_) [[unlikely]] {
             record({BuildError::Kind::too_many_fields, OffsetType::uint32, fields_, 0});
             return;
         }
@@ -1103,7 +1102,7 @@ private:
 
     /// Appends `length` bytes if the table has room for them
     TAFLA_ALWAYS_INLINE void push(const void* bytes, std::size_t length) noexcept {
-        if (!Checked || length <= room()) [[likely]] {
+        if (length <= room()) [[likely]] {
             detail::copy(cursor_, bytes, length);
             cursor_ += length;
         } else {
@@ -1114,7 +1113,7 @@ private:
     /// Appends `count` zeros, of padding or of slots written later, if the
     /// table has room for them
     TAFLA_ALWAYS_INLINE void push_zeros(std::size_t count) noexcept {
-        if (!Checked || count <= room()) [[likely]] {
+        if (count <= room()) [[likely]] {
             detail::zero(cursor_, count);
             cursor_ += count;
         } else {
@@ -1130,8 +1129,8 @@ private:
     /// Appends a count, length or header slot
     TAFLA_ALWAYS_INLINE void push_slot(std::size_t value) noexcept {
         const std::size_t width = offset_size(offset_type_);
-        if (!Checked || width <= room()) [[likely]] {
-            store_slot(cursor_, value);
+        if (width <= room()) [[likely]] {
+            detail::store_slot(cursor_, value, offset_type_);
             cursor_ += width;
         } else {
             fail();
@@ -1140,25 +1139,11 @@ private:
 
     /// Sets the offset or item end at `position`, if the bytes hold it
     TAFLA_ALWAYS_INLINE void set_slot(std::size_t position, std::size_t value) noexcept {
-        if (!Checked || (position <= written() && offset_size(offset_type_) <= written() - position)) [[likely]] {
-            store_slot(begin_ + position, value);
+        if (position <= written() && offset_size(offset_type_) <= written() - position) [[likely]] {
+            detail::store_slot(begin_ + position, value, offset_type_);
         } else {
             fail();
         }
-    }
-
-    TAFLA_ALWAYS_INLINE void store_slot(std::uint8_t* at, std::size_t value) const noexcept {
-        switch (offset_type_) {
-            case OffsetType::uint8:
-                *at = static_cast<std::uint8_t>(value);
-                return;
-            case OffsetType::uint16:
-                detail::store(at, static_cast<std::uint16_t>(value));
-                return;
-            case OffsetType::uint32:
-                break;
-        }
-        detail::store(at, static_cast<std::uint32_t>(value));
     }
 
     /// Leaves the writer without bytes to write, as `finish()` and a move
@@ -1185,17 +1170,15 @@ private:
 
     /// Where the bytes of an empty table point, so that copying no bytes
     /// there has an address. A table of length 0 has no header, but GCC's
-    /// `-Wstringop-overflow` sees an unchecked writer write the header's two
-    /// slots here, so it has room for them. Returning before them instead
-    /// made `TableBuilder::to_bytes()` 4% slower, through Clang's allocation
-    /// of its registers.
+    /// `-Wstringop-overflow` may see the header's two slots written here, so
+    /// it has room for them.
     static inline std::uint8_t empty_[8] = {};
 
     Bytes bytes_;
     std::uint8_t* begin_ = nullptr;
     std::uint8_t* cursor_ = nullptr;
     std::uint8_t* end_ = nullptr;
-    /// The table's length, which the sizer or `TableBuilder` counted
+    /// The table's length, which the sizer counted
     std::size_t length_;
     OffsetType offset_type_;
     /// Whether the writer writes into bytes that the caller gave, rather

@@ -227,18 +227,17 @@ Bytes parent_of(Nest nest, std::size_t before, TableLayout<false> layout) {
 }
 
 /// A table nested from its builder, borrowed or owned, writes the same parent
-/// as from its bytes: the builder is written in place when it has the parent's
-/// offset type and no header, and copied otherwise. The table starts at the
-/// alignment it's set with and holds its bytes, and the vector's items read
-/// back as its bytes.
+/// as from its bytes, whatever its layout. The table starts at the alignment
+/// it's set with and holds its bytes, and the vector's items read back as its
+/// bytes.
 RC_GTEST_PROP(TableBuilder, ATableNestedFromItsBuilderWritesTheSameParentAsFromItsBytes, ()) {
     const auto table = *strategy::table();
     const auto before = *rc::gen::inRange<std::size_t>(0, 8);
     const auto bytes = to_bytes(table);
 
     // Of the table's offset type when the parent fits in it, so that a builder
-    // without a header is written in place whatever its offset type, and
-    // otherwise of uint32 offsets
+    // of each offset type is nested in a parent of its own, and otherwise of
+    // uint32 offsets
     auto offset_type = table.layout.offset_type;
     if (longest_parent(offset_type, before, bytes.size()) > max_value(offset_type)) {
         offset_type = OffsetType::uint32;
@@ -284,9 +283,9 @@ bool same_built(const Built& left, const Built& right) {
     return same_error(*left.error, details.kind, details.offset_type, details.first, details.second);
 }
 
-/// Whether a table recorded in place failed for a vector whose count and
+/// Whether a table written in place failed for a vector whose count and
 /// items' ends alone make its table too long, which fails before its items
-/// are recorded: with that length, where its builders failed for the vector
+/// are written: with that length, where its builders failed for the vector
 /// with its items too, which is longer, or for an item of it first
 bool fails_before_its_items(const Built& in_place, const Built& from_builders) {
     if (!in_place.error || !from_builders.error) {
@@ -302,13 +301,13 @@ bool fails_before_its_items(const Built& in_place, const Built& from_builders) {
     return !same_field || early.second < late.second;
 }
 
-/// Tables nested from builders and recorded in place, with
+/// Tables nested from builders and written in place, with
 /// `set_table(fields, fill)` and `set_vector(count, fields, fill)`, write the
 /// bytes that their builders write, and fail as they fail, for tables of any
 /// offset type and of short ones, whose limits the fields reach. A vector
 /// whose count and items' ends alone make its table too long fails before its
 /// items, where its builders fail for them or count them too.
-RC_GTEST_PROP(TableBuilder, TablesRecordedInPlaceWriteWhatTheirBuildersWrite, ()) {
+RC_GTEST_PROP(TableBuilder, TablesWrittenInPlaceWriteWhatTheirBuildersWrite, ()) {
     const auto table = nested_in_place(*rc::gen::oneOf(strategy::table(), tables_of_short_offsets()));
 
     const auto in_place = built_by([&] { return to_bytes_in_place(table); });
@@ -347,7 +346,7 @@ std::vector<std::uint8_t> items_from_builders(std::span<const float> values) {
     return builder.to_bytes().to_vector();
 }
 
-/// Whatever throws while items are recorded leaves the builder as it was,
+/// Whatever throws while items are written leaves the builder as it was,
 /// with none of their fields, so that the vector can be set again
 TEST(TableBuilder, AnItemThatFailsLeavesTheBuilderAsItWas) {
     constexpr std::array<float, 3> values{1, 2, 3};
@@ -388,8 +387,80 @@ TEST(TableBuilder, AnItemThatFailsLeavesTheBuilderAsItWas) {
     EXPECT_EQ(items_of(values, nested_incomplete), expected);
 }
 
-/// A vector recorded in place whose count and items' ends alone make its
-/// table too long reports that length, since its items aren't recorded, where
+/// A `fill` that throws partway through a nested table or a vector's item,
+/// after values that the builder keeps where they are, leaves the builder as
+/// it was, so that the fields set after it write the table that they would
+/// have written without it
+TEST(TableBuilder, AFillThatThrowsAfterLongValuesLeavesTheBuilderAsItWas) {
+    const std::vector<std::uint16_t> values(200, 9);
+    const auto finish = [&](TableBuilder& builder) {
+        builder.set_table(2, [&](TableBuilder::Item& nested) {
+            nested.set_uint16(4);
+            nested.set_uint16_array(values);
+        });
+        return builder.to_bytes();
+    };
+
+    TableBuilder expected(2, TableLayout());
+    expected.set_uint8(1);
+
+    TableBuilder builder(2, TableLayout());
+    builder.set_uint8(1);
+    const auto length = builder.byte_length();
+    const auto alignment = builder.alignment();
+
+    EXPECT_THROW(builder.set_table(3,
+                                   [&](TableBuilder::Item& nested) {
+                                       nested.set_uint16_array(values);
+                                       nested.set_float64(2.5);
+                                       throw std::runtime_error("The caller's");
+                                   }),
+                 std::runtime_error);
+    EXPECT_THROW(builder.set_vector(4, 1,
+                                    [&](std::size_t index, TableBuilder::Item& item) {
+                                        item.set_uint16_array(values);
+                                        if (index == 2) {
+                                            throw std::runtime_error("The caller's");
+                                        }
+                                    }),
+                 std::runtime_error);
+    EXPECT_EQ(builder.byte_length(), length);
+    EXPECT_EQ(builder.alignment(), alignment);
+    EXPECT_EQ(finish(builder), finish(expected));
+}
+
+/// A table or a vector written in place whose fields fit their own table,
+/// but which makes its parent too long once it's written, is rejected with
+/// the parent's error, and leaves the parent as it was
+TEST(TableBuilder, RejectsATableWrittenInPlaceThatMakesItsParentTooLong) {
+    const auto layout = TableLayout().with_offset_type(OffsetType::uint8);
+    const std::vector<std::uint8_t> bytes(200, 1);
+
+    TableBuilder expected(2, layout);
+    expected.set_uint8_array(bytes);
+    expected.set_uint8(5);
+
+    // The parent's header and array are 203 bytes, the table 202, and each
+    // item 32, after the vector's count and ends
+    TableBuilder builder(2, layout);
+    builder.set_uint8_array(bytes);
+    const auto in_table = build_error_of(
+        [&] { builder.set_table(1, [&](TableBuilder::Item& nested) { nested.set_uint8_array(bytes); }); });
+    EXPECT_TRUE(same_error(in_table, BuildError::Kind::too_long, OffsetType::uint8, 1, 405));
+
+    const auto in_vector = build_error_of([&] {
+        builder.set_vector(2, 1, [&](std::size_t, TableBuilder::Item& item) {
+            item.set_uint8_array(std::span<const std::uint8_t>(bytes).first(30));
+        });
+    });
+    EXPECT_TRUE(same_error(in_vector, BuildError::Kind::too_long, OffsetType::uint8, 1, 270));
+
+    builder.set_uint8(5);
+    EXPECT_EQ(builder.to_bytes(), expected.to_bytes());
+}
+
+/// A vector written in place whose count and items' ends alone make its
+/// table too long reports that length, since its items aren't written, where
 /// a vector of their builders reports the length with its items
 TEST(TableBuilder, AVectorTooLongBeforeItsItemsReportsItsLengthWithoutThem) {
     const auto layout = TableLayout().with_offset_type(OffsetType::uint8);
@@ -402,7 +473,7 @@ TEST(TableBuilder, AVectorTooLongBeforeItsItemsReportsItsLengthWithoutThem) {
     // 2 offsets, a count and 249 bytes, and a vector of a count and 3 ends,
     // and of 3 items of an offset and a byte
     const auto in_place = build_error_of(
-        [&] { builder.set_vector(3, 1, [](std::size_t, TableBuilder::Item& recorded) { recorded.set_uint8(1); }); });
+        [&] { builder.set_vector(3, 1, [](std::size_t, TableBuilder::Item& written) { written.set_uint8(1); }); });
     EXPECT_TRUE(same_error(in_place, BuildError::Kind::too_long, OffsetType::uint8, 1, 256));
 
     const auto from_builders = build_error_of([&] {
@@ -442,7 +513,7 @@ void nest_in_place(TableBuilder::Item& table, std::uint32_t depth, bool in_vecto
     }
 }
 
-/// The table that `nest_in_place()` records, with each nested table written
+/// The table that `nest_in_place()` writes, with each nested table written
 /// into bytes of its own first
 Bytes nest_as_bytes(std::uint32_t depth, bool in_vector) {
     TableBuilder table(2, TableLayout());
@@ -501,8 +572,7 @@ TEST(TableBuilder, RejectsWritingBeforeEveryFieldIsSet) {
     }
 }
 
-/// Six fields of strings, more than a builder records within itself, which
-/// the builder owns
+/// A sized table of six strings, which the builder is given to own
 TableBuilder six_strings(std::string_view value) {
     TableBuilder builder(6, TableLayout().sized().with_offset_type(OffsetType::uint16));
     for (std::size_t field = 0; field < 6; ++field) {
@@ -513,7 +583,7 @@ TableBuilder six_strings(std::string_view value) {
 
 /// A builder that's moved from is left as it was started, with its layout
 /// and number of fields but no fields, whether it's moved into a new
-/// builder or assigned to another
+/// builder or assigned to another, and its length is its header's
 TEST(TableBuilder, AMovedFromBuilderIsLeftWithoutFields) {
     const auto expected = six_strings("moved").to_bytes();
 
@@ -531,6 +601,7 @@ TEST(TableBuilder, AMovedFromBuilderIsLeftWithoutFields) {
         EXPECT_EQ(error.kind(), BuildError::Kind::incomplete);
         EXPECT_EQ(error.set(), 0U);
         EXPECT_EQ(error.fields(), 6U);
+        EXPECT_EQ(moved->byte_length(), 7 * offset_size(OffsetType::uint16));
 
         for (std::size_t field = 0; field < 6; ++field) {
             moved->set_string("again");
@@ -633,6 +704,33 @@ TEST(TableBuilder, RejectsATableOf32BitOffsetsPast4GiBBeforeWritingIt) {
     builder.set_vector(items(63));
 }
 
+// Tables written in place whose borrowed arrays add up past 4 GiB, more than
+// a 32-bit host addresses, are rejected as too long for their parent, which
+// a 32-bit host checks in 64 bits too: a vector's 65 items of 64 MiB each,
+// and a table of 33 such items after a vector of as many
+TEST(TableBuilder, RejectsTablesWrittenInPlaceThatMakeTheirParentLongerThan4GiB) {
+    const std::vector<std::uint8_t> bytes(std::size_t{1} << 26, 0);
+    const auto items = [&bytes](TableBuilder::Item& table, std::size_t count) {
+        table.set_vector(count, 1, [&bytes](std::size_t, TableBuilder::Item& item) { item.set_uint8_array(bytes); });
+    };
+
+    TableBuilder vector(1, TableLayout());
+    const auto in_vector = build_error_of([&] {
+        vector.set_vector(65, 1, [&bytes](std::size_t, TableBuilder::Item& item) { item.set_uint8_array(bytes); });
+    });
+    EXPECT_EQ(in_vector.kind(), BuildError::Kind::too_long);
+    EXPECT_EQ(in_vector.index(), 0U);
+    EXPECT_GT(in_vector.length(), std::uint64_t{1} << 32);
+
+    TableBuilder table(2, TableLayout());
+    table.set_table(1, [&](TableBuilder::Item& first) { items(first, 33); });
+    const auto in_table =
+        build_error_of([&] { table.set_table(1, [&](TableBuilder::Item& second) { items(second, 33); }); });
+    EXPECT_EQ(in_table.kind(), BuildError::Kind::too_long);
+    EXPECT_EQ(in_table.index(), 1U);
+    EXPECT_GT(in_table.length(), std::uint64_t{1} << 32);
+}
+
 TEST(TableBuilder, RejectsAVersionTooLargeForItsSlot) {
     for (const auto& [offset_type, version] :
          {std::pair{OffsetType::uint8, 0x100U}, std::pair{OffsetType::uint16, 0x1'0000U}}) {
@@ -703,6 +801,27 @@ TEST(TableBuilder, OwnsStringsAndArraysGivenAsRvalues) {
     EXPECT_TRUE(std::ranges::equal(reader.get_struct(reader.root_offset(2), 3), std::vector<std::uint8_t>{9, 8, 7}));
 }
 
+/// A value shorter than 64 bytes given as an rvalue is copied when it's
+/// set, and left as it was, rather than moved into the builder
+TEST(TableBuilder, CopiesAShortRvalueAndLeavesItAsItWas) {
+    std::string string(63, 's');
+    std::vector<std::uint16_t> values(31, 7);
+
+    TableBuilder builder(2, TableLayout());
+    builder.set_string(std::move(string));
+    builder.set_uint16_array(std::move(values));
+
+    // NOLINTBEGIN(bugprone-use-after-move): left as it was is the point
+    EXPECT_EQ(string, std::string(63, 's'));
+    EXPECT_EQ(values, std::vector<std::uint16_t>(31, 7));
+    // NOLINTEND(bugprone-use-after-move)
+
+    const auto bytes = builder.to_bytes();
+    const TableReader buffer(bytes, TableLayout());
+    EXPECT_EQ(buffer.get_string(buffer.root_offset(0)), std::string(63, 's'));
+    EXPECT_EQ(buffer.get_uint16_array(buffer.root_offset(1)).to_vector(), std::vector<std::uint16_t>(31, 7));
+}
+
 TEST(TableBuilder, LeavesAnRvalueItRejectsWithTheCaller) {
     TableBuilder builder(1, TableLayout().with_offset_type(OffsetType::uint8));
     std::vector<std::uint8_t> values(300, 1);
@@ -719,7 +838,7 @@ TEST(TableBuilder, LeavesAnRvalueItRejectsWithTheCaller) {
 }
 
 /// A byte of 1 or 0 for each bool, as a `uint8` array of those bytes, from
-/// bools that the builder borrows or owns, and in a table recorded in place
+/// bools that the builder borrows or owns, and in a table written in place
 TEST(TableBuilder, WritesArraysOfBoolsAsBytesOf1And0) {
     const std::array<bool, 3> borrowed{true, false, true};
     const std::vector<std::uint8_t> bytes{1, 0, 1};
@@ -734,6 +853,27 @@ TEST(TableBuilder, WritesArraysOfBoolsAsBytesOf1And0) {
     builder.set_bool_array(Bools(borrowed));
     builder.set_table(1, [&](TableBuilder::Item& item) { item.set_bool_array(Bools{true, false, true}); });
     EXPECT_EQ(builder.to_bytes(), expected.to_bytes());
+}
+
+/// Structs of 64 bytes or more, borrowed or owned, which the builder keeps
+/// where they are rather than copying them, read back as they were set
+TEST(TableBuilder, WritesLongStructs) {
+    std::vector<std::uint8_t> borrowed(300);
+    for (std::size_t index = 0; index < borrowed.size(); ++index) {
+        borrowed[index] = static_cast<std::uint8_t>(index);
+    }
+    const std::vector<std::uint8_t> reversed(borrowed.rbegin(), borrowed.rend());
+
+    TableBuilder builder(3, TableLayout());
+    builder.set_struct(borrowed);
+    builder.set_struct(std::vector<std::uint8_t>(reversed));
+    builder.set_uint8(7);
+
+    const auto bytes = builder.to_bytes();
+    const TableReader buffer(bytes, TableLayout());
+    EXPECT_TRUE(std::ranges::equal(buffer.get_struct(buffer.root_offset(0), 300), borrowed));
+    EXPECT_TRUE(std::ranges::equal(buffer.get_struct(buffer.root_offset(1), 300), reversed));
+    EXPECT_EQ(buffer.get_uint8(buffer.root_offset(2)), 7);
 }
 
 TEST(TableBuilder, WritesAnEmptyArrayOfStructsOfAnySize) {
@@ -752,16 +892,40 @@ TEST(TableBuilder, WritesAnEmptyArrayOfStructsOfAnySize) {
     }
 }
 
-/// A builder of the most fields that a header of `uint32` offsets holds,
-/// which it doesn't allocate room for before they're set
-TEST(TableBuilder, StartsATableOfTheMostFieldsWithoutAllocatingForThem) {
-    const std::size_t fields = max_value(OffsetType::uint32) / 4;
-    TableBuilder builder(fields, TableLayout());
-    builder.set_uint8(1);
+/// A table of more fields than the strategy's, whose header is longer than
+/// a small table's bytes, and whose fields are written after it
+TEST(TableBuilder, WritesATableOfManyFields) {
+    constexpr std::size_t fields = 20'000;
+    TableBuilder builder(fields, TableLayout().sized());
+    for (std::size_t field = 0; field < fields; ++field) {
+        builder.set_uint16(static_cast<std::uint16_t>(field));
+    }
 
-    const auto error = build_error_of([&] { static_cast<void>(builder.to_bytes()); });
-    EXPECT_EQ(error.kind(), BuildError::Kind::incomplete);
-    EXPECT_EQ(error.fields(), fields);
+    const auto bytes = builder.to_bytes();
+    const TableReader buffer(bytes, TableLayout().sized());
+    EXPECT_EQ(bytes.size(), 4 + fields * 6);
+    for (std::size_t field = 0; field < fields; ++field) {
+        EXPECT_EQ(buffer.get_uint16(buffer.root_offset(field)), field);
+    }
+}
+
+/// A builder that was moved from, after any of its fields were set, writes
+/// the table that a new builder writes once its fields are set again, from
+/// the first, whether or not the move took them
+RC_GTEST_PROP(TableBuilder, ABuilderMovedFromWritesWhatANewOneWrites, ()) {
+    const auto table = *strategy::table();
+    const auto set = *rc::gen::inRange<std::size_t>(0, table.fields.size() + 1);
+
+    auto from = builder_of(table);
+    for (std::size_t index = 0; index < set; ++index) {
+        set_field(table.fields[index], from);
+    }
+    const TableBuilder moved(std::move(from));
+
+    for (const auto& field : table.fields) {
+        set_field(field, from);  // NOLINT(bugprone-use-after-move): the state after it is the point
+    }
+    RC_ASSERT(from.to_bytes() == to_bytes(table));
 }
 
 // A setter that borrows its value takes a view, or a container that outlives

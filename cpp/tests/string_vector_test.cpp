@@ -203,10 +203,11 @@ RC_GTEST_PROP(StringVector, TakesTheEndOfEachStringAndACountBesideTheStringsUtf8
 }
 
 /// A sizer and its writer, a builder that owns the strings, and a vector of
-/// strings recorded in a table in place, write what a builder that borrows
-/// views of them writes
+/// strings written in a table in place, write what a builder that borrows
+/// views of them writes, of short strings and of strings past the 64 bytes
+/// from which `TableBuilder` keeps a string rather than copying it
 RC_GTEST_PROP(StringVector, IsWrittenByEveryWriterAsByABuilderOfViews, ()) {
-    const auto strings = *lists();
+    const auto strings = *rc::gen::oneOf(lists(), lists_of(strategy::strings(96), 4));
     const auto views = views_of(strings);
     const auto expected = table_of(views);
 

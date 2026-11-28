@@ -40,15 +40,15 @@ Bytes to_bytes_in_place(const Table& table) {
     return builder.to_bytes();
 }
 
-bool records_in_place(const Nested& nested, std::optional<OffsetType> in_place) {
+bool writes_in_place(const Nested& nested, std::optional<OffsetType> in_place) {
     const auto& layout = nested.table.layout;
     return in_place && nested.from == Source::builder && !layout.sized && !layout.versioned &&
            layout.offset_type == *in_place;
 }
 
-bool records_in_place(const std::vector<Nested>& items, std::optional<OffsetType> in_place) {
+bool writes_in_place(const std::vector<Nested>& items, std::optional<OffsetType> in_place) {
     return std::ranges::all_of(items, [&](const Nested& item) {
-        return records_in_place(item, in_place) && item.table.fields.size() == items.front().table.fields.size();
+        return writes_in_place(item, in_place) && item.table.fields.size() == items.front().table.fields.size();
     });
 }
 
