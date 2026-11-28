@@ -46,6 +46,7 @@ from tests.tables import (
     Description,
     OffsetType,
     from_json,
+    nested_in_place,
     offset_size_of,
     struct_alignment,
     struct_of,
@@ -355,3 +356,133 @@ def _longest_field_length(field: Description, offset_size: int) -> int:
         return padding + offset_size + element_size * len(field["value"])
 
     return ELEMENT_SIZES[kind]
+
+
+def with_offset_type(table: Description, offset_type: OffsetType) -> Description:
+    """Returns a table's description with every table in it, nested ones
+    included, of ``offset_type``, and versions that fit its slots, so that a
+    table of short offsets may be too long for them"""
+    layout = {**table["layout"], "offsetType": offset_type}
+    shortened: Description = {**table, "layout": layout}
+    if "version" in table:
+        shortened["version"] = min(table["version"], LONGEST[offset_type])
+
+    shortened["fields"] = [
+        _field_with_offset_type(field, offset_type) for field in table["fields"]
+    ]
+    return shortened
+
+
+def _field_with_offset_type(field: Description, offset_type: OffsetType) -> Description:
+    if field["type"] == "table":
+        return {**field, "table": with_offset_type(field["table"], offset_type)}
+
+    if field["type"] == "vector":
+        items = [
+            {**item, "table": with_offset_type(item["table"], offset_type)}
+            for item in field["items"]
+        ]
+        return {**field, "items": items}
+
+    return field
+
+
+UNSIZED_UINT8: Description = {
+    "sized": False,
+    "versioned": False,
+    "offsetType": "uint8",
+}
+
+_PAIR: Description = {
+    "layout": UNSIZED_UINT8,
+    "fields": [
+        {"type": "float32", "value": 1.5},
+        {"type": "int16[]", "value": [1, -2]},
+    ],
+}
+
+KINDS_OF_FIELDS: list[Description] = [
+    *({"type": kind, "value": 1} for kind in ("int8", "int16", "int32", "int64")),
+    {"type": "float32", "value": 0.5},
+    {"type": "float64", "value": -0.0},
+    {"type": "string", "value": ""},
+    {"type": "string", "value": "tafla"},
+    {
+        "type": "struct",
+        "fields": [{"type": "uint8", "value": 1}, {"type": "int16", "value": -1}],
+    },
+    {"type": "int32[]", "value": [1, 2, 3]},
+    {"type": "float64[]", "value": [0.5, 1.5]},
+    {"type": "bool[]", "value": [True, False, True]},
+    {"type": "string[]", "value": ["", "tafla", "é"]},
+    {"type": "struct[]", "fields": ["int16", "uint32"], "items": [[1, 2], [3, 4]]},
+    # At the alignment of 4 that set_table() pads bytes to by default, which
+    # a writer nesting the table in place pads it to as well
+    {"type": "table", "from": "bytes", "alignment": 4, "table": _PAIR},
+    {"type": "table", "from": "builder", "table": _PAIR},
+    {"type": "vector", "items": []},
+    {"type": "vector", "items": [{"from": "builder", "table": _PAIR}] * 2},
+    {"type": "vector", "items": [{"from": "bytes", "table": _PAIR}] * 2},
+]
+"""A field of each kind, of a few bytes, in a table of uint8 offsets, with
+nested tables and vectors from builders and from bytes"""
+
+
+@composite
+def long_vectors(draw: DrawFn) -> Description:
+    """Tables of uint8 offsets whose last field is a vector of many copies of
+    one table, which a builder writes in place and which often makes its
+    parent too long for its offsets, after fields that start it at any
+    offset"""
+    item = draw(tables(1, header=False, offset_types=("uint8",)))
+    before = draw(tables(0, header=False, offset_types=("uint8",)))
+    count = draw(integers(0, 40))
+    vector = {"type": "vector", "items": [{"from": "builder", "table": item}] * count}
+
+    return {"layout": UNSIZED_UINT8, "fields": [*before["fields"], vector]}
+
+
+@composite
+def long_tables(draw: DrawFn) -> Description:
+    """Tables of uint8 offsets whose last field is a table of the same fields
+    several times over, which a builder writes in place and which often makes
+    its parent too long for its offsets, though not itself"""
+    fields = draw(tables(1, header=False, offset_types=("uint8",)))
+    before = draw(tables(0, header=False, offset_types=("uint8",)))
+    nested = {
+        "layout": fields["layout"],
+        "fields": fields["fields"] * draw(integers(1, 8)),
+    }
+    table = {"type": "table", "from": "builder", "table": nested}
+
+    return {"layout": UNSIZED_UINT8, "fields": [*before["fields"], table]}
+
+
+@composite
+def tables_near_the_limit(draw: DrawFn) -> Description:
+    """Tables of uint8 offsets that start with an array of 180 to 250 bytes,
+    so that each kind of field after it may be the one that makes the table
+    too long, with its nested tables written in place or not"""
+    table = draw(tables(1, offset_types=("uint8",)))
+    array = {"type": "uint8[]", "value": [0] * draw(integers(180, 250))}
+    table = {**table, "fields": [array, *table["fields"]]}
+
+    return nested_in_place(table) if draw(booleans()) else table
+
+
+def any_tables() -> SearchStrategy[Description]:
+    """Tables of any offset type, and the same tables of short offsets, whose
+    limits their fields reach, tables whose nested tables have no header,
+    which builders write in place more often, long vectors and tables written
+    in place, and fields that reach the limit of uint8 offsets. Tables of
+    short offsets may be too long for them, unlike those of ``tables()``."""
+    return one_of(
+        tables(),
+        tables().map(lambda table: with_offset_type(table, "uint8")),
+        tables().map(lambda table: with_offset_type(table, "uint16")),
+        tables().map(nested_in_place),
+        tables().map(lambda table: with_offset_type(nested_in_place(table), "uint8")),
+        long_vectors(),
+        long_tables(),
+        tables_near_the_limit(),
+    )

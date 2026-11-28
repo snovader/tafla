@@ -1,11 +1,11 @@
-"""The native implementation of the classes that the code that tafla-gen
-generates uses, which ``tafla.implementation`` chooses unless pure Python is
-forced. They have the API of the pure-Python classes, whose types this
-re-exports."""
+"""The native implementation of tafla's classes, which
+``tafla.implementation`` chooses unless pure Python is forced. They have the
+API of the pure-Python classes, whose types this re-exports."""
 
 from .fixed_fields import FixedFields as FixedFields
 from .layout import TableLayout as TableLayout
 from .string_vector import StringVector as StringVector
+from .table_builder import TableBuilder as TableBuilder
 from .table_reader import TableReader as TableReader
 from .table_writer import TableWriter as TableWriter
 

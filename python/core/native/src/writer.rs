@@ -1,224 +1,21 @@
 use std::ffi::c_int;
 use std::fmt::Display;
 use std::mem::MaybeUninit;
-use std::ptr::{self, NonNull};
+use std::ptr;
 
 use pyo3::exceptions::{
-    PyBufferError, PyIndexError, PyMemoryError, PyStopIteration, PyTypeError, PyUnicodeEncodeError,
-    PyValueError,
+    PyIndexError, PyStopIteration, PyTypeError, PyUnicodeEncodeError, PyValueError,
 };
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PySlice, PyString, PyTuple, PyType};
+use pyo3::types::{PyBytes, PySlice, PyString, PyTuple};
 use pyo3::{IntoPyObjectExt, ffi};
 
+use crate::bytes::{Bytes, frozen, memory_error};
 use crate::fixed_fields::{Description, FixedFields, Format, Plan};
 use crate::layout::{Layout, Shape, shape_of};
 use crate::python::{Int, objects, utf8, with_buffer, with_bytes};
 use crate::values::{self, Kind};
 use crate::{elements, little_endian_host};
-
-/// The bytes of the table being written, which Python's allocator holds, so
-/// that `tracemalloc` counts them as it counts a `bytearray`'s. While a
-/// buffer of them is exported, by `TableWriter.bytes()`, their length is
-/// frozen, so that the exported pointer stays valid, as a `bytearray`'s is.
-struct Bytes {
-    pointer: NonNull<u8>,
-    len: usize,
-    capacity: usize,
-    /// The buffers of the bytes that are exported and not yet released
-    exports: usize,
-}
-
-// SAFETY: the bytes are an allocation of their own, which only their
-// writer's methods reach, and PyO3 borrows the writer mutably for each, so no
-// two threads use them at once. Python's allocator frees them from any
-// thread that's attached.
-unsafe impl Send for Bytes {}
-unsafe impl Sync for Bytes {}
-
-impl Bytes {
-    /// The least capacity, which holds a small table without growing
-    const MIN_CAPACITY: usize = 64;
-
-    fn zeroed(len: usize) -> PyResult<Self> {
-        let capacity = len.max(Self::MIN_CAPACITY);
-        let pointer = allocate(ptr::null_mut(), capacity)?;
-        unsafe { ptr::write_bytes(pointer.as_ptr(), 0, len) };
-
-        Ok(Self {
-            pointer,
-            len,
-            capacity,
-            exports: 0,
-        })
-    }
-
-    #[inline]
-    const fn as_mut_slice(&mut self) -> &mut [u8] {
-        unsafe { std::slice::from_raw_parts_mut(self.pointer.as_ptr(), self.len) }
-    }
-
-    /// Raises `BufferError` if the bytes are exported and `len` isn't their
-    /// length, as a `bytearray` raises for a change of its length while
-    /// it's exported, and for nothing else
-    #[inline]
-    fn check_length(&self, len: usize) -> PyResult<()> {
-        if self.exports > 0 && len != self.len {
-            return Err(frozen());
-        }
-        Ok(())
-    }
-
-    /// Sets the length to `len`, with zeros in the bytes it adds. Raises
-    /// `BufferError` if that changes the length while the bytes are
-    /// exported, as a `bytearray` does.
-    #[inline]
-    fn resize(&mut self, len: usize) -> PyResult<()> {
-        self.check_length(len)?;
-        if len > self.capacity {
-            self.grow(len)?;
-        }
-        if len > self.len {
-            unsafe { ptr::write_bytes(self.pointer.as_ptr().add(self.len), 0, len - self.len) };
-        }
-        self.len = len;
-
-        Ok(())
-    }
-
-    /// Replaces the bytes from `start`, which is at most the length, with
-    /// `bytes`, as a `bytearray`'s slice assignment `data[start:] = bytes`
-    /// does. Raises `BufferError` if that changes the length while the bytes
-    /// are exported, having written nothing.
-    #[inline]
-    fn replace_from(&mut self, start: usize, bytes: &[u8]) -> PyResult<()> {
-        debug_assert!(start <= self.len);
-        let len = start.checked_add(bytes.len()).ok_or_else(memory_error)?;
-        self.check_length(len)?;
-        if len > self.capacity {
-            self.grow(len)?;
-        }
-        unsafe {
-            ptr::copy_nonoverlapping(
-                bytes.as_ptr(),
-                self.pointer.as_ptr().add(start),
-                bytes.len(),
-            );
-        }
-        self.len = len;
-
-        Ok(())
-    }
-
-    #[inline]
-    fn extend_from_slice(&mut self, bytes: &[u8]) -> PyResult<()> {
-        self.replace_from(self.len, bytes)
-    }
-
-    #[inline]
-    fn extend_zeros(&mut self, count: usize) -> PyResult<()> {
-        self.resize(self.len.checked_add(count).ok_or_else(memory_error)?)
-    }
-
-    /// The `length` bytes of the capacity from `start`, which is at least the
-    /// length, grown to hold them, for bytes that `extend_written()` adds to
-    /// the length once they're written. Returns `None` if they don't fit in
-    /// memory, or if the bytes are exported and would have to grow.
-    #[inline]
-    fn spare(&mut self, start: usize, length: usize) -> Option<&mut [MaybeUninit<u8>]> {
-        assert!(
-            start >= self.len,
-            "the spare capacity starts after the length"
-        );
-        let end = start.checked_add(length)?;
-        if end > self.capacity {
-            if self.exports > 0 {
-                return None;
-            }
-            self.grow(end).ok()?;
-        }
-
-        let spare = unsafe { self.pointer.as_ptr().add(start) };
-        Some(unsafe { std::slice::from_raw_parts_mut(spare.cast(), length) })
-    }
-
-    /// Adds the `length` bytes after the length to it, as `extend_from_slice()`
-    /// would append them. Raises `BufferError` if the bytes are exported, as
-    /// it would.
-    ///
-    /// # Safety
-    ///
-    /// The bytes must be written, into the capacity that `spare()` returned.
-    #[inline]
-    unsafe fn extend_written(&mut self, length: usize) -> PyResult<()> {
-        let len = self.len + length;
-        debug_assert!(len <= self.capacity);
-        self.check_length(len)?;
-        self.len = len;
-
-        Ok(())
-    }
-
-    /// Gives back the capacity beyond `capacity`, which is at least the
-    /// length, such as what `spare()` grew for bytes that weren't written
-    /// after all. Keeps it if the allocator can't.
-    #[cold]
-    fn shrink_to(&mut self, capacity: usize) {
-        debug_assert!(capacity >= self.len && capacity > 0);
-        if capacity < self.capacity
-            && let Ok(pointer) = allocate(self.pointer.as_ptr(), capacity)
-        {
-            self.pointer = pointer;
-            self.capacity = capacity;
-        }
-    }
-
-    /// Grows the capacity to at least `required`, so that appending is
-    /// amortized: by half again while it's small, and by an eighth, as a
-    /// `bytearray` grows, once it's large, so that a large table holds
-    /// little more than its bytes. A larger append, such as a large array's,
-    /// grows it to `required` exactly.
-    #[cold]
-    fn grow(&mut self, required: usize) -> PyResult<()> {
-        const LARGE: usize = 64 * 1024;
-        let growth = if self.capacity < LARGE {
-            self.capacity / 2
-        } else {
-            self.capacity / 8
-        };
-        let capacity = required.max(self.capacity + growth);
-        self.pointer = allocate(self.pointer.as_ptr(), capacity)?;
-        self.capacity = capacity;
-
-        Ok(())
-    }
-}
-
-impl Drop for Bytes {
-    fn drop(&mut self) {
-        // The writer is dropped by its deallocation, with the thread attached
-        unsafe { ffi::PyMem_Free(self.pointer.as_ptr().cast()) };
-    }
-}
-
-/// Allocates `capacity` bytes, or reallocates `pointer` to them
-fn allocate(pointer: *mut u8, capacity: usize) -> PyResult<NonNull<u8>> {
-    if isize::try_from(capacity).is_err() {
-        return Err(memory_error());
-    }
-    let pointer = unsafe { ffi::PyMem_Realloc(pointer.cast(), capacity) };
-    NonNull::new(pointer.cast::<u8>()).ok_or_else(memory_error)
-}
-
-#[cold]
-fn memory_error() -> PyErr {
-    PyMemoryError::new_err(())
-}
-
-#[cold]
-fn frozen() -> PyErr {
-    PyBufferError::new_err("Existing exports of data: object cannot be re-sized")
-}
 
 /// The start of a table, or the position of its first slot, as
 /// `end_table()` takes it back: the writer's own from `start_table()`, or any
@@ -285,8 +82,8 @@ struct SlotFailure;
 
 /// Writes a table forward, appending each field to its bytes as it's set,
 /// for code that knows a table's fields as it writes them, such as the code
-/// that tafla-gen generates. Unlike ``TableBuilder``, it doesn't record the
-/// fields first, which takes most of a small table's time.
+/// that tafla-gen generates. Unlike ``TableBuilder``, it takes each field's
+/// index and doesn't check its calls, which follow from the schema there.
 ///
 /// Fields are set in order, each with its index in its table. A nested table
 /// follows its parent's ``set_table()``, between ``start_table()`` and
@@ -1168,7 +965,7 @@ const fn slot(value: usize) -> [u8; 4] {
 
 /// The error of a `str` given as a vector of strings, as the pure-Python
 /// runtime words it
-const STR_VECTOR_MESSAGE: &str =
+pub const STR_VECTOR_MESSAGE: &str =
     "Can't write a str as a vector of strings, which would be a string of each of its characters";
 
 /// Raises the pure-Python runtime's `ValueError` for items whose `len()` is
@@ -1247,7 +1044,7 @@ fn tuple_item<'a, 'py>(tuple: &'a Bound<'py, PyTuple>, index: usize) -> Borrowed
 
 /// The alignment of a struct array or nested table, which must be the int
 /// 1, 2, 4 or 8, or `ValueError`
-fn alignment(alignment: &Bound<'_, PyAny>) -> PyResult<usize> {
+pub fn alignment(alignment: &Bound<'_, PyAny>) -> PyResult<usize> {
     // The type comes first, as in the pure-Python runtime, since 2.0 and
     // True compare equal to alignments
     if unsafe { ffi::PyLong_CheckExact(alignment.as_ptr()) } != 0
@@ -1264,7 +1061,7 @@ fn alignment(alignment: &Bound<'_, PyAny>) -> PyResult<usize> {
 
 /// The byte length of the header of a table of `fields` fields in `shape`,
 /// as the pure-Python runtime's `header_length()` checks it
-fn header_length(shape: Shape, fields: &Int<'_>) -> PyResult<usize> {
+pub fn header_length(shape: Shape, fields: &Int<'_>) -> PyResult<usize> {
     let name = shape.offset_type.name();
 
     let length = fields.mul(shape.size())?.add(shape.header_size())?;
@@ -1360,21 +1157,6 @@ impl TableWriter {
         Self::create(shape, length)
     }
 
-    /// Returns a writer as the constructor does, for arguments that
-    /// ``TableBuilder``'s constructor checked already, without checking them
-    /// again.
-    #[classmethod]
-    #[pyo3(signature = (fields, layout))]
-    fn _checked(_cls: &Bound<'_, PyType>, fields: usize, layout: Layout) -> PyResult<Self> {
-        let shape = layout.shape();
-        let length = fields
-            .checked_mul(shape.size())
-            .and_then(|slots| slots.checked_add(shape.header_size()))
-            .ok_or_else(memory_error)?;
-
-        Self::create(shape, length)
-    }
-
     /// Returns a view of the table's bytes, without copying them. While
     /// it's held, a field that would change their length raises
     /// ``BufferError``, as a ``bytearray``'s does. ``memoryview(writer)``
@@ -1424,14 +1206,6 @@ impl TableWriter {
     /// leaves the length frozen, which is safe.
     unsafe fn __releasebuffer__(mut slf: PyRefMut<'_, Self>, _view: *mut ffi::Py_buffer) {
         slf.data.exports = slf.data.exports.saturating_sub(1);
-    }
-
-    /// Writes a table that was written already, from its bytes as they are,
-    /// in place of the fields that ``start_table()`` and ``end_table()``
-    /// would enclose. ``TableBuilder`` copies the tables that it can't write
-    /// in place with it.
-    fn _copy_table(&mut self, table: &Bound<'_, PyAny>) -> PyResult<()> {
-        with_bytes(table, |bytes| self.data.extend_from_slice(bytes))
     }
 
     /// Starts the fields of a nested table or vector item of ``fields``
@@ -1583,19 +1357,6 @@ impl TableWriter {
         self.set_string_at(py, &Int::new(index)?, encoded)
     }
 
-    /// Writes a string that's encoded as UTF-8 already, as ``set_string()``
-    /// writes it. ``TableBuilder`` encodes a string outside ASCII when it's
-    /// set, to count its bytes, and writes them with it.
-    fn _set_encoded_string(
-        &mut self,
-        py: Python<'_>,
-        index: &Bound<'_, PyAny>,
-        encoded: &Bound<'_, PyAny>,
-    ) -> PyResult<()> {
-        let index = Int::new(index)?;
-        with_bytes(encoded, |bytes| self.set_string_at(py, &index, bytes))
-    }
-
     /// Writes a vector of strings: its count, the end of each string from
     /// the vector's position, and then each string as UTF-8, one after
     /// another, which lets readers find any string without reading the
@@ -1631,31 +1392,6 @@ impl TableWriter {
         check_items(strings.len()?, items.len())?;
 
         let encoded = items.iter().map(utf8).collect::<PyResult<Vec<_>>>()?;
-        self.set_strings_at(py, &index, &encoded, byte_length)
-    }
-
-    /// Writes a vector of strings that are encoded as UTF-8 already, as
-    /// ``set_string_vector()`` writes it. ``TableBuilder`` encodes strings
-    /// outside ASCII when they're set, to count their bytes, and writes them
-    /// with it, as ``_set_encoded_string()`` writes a string.
-    fn _set_encoded_string_vector(
-        &mut self,
-        py: Python<'_>,
-        index: &Bound<'_, PyAny>,
-        strings: &Bound<'_, PyAny>,
-    ) -> PyResult<()> {
-        let index = Int::new(index)?;
-
-        let mut items = Vec::new();
-        let mut byte_length = 0_usize;
-        for item in strings.try_iter()? {
-            let bytes = item?.cast_into::<PyBytes>()?;
-            byte_length = byte_length.saturating_add(bytes.as_bytes().len());
-            items.push(bytes);
-        }
-        check_items(strings.len()?, items.len())?;
-
-        let encoded: Vec<&[u8]> = items.iter().map(PyBytesMethods::as_bytes).collect();
         self.set_strings_at(py, &index, &encoded, byte_length)
     }
 

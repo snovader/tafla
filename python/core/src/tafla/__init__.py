@@ -1,9 +1,10 @@
 """Binary tables of scalars, strings and typed arrays. ``TableBuilder`` writes a
-table at its exact size, copying typed arrays in bulk, and ``TableReader`` reads
-fields back by offset, with arrays as views of the bytes. Every read checks
-that it stays within the bytes it was given. ``TableWriter`` writes a table
-whose fields are known as it's written, as the code that tafla-gen generates
-writes its tables, without recording them first as ``TableBuilder`` does.
+table, checking each field as it's set and copying typed arrays in bulk, and
+``TableReader`` reads fields back by offset, with arrays as views of the bytes.
+Every read checks that it stays within the bytes it was given.
+``TableWriter`` writes a table as the code that tafla-gen generates writes its
+tables, without ``TableBuilder``'s checks, since the generated calls follow
+from the schema.
 
 >>> from array import array
 >>> from tafla import TableReader, TableBuilder, TableLayout
@@ -20,7 +21,7 @@ A format's header, shared by its writer and its readers:
 >>> builder = TableBuilder(3, LAYOUT)
 >>> builder.set_float64(59.3293)
 >>> builder.set_string("Europe/Stockholm")
->>> builder.set_table(series)  # written straight into the table
+>>> builder.set_table(series)  # copied into the table
 >>> data = builder.bytes()
 
 >>> reader = TableReader(data, LAYOUT)
@@ -49,7 +50,7 @@ little-endian, without padding:
 >>> list(POINT.iter_unpack(points))
 [(1, 2.5), (2, -0.5)]
 
-A nested table, or each item of a vector, can be recorded in place, among its
+A nested table, or each item of a vector, can be written in place, among its
 parent's fields, by a function that sets its fields on the parent's builder,
 rather than from a builder of its own:
 
@@ -117,29 +118,36 @@ then the fields in the order they were set:
 Implementations
 ---------------
 
-The classes that the code that tafla-gen generates calls, ``TableLayout``,
-``FixedFields``, ``TableWriter``, ``TableReader`` and ``StringVector``, have two
-implementations with the same API, conversions and errors: a native one, written in Rust,
-which the platform wheels hold, and a pure-Python one, which the pure
-``py3-none-any`` wheel holds alone. ``tafla`` uses the native classes when
+tafla's classes, ``TableLayout``, ``FixedFields``, ``TableWriter``,
+``TableBuilder``, ``TableReader`` and ``StringVector``, have two
+implementations with the same API, conversions and errors: a native one,
+written in Rust, which the platform wheels hold, and a pure-Python one, which
+the pure ``py3-none-any`` wheel holds alone. ``tafla`` uses the native classes when
 they're installed, and the pure-Python ones otherwise or when the environment
 variable ``TAFLA_PUREPYTHON`` is set to anything but the empty string, which
 is read once, at import. Native classes that are installed but fail to
 import, such as ones built for another Python, warn with ``RuntimeWarning``
 before the pure-Python ones are used. ``IMPLEMENTATION`` says which:
-``"native"`` or ``"python"``. ``TableBuilder`` is Python in both, and writes through the chosen
-``TableWriter``, so the implementations never mix.
+``"native"`` or ``"python"``. The implementations never mix: a native builder
+finalizes into a native ``TableReader``, and a pure-Python one into a
+pure-Python one.
 
 A native method does in one call what the pure-Python one does in several
 Python calls, so the tables that generated code writes and reads take about
-half the time with the native classes. Both implementations' docstrings
+half the time with the native classes, and those that ``TableBuilder``
+writes less. Both implementations' docstrings
 describe the same behavior, and the tests compare them call by call, errors
 and their messages included. They differ only in these ways:
 
-- A ``TableWriter`` is for one thread at a time. Free-threaded Python runs
-  threads in parallel, and a native writer then raises ``RuntimeError`` for a
-  call while another thread's call to it runs, where the pure-Python one
-  writes undefined bytes. A ``TableReader`` can be read by several threads at
+- A ``TableWriter`` or ``TableBuilder`` is for one thread at a time.
+  Free-threaded Python runs threads in parallel, and a native one then
+  raises ``RuntimeError`` for a call while another thread's call to it runs,
+  other than a ``fill`` that the call runs, where the pure-Python one writes
+  undefined bytes. A native in-place setter whose ``fill`` returns while
+  another thread's call runs waits for that call to end, and an interrupt
+  meanwhile, such as Ctrl-C's ``KeyboardInterrupt``, raises from it and
+  leaves the nested table unfinished, which an in-place setter that it's
+  nested in rolls back. A ``TableReader`` can be read by several threads at
   once, except that CPython's free-threaded builds, 3.14 and 3.15 at least,
   release a ``memoryview`` that threads slice at once, which each
   implementation's array reads do, and the pure-Python one's string reads,
@@ -181,31 +189,31 @@ and the pure-Python classes:
 - **Read arrays whole.** Each scalar getter is a call with a range check:
   summing a 27,028-element float32 array with ``get_float32()`` took 3.4 ms,
   against 0.24 ms through the array's view.
-- **Nest builders rather than bytes.** ``set_table()`` and ``set_vector()``
-  write a ``TableBuilder`` straight into its parent when the parent is
-  finalized, so the outermost table allocates and writes all the bytes once.
-  A table nested as bytes was built into a buffer of its own and is copied, as
-  is a builder that was finalized already or whose layout has a header or
-  another offset type. A vector of 100 tables that each nest another took
-  0.27 ms to build from builders and 0.42 ms from bytes, and a table nesting
-  27,028 rows of three columns took 16 µs and 31 µs.
-- **Record vectors of small tables in place.** ``set_vector_in_place()`` and
-  ``set_table_in_place()`` record nested tables among their parent's fields,
-  from a function that sets them, rather than from a builder for each. The
-  vector of 100 tables that each nest another took 0.19 ms so, against
-  0.25 ms from builders, and held 18 KB at its peak rather than 39 KB. A
-  table built elsewhere, or nested more than once, still needs a builder.
-- **Small tables cost their calls.** Each field is a few Python calls to set
-  and to write, so a table of two float64s, an int64 and a 16-byte string took
-  2.6 µs, far more than allocating and copying its 60 bytes.
+- **Write nested tables in place, especially large ones.** A table nested
+  from its builder is copied into its parent as its bytes, as one nested as
+  bytes is, so the parent holds and copies a large nested table twice, and
+  each builder that it's nested in copies it again: nesting a builder of
+  1,000,000 float64s took 0.36 ms and held 16 MB at its peak, and nesting
+  that in 7 more builders, one in each, took 1.9 ms. ``set_table_in_place()``
+  and ``set_vector_in_place()`` write nested tables among their parent's
+  fields instead, from a function that sets them, without a builder for each
+  or a copy: the same table took 0.13 ms and held 8 MB, and 0.13 to 0.14 ms
+  in the 16th of 16 tables in place, each in the next. A field that raises a
+  table's alignment pads it, and the tables in place that it's nested in,
+  which moves what they hold so far, so set the arrays of the widest
+  elements first, while the tables are small. A table built elsewhere, or
+  nested more than once, still needs a builder.
+- **Small tables cost their calls.** Each field is a call to set, which
+  writes it: one call into native code with the native classes, and several
+  Python calls with the pure-Python ones, which take far more than
+  allocating and copying a small table's bytes.
 
 Conversions
 -----------
 
 ``TableBuilder`` and ``TableWriter`` convert each value to its field's type
-as ``struct`` and ``array`` convert it, and raise for one they can't write. A
-scalar's error comes from ``TableWriter``'s setter, and from
-``TableBuilder.finalize()`` or ``bytes()``; an array's from its setter:
+as ``struct`` and ``array`` convert it, and raise from its setter for one they
+can't write:
 
 ==========================================  ===================================
 Value                                       Written as
@@ -266,16 +274,14 @@ Using the API wrongly raises other errors, whatever the bytes:
 - ``TableLayout`` raises ``ValueError`` for a version that doesn't fit in its
   offset type, and ``TypeError`` for one that isn't an integer.
 - ``TableBuilder`` raises ``ValueError`` for more or fewer fields than it was
-  created with, or arrays, structs or tables given as buffers whose lengths
-  changed before ``finalize()`` so that the table's did, which leaves it
-  unfinalized. A field that would make the table too long for its
+  created with, or a table written in place whose slots alone are too long
+  for its ``offset_type``. A field that would make the table too long for its
   ``offset_type`` raises ``ValueError`` from its setter and isn't added. A
-  value that its field's type can't hold raises as Conversions lists. A field
-  set after ``finalize()`` raises ``TypeError``.
+  value that its field's type can't hold raises as Conversions lists, and
+  isn't added either. A field set after ``finalize()`` raises ``TypeError``.
 - ``TableWriter`` raises the errors of ``TableBuilder`` for the same values,
-  but from the setter that writes them, and ``ValueError`` for a table too
-  long for its ``offset_type`` from the setter whose offset or count doesn't
-  fit, or from ``bytes()``. It doesn't check the order of its calls, as the
+  and ``ValueError`` for a table too long for its ``offset_type`` from the
+  setter whose offset or count doesn't fit, or from ``bytes()``. It doesn't check the order of its calls, as the
   next section describes.
 - An alignment other than 1, 2, 4 or 8 raises ``ValueError`` from
   ``set_struct_array()`` and ``set_table()``.
@@ -324,11 +330,11 @@ from .implementation import (
     IMPLEMENTATION,
     FixedFields,
     StringVector,
+    TableBuilder,
     TableLayout,
     TableReader,
     TableWriter,
 )
-from .table_builder import TableBuilder
 from .types import OffsetSize, OffsetType
 
 __all__ = [

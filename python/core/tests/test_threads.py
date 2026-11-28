@@ -1,12 +1,15 @@
 """Use from several threads at once, which free-threaded Python runs in
-parallel: threads share a reader, and a writer, which one thread at a time
-may use, rejects another's call rather than racing it"""
+parallel: threads share a reader, and a writer or builder, which one thread
+at a time may use, rejects another's call rather than racing it"""
 
+import _thread
 import sys
 import threading
+import time
 import unittest
 from array import array
 from collections.abc import Callable
+from typing import Any, override
 
 import tafla
 from tafla import StringVector, TableBuilder, TableLayout, TableReader, TableWriter
@@ -133,6 +136,143 @@ class TestThreads(unittest.TestCase):
         self.assertGreater(len(writer.bytes()), 0)
 
     @unittest.skipIf(
+        tafla.IMPLEMENTATION == "python",
+        "a pure-Python builder used by threads at once writes undefined bytes",
+    )
+    def test_rejects_a_call_to_a_builder_that_another_thread_is_using(self) -> None:
+        """Each call borrows the builder, and another thread's call meanwhile
+        raises RuntimeError, so every field that a call set reads back whole;
+        with the GIL, calls don't overlap"""
+        fields = THREADS * 50
+        builder = TableBuilder(fields)
+        values = array("d", range(10_000))
+        set_fields: list[None] = []
+
+        def write() -> None:
+            for _ in range(50):
+                try:
+                    builder.set_float64_array(values)
+                    set_fields.append(None)
+                except RuntimeError:
+                    pass
+
+        self.assertEqual(run_together(write), [])
+        for _ in range(fields - len(set_fields)):
+            builder.set_uint8(0)
+
+        buffer = builder.finalize()
+        for index in range(len(set_fields)):
+            written = buffer.get_float64_array(buffer.root_offset(index))
+            self.assertEqual(written[-1], 9999)
+
+    @unittest.skipIf(
+        tafla.IMPLEMENTATION == "python",
+        "a pure-Python builder used by threads at once writes undefined bytes",
+    )
+    def test_ends_a_nested_table_once_another_threads_call_lets_go_of_the_builder(
+        self,
+    ) -> None:
+        """A fill that returns while another thread's call holds the builder:
+        the in-place setter waits for that call to end, rather than raising
+        RuntimeError and leaving the builder in the nested table's state. The
+        other call holds the builder while array() reads a list's items,
+        which can take any time, with the GIL released or without one."""
+        builder = TableBuilder(2)
+        inside = threading.Event()
+
+        class Slow(list[float]):
+            """A list that array() reads item by item, through
+            __getitem__(), which takes a while"""
+
+            @override
+            def __getitem__(self, index: Any) -> Any:
+                inside.set()
+                time.sleep(0.2)
+                return super().__getitem__(index)
+
+        raised: list[BaseException] = []
+
+        def set_array() -> None:
+            try:
+                builder.set_float64_array(Slow([1.5]))
+            except BaseException as error:  # noqa: BLE001
+                raised.append(error)
+
+        other = threading.Thread(target=set_array)
+
+        def fill(table: TableBuilder) -> None:
+            # The other thread's array is this table's second field
+            table.set_float32(0.5)
+            other.start()
+            inside.wait()
+
+        builder.set_table_in_place(fill, fields=2)
+        other.join()
+        builder.set_uint8(7)
+
+        buffer = builder.finalize()
+        table = buffer.root_offset(0)
+        self.assertEqual(raised, [])
+        self.assertEqual(buffer.get_float32(buffer.field_offset(table, 0)), 0.5)
+        array_field = buffer.field_offset(table, 1)
+        self.assertEqual(buffer.get_float64_array(array_field).tolist(), [1.5])
+        self.assertEqual(buffer.get_uint8(buffer.root_offset(1)), 7)
+
+    @unittest.skipIf(
+        tafla.IMPLEMENTATION == "python",
+        "a pure-Python builder used by threads at once writes undefined bytes",
+    )
+    def test_an_interrupt_while_a_fill_waits_for_another_thread_raises(
+        self,
+    ) -> None:
+        """An interrupt, such as Ctrl-C's, while an in-place setter waits for
+        another thread's call raises, rather than wait for a call that may be
+        waiting for this thread. The nested table is left unfinished, so
+        writing the builder raises, and an in-place setter that it's nested
+        in rolls it back and raises RuntimeError once its fill returns."""
+        builder = TableBuilder(1)
+        inside = threading.Event()
+        release = threading.Event()
+
+        class Held(list[float]):
+            """A list that array() reads through __getitem__(), which holds
+            the builder until it's released"""
+
+            @override
+            def __getitem__(self, index: Any) -> Any:
+                inside.set()
+                release.wait(10)
+                return super().__getitem__(index)
+
+        other = threading.Thread(target=lambda: builder.set_float64_array(Held([1.5])))
+
+        def inner(table: TableBuilder) -> None:
+            other.start()
+            inside.wait()
+            threading.Timer(0.2, _thread.interrupt_main).start()
+
+        def outer(table: TableBuilder) -> None:
+            with self.assertRaises(KeyboardInterrupt):
+                table.set_table_in_place(inner, fields=1)
+            release.set()
+            other.join()
+            with self.assertRaisesRegex(ValueError, "was written while"):
+                table.bytes()
+
+        try:
+            with self.assertRaisesRegex(RuntimeError, "left unfinished"):
+                builder.set_table_in_place(outer, fields=1)
+        finally:
+            release.set()
+            if other.is_alive():
+                other.join()
+
+        builder.set_uint8(7)
+        expected = TableBuilder(1)
+        expected.set_uint8(7)
+        self.assertEqual(builder.bytes(), expected.bytes())
+
+    @unittest.skipIf(
         tafla.IMPLEMENTATION == "python" and not sys._is_gil_enabled(),
         "array() reads a list item by item, which another thread changes "
         "between them on a free-threaded build",
@@ -156,10 +296,13 @@ class TestThreads(unittest.TestCase):
             for _ in range(200):
                 writer = TableWriter(1)
                 writer.set_float64_array(0, values)
-                reader = TableReader(bytes(writer.bytes()))
-                written = reader.get_float64_array(reader.root_offset(0))
-                assert len(set(written)) == 1, "the elements of two states"
-                assert len(written) == 1000 + int(written[0]) % 3, "another length"
+                builder = TableBuilder(1)
+                builder.set_float64_array(values)
+                for data in (writer.bytes(), builder.bytes()):
+                    reader = TableReader(bytes(data))
+                    written = reader.get_float64_array(reader.root_offset(0))
+                    assert len(set(written)) == 1, "the elements of two states"
+                    assert len(written) == 1000 + int(written[0]) % 3, "another length"
 
         replacer = threading.Thread(target=replace)
         replacer.start()

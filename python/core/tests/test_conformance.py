@@ -11,6 +11,7 @@ from tests.tables import (
     Description,
     DescriptionReader,
     build_table,
+    build_table_in_place,
     comparable_field,
     comparable_table,
     read_table,
@@ -38,10 +39,13 @@ class TestConformance(unittest.TestCase):
                 self.assertEqual(comparable_table(read), comparable_table(table))
 
     def test_rebuilds_every_valid_table_byte_for_byte(self) -> None:
+        """From nested builders, and with the tables that a builder can write
+        in place written so"""
         for case in SUITE["valid"]:
-            with self.subTest(case["name"]):
-                built = bytes(build_table(case["table"]).bytes())
-                self.assertEqual(built, read_bytes(case["file"]))
+            for build in (build_table, build_table_in_place):
+                with self.subTest(case["name"], build=build.__name__):
+                    built = bytes(build(case["table"]).bytes())
+                    self.assertEqual(built, read_bytes(case["file"]))
 
     def test_reads_every_equivalent_table_as_its_valid_case(self) -> None:
         """Readers accept more than writers write, such as any byte other than

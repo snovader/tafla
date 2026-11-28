@@ -16,6 +16,7 @@ from tests.tables import (
     OffsetType,
     Placement,
     build_table,
+    build_table_in_place,
     is_typed_array,
     nested_in_place,
     offset_size_of,
@@ -141,6 +142,7 @@ class TestTableWriter(unittest.TestCase):
         with big_endian_host():
             self.assertEqual(bytes(write_table(table)), expected)
             self.assertEqual(bytes(build_table(table).bytes()), expected)
+            self.assertEqual(bytes(build_table_in_place(table).bytes()), expected)
 
 
 class TestTableLength(unittest.TestCase):
