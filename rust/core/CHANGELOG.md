@@ -148,6 +148,17 @@ first commits, for code built from its source before the release.
   tables of 16 strings in 0.89 to 0.94 of the time. The array of 100 structs
   and the document of 100,000 rows took as long as before. Its bytes and
   errors are unchanged.
+- `TableBuilder` frees its record of fields as a whole when none of the
+  fields owns its values, rather than dropping each record, which only
+  found that it owned nothing. So what a builder borrows must now outlive
+  the builder, not only its last use: declare the values that it borrows,
+  and the builders that it nests by reference, before it. The benchmarks'
+  record was written in 60 ns rather than 69 ns, their document of 100 rows
+  in 114 ns rather than 135 ns, the vector of 100 nested tables recorded in
+  place in 3.5 µs rather than 3.8 µs, and tables of 16 strings in 0.83 to
+  0.92 of the time. The array of 100 structs, which owns its field, and the
+  document of 100,000 rows took as long as before. Its bytes and errors are
+  unchanged.
 
 ### Fixed
 

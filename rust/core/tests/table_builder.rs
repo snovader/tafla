@@ -517,21 +517,22 @@ fn test_reject_version_too_large_for_slot() {
 
 #[test]
 fn test_reject_incomplete_nested_builder() {
+    // What the parent borrows, which outlives it
     let mut incomplete = TableBuilder::new(2, TableLayout::DEFAULT).unwrap();
     incomplete.set_u8(1).unwrap();
+    let bytes = [0];
+    let mut nested = TableBuilder::new(2, TableLayout::DEFAULT).unwrap();
+    nested.set_u8(1).unwrap();
+    nested.set_u8(2).unwrap();
 
     let mut parent = TableBuilder::new(2, TableLayout::DEFAULT).unwrap();
     let error = BuildError::Incomplete { set: 1, fields: 2 };
     assert_eq!(parent.set_table(&incomplete).unwrap_err(), error);
 
-    let bytes = [0];
     let items = [tafla::NestedTable::from(&bytes), (&incomplete).into()];
     assert_eq!(parent.set_vector(items).unwrap_err(), error);
 
     // The parent was left as it was
-    let mut nested = TableBuilder::new(2, TableLayout::DEFAULT).unwrap();
-    nested.set_u8(1).unwrap();
-    nested.set_u8(2).unwrap();
     parent.set_table(&nested).unwrap();
     parent.set_vector([&nested]).unwrap();
 
@@ -709,10 +710,10 @@ fn test_reject_vector_count_too_long_before_recording_items() {
 fn test_vector_too_long_before_its_items_reports_its_length_without_them() {
     let layout = TableLayout::DEFAULT.with_offset_type(OffsetType::Uint8);
     let string = "a".repeat(249);
-    let mut builder = TableBuilder::new(2, layout).unwrap();
-    builder.set_str(string.as_str()).unwrap();
     let mut item = TableBuilder::new(1, layout).unwrap();
     item.set_u8(1).unwrap();
+    let mut builder = TableBuilder::new(2, layout).unwrap();
+    builder.set_str(string.as_str()).unwrap();
 
     // 2 offsets, a count and 249 bytes, and a vector of a count and 3 ends,
     // and of 3 items of an offset and a byte
