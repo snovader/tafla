@@ -85,8 +85,16 @@ func (i Item) SetFloat32Array(values []float32) error { return i.builder.SetFloa
 // [TableBuilder.SetFloat64Array] does.
 func (i Item) SetFloat64Array(values []float64) error { return i.builder.SetFloat64Array(values) }
 
+// SetBoolArray sets an array field of bools, as [TableBuilder.SetBoolArray]
+// does.
+func (i Item) SetBoolArray(values []bool) error { return i.builder.SetBoolArray(values) }
+
 // SetString sets a string field, as [TableBuilder.SetString] does.
 func (i Item) SetString(value string) error { return i.builder.SetString(value) }
+
+// SetStringVector sets a vector of strings, as
+// [TableBuilder.SetStringVector] does.
+func (i Item) SetStringVector(values []string) error { return i.builder.SetStringVector(values) }
 
 // SetStruct sets a struct field from its bytes, as [TableBuilder.SetStruct]
 // does.

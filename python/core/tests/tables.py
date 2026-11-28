@@ -18,7 +18,14 @@ from dataclasses import dataclass
 from math import copysign, isinf, isnan
 from typing import Any, Literal, cast
 
-from tafla import OffsetType, TableBuilder, TableLayout, TableReader, TableWriter
+from tafla import (
+    OffsetType,
+    StringVector,
+    TableBuilder,
+    TableLayout,
+    TableReader,
+    TableWriter,
+)
 
 # A table, field, layout or vector item as cases.json describes it
 type Description = dict[str, Any]
@@ -101,6 +108,14 @@ def to_json(kind: str, value: Any) -> Any:
     return value
 
 
+def is_typed_array(kind: str) -> bool:
+    """Whether a field's type is an array of integers or floats, whose
+    elements are aligned to their size, rather than of structs or of bools,
+    which a description sets out in fields and bools of their own, or a vector
+    of strings"""
+    return kind.endswith("[]") and kind not in ("struct[]", "bool[]", "string[]")
+
+
 def offset_size_of(offset_type: OffsetType) -> int:
     """The offset size of an offset type, its width in bytes, which is the size
     of the unsigned integer type of its name"""
@@ -169,6 +184,10 @@ def set_field(builder: TableBuilder, field: Description) -> None:
             packing.pack(*_item_values(types, item)) for item in field["items"]
         )
         builder.set_struct_array(data, packing.size, struct_alignment(types))
+    elif kind == "bool[]":
+        builder.set_bool_array(field["value"])
+    elif kind == "string[]":
+        builder.set_string_vector(field["value"])
     elif kind.endswith("[]"):
         element = kind.removesuffix("[]")
         getattr(builder, f"set_{element}_array")(_array_values(element, field))
@@ -323,6 +342,10 @@ def write_field(writer: TableWriter, index: int, field: Description) -> None:
             packing.pack(*_item_values(types, item)) for item in field["items"]
         )
         writer.set_struct_array(index, data, packing.size, struct_alignment(types))
+    elif kind == "bool[]":
+        writer.set_bool_array(index, field["value"])
+    elif kind == "string[]":
+        writer.set_string_vector(index, field["value"])
     elif kind.endswith("[]"):
         element = kind.removesuffix("[]")
         getattr(writer, f"set_{element}_array")(index, _array_values(element, field))
@@ -373,7 +396,8 @@ def alignment_of(field: Description) -> Alignment:
     """The alignment that ``set_table()`` pads a nested table's field to: the
     one passed, or by default 4 for bytes, and for a builder the largest
     alignment of its arrays, of scalars and of structs, and of its nested
-    tables, or 1 if it has neither"""
+    tables, or 1 if it has neither. Arrays of bools are bytes, which aren't
+    padded."""
     if "alignment" in field:
         return field["alignment"]
 
@@ -387,7 +411,7 @@ def alignment_of(field: Description) -> Alignment:
             alignments.append(alignment_of(nested))
         elif kind == "struct[]":
             alignments.append(struct_alignment(nested["fields"]))
-        elif kind.endswith("[]"):
+        elif is_typed_array(kind):
             alignments.append(ELEMENT_SIZES[kind.removesuffix("[]")])
 
     return cast(Alignment, max(alignments))
@@ -397,8 +421,9 @@ def comparable_table(table: Description) -> Description:
     """Returns a table's description, or one that a reader returned, with
     every value in a form that compares exactly: 64-bit integers as ints, and
     floats as the bits of their float64, which a float32 widens to exactly, so
-    that -0.0 differs from 0.0 and NaN equals the same NaN. Other values are
-    bools, ints and strings in both forms already."""
+    that -0.0 differs from 0.0 and NaN equals the same NaN, and bools as
+    their names, which an int doesn't have. Other values are ints and
+    strings in both forms already."""
     return {**table, "fields": [comparable_field(field) for field in table["fields"]]}
 
 
@@ -448,6 +473,12 @@ def _comparable_values(types: list[str], values: list[Any]) -> list[Any]:
     ]
 
 
+def _bool_name(value: Any) -> str:
+    """A bool by its name, which an int that equals it, such as 1 for True,
+    doesn't have"""
+    return repr(value)
+
+
 def _float_bits(value: Any) -> str:
     """The bits of a float, or of the float that JSON names, as a float64 in
     hex, such as 7ff8000000000000 for NaN"""
@@ -455,8 +486,9 @@ def _float_bits(value: Any) -> str:
 
 
 # The conversions of the values that a description and a reader hold in
-# different forms
+# different forms, and of bools, which compare equal to ints
 _COMPARABLE: dict[str, Callable[[Any], int | str]] = {
+    "bool": _bool_name,
     "int64": int,
     "uint64": int,
     "float32": _float_bits,
@@ -573,6 +605,11 @@ class DescriptionReader:
                 "items": self.__read_struct_array(position, field["fields"]),
             }
 
+        if kind == "bool[]":
+            return {**field, "value": self.__reader.get_bool_array(position)}
+        if kind == "string[]":
+            return {**field, "value": self.__read_string_vector(position)}
+
         if kind.endswith("[]"):
             element = kind.removesuffix("[]")
             values = getattr(self.__reader, f"get_{element}_array")(position)
@@ -613,6 +650,31 @@ class DescriptionReader:
             )
 
         return read
+
+    def __read_string_vector(self, position: int) -> list[str]:
+        """Reads every string of a vector of strings, and then each from its
+        ends alone, with the reader and with a ``StringVector``, and raises
+        ``MismatchError`` if one of those reads another string, or another
+        number of them"""
+        reader = self.__reader
+        strings = reader.get_string_vector(position)
+        count = reader.get_vector_length(position)
+        vector = StringVector(reader, position)
+        if count != len(strings) or len(vector) != len(strings):
+            raise MismatchError(
+                f"The vector holds {count} strings, a view of it {len(vector)}, "
+                f"and reading them all {len(strings)}"
+            )
+
+        for index, string in enumerate(strings):
+            found = reader.get_string_vector_item(position, count, index)
+            if found != string or vector[index] != string:
+                raise MismatchError(
+                    f"String {index} of the vector isn't the same from its ends "
+                    "as among every string"
+                )
+
+        return strings
 
     def __read_struct(
         self, position: int, scalars: list[Description]

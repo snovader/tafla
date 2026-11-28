@@ -95,8 +95,14 @@ public sealed partial class TableBuilder
         /// <inheritdoc cref="TableBuilder.SetFloat64Array"/>
         public void SetFloat64Array(ReadOnlySpan<double> values) => _builder.SetFloat64Array(values);
 
+        /// <inheritdoc cref="TableBuilder.SetBoolArray"/>
+        public void SetBoolArray(ReadOnlySpan<bool> values) => _builder.SetBoolArray(values);
+
         /// <inheritdoc cref="TableBuilder.SetString"/>
         public void SetString(string value) => _builder.SetString(value);
+
+        /// <inheritdoc cref="TableBuilder.SetStringVector"/>
+        public void SetStringVector(params ReadOnlySpan<string> values) => _builder.SetStringVector(values);
 
         /// <inheritdoc cref="TableBuilder.SetStruct"/>
         public void SetStruct(ReadOnlySpan<byte> bytes) => _builder.SetStruct(bytes);

@@ -1,6 +1,6 @@
 //! Reads arbitrary bytes with every getter of `TableReader`, at every position
 //! and past the end, in every offset type and header, and reads every array,
-//! struct array and vector that it finds there.
+//! struct array, vector and vector of strings that it finds there.
 //!
 //! A panic is a finding, and so is a read that disagrees with the bounds that
 //! `SPEC.md` gives it: each read returns the bytes or value that lie where
@@ -15,7 +15,9 @@ use std::{
 };
 
 use libfuzzer_sys::fuzz_target;
-use tafla::{ArrayView, DecodeError, Element, OffsetType, TableLayout, TableReader, Vector};
+use tafla::{
+    ArrayView, DecodeError, Element, OffsetType, StringVector, TableLayout, TableReader, Vector,
+};
 
 /// The elements of an array, and items of a vector, at its start and end
 /// that are read and compared with the bytes
@@ -98,6 +100,7 @@ fn check_position(reader: &TableReader<'_>, position: usize) {
 
     let string_bytes = array(bytes, offset_type, position, 1);
     check_result(bytes, reader.get_u8_array(position), string_bytes);
+    check_bools(bytes, reader.get_bool_array(position), string_bytes);
     let string = string_bytes.and_then(|bytes| std::str::from_utf8(bytes).ok());
     check_result(bytes, reader.get_str(position), string);
 
@@ -118,6 +121,7 @@ fn check_position(reader: &TableReader<'_>, position: usize) {
     }
 
     check_vector(reader, position);
+    check_str_vector(reader, position);
 }
 
 macro_rules! check_scalar {
@@ -232,6 +236,20 @@ fn check_view<T: Element + Debug, const N: usize>(
     }
 }
 
+/// Checks that an array of bools holds a bool for each of the expected
+/// bytes, true where the byte isn't 0, or fails with the decode error when
+/// there are none
+fn check_bools(bytes: &[u8], read: Result<Vec<bool>, DecodeError>, expected: Option<&[u8]>) {
+    match read {
+        Ok(bools) => {
+            let expected = expected.expect("A read succeeds only within the bytes");
+            let expected = expected.iter().map(|&byte| byte != 0);
+            assert!(bools.into_iter().eq(expected));
+        }
+        Err(error) => check_error(bytes, &error, expected.is_none()),
+    }
+}
+
 /// Reads the vector at `position` and each of its items, by iterating, by
 /// index and in place
 fn check_vector(reader: &TableReader<'_>, position: usize) {
@@ -321,6 +339,87 @@ fn check_item(
         }
         Err(error) => assert_eq!(Err(error), item.as_ref().map(|_| ())),
     }
+}
+
+/// Reads the vector of strings at `position`, whose count and ends are a
+/// vector's, and its first `CHECKED` strings and its last, by iterating, by
+/// index and from the count. A vector of at most `CHECKED` strings is read
+/// whole too, which reads what reading each string reads, or fails with the
+/// error of the first that fails.
+fn check_str_vector(reader: &TableReader<'_>, position: usize) {
+    let bytes = reader.bytes();
+    let offset_type = reader.offset_type();
+
+    let strings = match reader.get_str_vector(position) {
+        Ok(strings) => strings,
+        Err(error) => {
+            assert_eq!(Err(error), reader.get_vector(position).map(|_| ()));
+            return;
+        }
+    };
+    let vector = reader
+        .get_vector(position)
+        .expect("A vector of strings is a vector");
+    let len = strings.len();
+    assert_eq!(len, vector.len());
+    assert_eq!(strings.is_empty(), len == 0);
+    assert_eq!(strings.iter().len(), len);
+
+    let check = |index: usize, string: &Result<&str, DecodeError>| {
+        check_string(bytes, position, offset_type, index, &vector, string);
+        assert_eq!(strings.get(index).as_ref(), Some(string));
+        let item = reader.get_str_vector_item(position, len, index);
+        assert_eq!(item.as_ref(), Some(string));
+    };
+    for (index, string) in strings.iter().take(CHECKED).enumerate() {
+        check(index, &string);
+    }
+    if let Some(index) = len.checked_sub(1) {
+        check(
+            index,
+            &strings.get(index).expect("The string is within the vector"),
+        );
+    }
+
+    assert_eq!(strings.get(len), None);
+    assert_eq!(reader.get_str_vector_item(position, len, len), None);
+    if len <= CHECKED {
+        check_strings(&strings);
+    }
+}
+
+/// Checks string `index` of the vector of strings at `position`, which is
+/// the UTF-8 of item `index` of the same `vector`
+fn check_string(
+    bytes: &[u8],
+    position: usize,
+    offset_type: OffsetType,
+    index: usize,
+    vector: &Vector<'_>,
+    string: &Result<&str, DecodeError>,
+) {
+    let item = vector.get(index).expect("The item is within the vector");
+
+    match (string, item) {
+        (Ok(string), Ok(item)) => check_in(string.as_bytes(), Some(item)),
+        (Err(DecodeError::InvalidUtf8 { position: at, .. }), Ok(item)) => {
+            assert!(std::str::from_utf8(item).is_err());
+            assert_eq!(*at, item.as_ptr() as usize - bytes.as_ptr() as usize);
+        }
+        (Err(error), Err(item_error)) => assert_eq!(error, &item_error),
+        (string, item) => panic!(
+            "String {index} of the vector at {position} of {offset_type} offsets read as \
+             {string:?}, and its item as {item:?}"
+        ),
+    }
+}
+
+/// Checks that reading every string reads what iterating reads, or the
+/// error of the first string that fails
+fn check_strings(strings: &StringVector<'_>) {
+    let each = strings.iter().collect::<Result<Vec<_>, _>>();
+
+    assert_eq!(strings.to_vec(), each);
 }
 
 /// The value of the slot as wide as `offset_type` at `position`, or `None`

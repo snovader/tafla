@@ -263,9 +263,22 @@ func (s *TableSizer) AddFloat32Array(count int) { s.addArray(elements(count)*4, 
 // AddFloat64Array adds an array field of count float64s.
 func (s *TableSizer) AddFloat64Array(count int) { s.addArray(elements(count)*8, Align8) }
 
+// AddBoolArray adds an array field of count bools, a byte each.
+func (s *TableSizer) AddBoolArray(count int) { s.addArray(elements(count), Align1) }
+
 // AddString adds a string field, of its bytes, which are UTF-8 if it is.
 func (s *TableSizer) AddString(value string) {
 	s.add(min(s.width()+uint64(len(value)), past))
+}
+
+// AddStringVector adds a vector of strings: its count, the end of each
+// string, and the strings' bytes, which are UTF-8 if they are.
+func (s *TableSizer) AddStringVector(values []string) {
+	length := (elements(len(values)) + 1) * s.width()
+	for _, value := range values {
+		length = min(length+uint64(len(value)), past)
+	}
+	s.add(length)
 }
 
 // AddStruct adds a struct field of size bytes.
@@ -672,6 +685,12 @@ func (w *TableWriter) SetFloat64Array(index int, values []float64) {
 	putElements(w.reserveArray(index, len(values), Align8), values)
 }
 
+// SetBoolArray writes array field index of bools, as a uint8 array of 1 for
+// each true value and 0 for each false one.
+func (w *TableWriter) SetBoolArray(index int, values []bool) {
+	w.SetUint8Array(index, boolBytes(values))
+}
+
 // SetString writes string field index, as its bytes, which are UTF-8 if it
 // is.
 func (w *TableWriter) SetString(index int, value string) {
@@ -679,6 +698,23 @@ func (w *TableWriter) SetString(index int, value string) {
 	w.putSlot(w.position, uint32(len(value)))
 	w.position += w.width
 	w.position += copy(w.bytes[w.position:w.position+len(value)], value)
+}
+
+// SetStringVector writes field index, a vector of strings: its count, the
+// end of each string from the vector's position, and then the strings'
+// bytes, which are UTF-8 if they are, one after another.
+func (w *TableWriter) SetStringVector(index int, values []string) {
+	w.setOffset(index)
+
+	// The count, and then the end of each string, which is written after
+	// the string
+	vector := w.position
+	w.putSlot(vector, uint32(len(values)))
+	w.position += (len(values) + 1) * w.width
+	for item, value := range values {
+		w.position += copy(w.bytes[w.position:w.position+len(value)], value)
+		w.putSlot(vector+(item+1)*w.width, uint32(w.position-vector))
+	}
 }
 
 // SetStruct writes struct field index from its bytes: its scalars,

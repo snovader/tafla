@@ -35,6 +35,45 @@ ItemResult try_item(Read read) {
     }
 }
 
+/// Whether two decode errors are the same error, of the same kind at the same
+/// position
+bool same_error(const DecodeError& left, const DecodeError& right) {
+    return left.kind() == right.kind() && left.position() == right.position();
+}
+
+/// Whether two views of strings view the same bytes
+bool same_views(std::span<const std::string_view> left, std::span<const std::string_view> right) {
+    return std::ranges::equal(left, right, [](std::string_view a, std::string_view b) {
+        return a.data() == b.data() && a.size() == b.size();
+    });
+}
+
+/// What reading strings of a vector of strings returned: the strings or the
+/// error
+struct StringsResult {
+    std::optional<std::vector<std::string_view>> strings;
+    std::optional<DecodeError> error;
+
+    friend bool operator==(const StringsResult& left, const StringsResult& right) {
+        if (left.strings.has_value() != right.strings.has_value()) {
+            return false;
+        }
+        if (left.strings) {
+            return same_views(*left.strings, *right.strings);
+        }
+        return same_error(*left.error, *right.error);
+    }
+};
+
+template <class Read>
+StringsResult try_strings(Read read) {
+    try {
+        return {read(), std::nullopt};
+    } catch (const DecodeError& error) {
+        return {std::nullopt, error};
+    }
+}
+
 std::vector<Field> read_struct(std::span<const std::uint8_t> bytes, const std::vector<ScalarType>& types);
 
 template <bool Versioned>
@@ -114,6 +153,8 @@ public:
                     return {reader.get_float32_array(position).to_vector()};
                 } else if constexpr (std::is_same_v<T, std::vector<double>>) {
                     return {reader.get_float64_array(position).to_vector()};
+                } else if constexpr (std::is_same_v<T, Bools>) {
+                    return {reader.get_bool_array(position)};
                 } else if constexpr (std::is_same_v<T, std::string>) {
                     return {std::string(reader.get_string(position))};
                 } else if constexpr (std::is_same_v<T, Struct>) {
@@ -132,9 +173,11 @@ public:
                 } else if constexpr (std::is_same_v<T, TableField>) {
                     const Nested nested{value.nested.from, read_nested(position, value.nested.table)};
                     return {TableField{nested, value.alignment}};
-                } else {
-                    static_assert(std::is_same_v<T, VectorField>);
+                } else if constexpr (std::is_same_v<T, VectorField>) {
                     return {VectorField{read_vector(position, value.items)}};
+                } else {
+                    static_assert(std::is_same_v<T, StringVectorField>);
+                    return {StringVectorField{read_string_vector(position)}};
                 }
             },
             field.value);
@@ -214,6 +257,34 @@ private:
             }
         }
         return read;
+    }
+
+    /// Reads every string of a vector of strings, after checking that finding
+    /// each from its ends alone, iterating and reading every string at once
+    /// find the same strings, or fail with the same error, of the first
+    /// string that fails
+    std::vector<std::string> read_string_vector(std::size_t position) const {
+        const auto view = reader_.get_string_vector(position);
+
+        const auto each = try_strings([&view] {
+            std::vector<std::string_view> strings;
+            for (std::size_t index = 0; index < view.size(); ++index) {
+                strings.push_back(view.get(index));
+            }
+            return strings;
+        });
+        const auto iterated = try_strings([&view] { return std::vector<std::string_view>(view.begin(), view.end()); });
+        const auto all = try_strings([&view] { return view.to_vector(); });
+        if (!(iterated == each) || !(all == each)) {
+            throw ReadMismatch(
+                "Finding items of a vector of strings from their ends found another than iterating or "
+                "reading every string");
+        }
+
+        if (each.error) {
+            throw *each.error;
+        }
+        return {each.strings->begin(), each.strings->end()};
     }
 
     /// Whether a nested table is read in place: it has no header, and its

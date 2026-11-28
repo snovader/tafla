@@ -14,7 +14,10 @@ import Tafla
 // offsets in the bytes that struct(at:size:) and structArray(at:size:) return.
 //
 // Every array is read element by element, copied, and in place where its
-// span is, and the three must agree.
+// span is, and the three must agree. An array of bools is read as bools and
+// as its bytes, which must agree too. Every vector of strings is read string
+// by string, each from its ends alone, and all at once, and the two must
+// agree, failing alike too.
 
 /// The error of bytes that read without a decode error, but otherwise than
 /// their description: a sized table whose header holds another length, a
@@ -92,6 +95,7 @@ func readField(_ reader: TableReader, at position: Int, _ field: Field) throws -
         .float32Array(bits: try elements(of: reader.float32Array(at: position)).map(\.bitPattern))
     case .float64Array:
         .float64Array(bits: try elements(of: reader.float64Array(at: position)).map(\.bitPattern))
+    case .boolArray: .boolArray(try readBools(reader, at: position))
     case .string: .string(try reader.string(at: position))
     case .struct(let scalars):
         try readStruct(reader, at: position, scalars.map { $0.scalarType! })
@@ -102,7 +106,44 @@ func readField(_ reader: TableReader, at position: Int, _ field: Field) throws -
             Nested(from: nested.from, table: try readNested(reader, at: position, nested.table)), alignment: alignment)
     case .vector(let items):
         try readVector(reader, at: position, items)
+    case .stringVector:
+        .stringVector(try readStringVector(reader, at: position))
     }
+}
+
+/// Reads every string of a vector of strings, and each from its ends alone,
+/// which must agree: every string read at once is each string read on its
+/// own, and fails where the first string that fails on its own does
+func readStringVector(_ reader: TableReader, at position: Int) throws -> [String] {
+    let view = try reader.stringVector(at: position)
+
+    var strings: [String] = []
+    var firstError: DecodeError?
+    for index in view.indices {
+        do {
+            strings.append(try view[index])
+        } catch {
+            firstError = firstError ?? error
+        }
+    }
+
+    switch (Result { () throws(DecodeError) in try Array(view) }, firstError) {
+    case (.success(let every), nil):
+        guard every.map({ Array($0.utf8) }) == strings.map({ Array($0.utf8) }) else {
+            throw Mismatch(.disagreement, "Every string reads otherwise than each string")
+        }
+    case (.failure(let error), let firstError?):
+        guard error == firstError else {
+            throw Mismatch(
+                .disagreement, "Every string fails with \(error), and the first that fails with \(firstError)")
+        }
+        throw error
+    case (let every, let firstError):
+        let each = firstError.map { "fails with \($0)" } ?? "reads"
+        throw Mismatch(.disagreement, "Every string reads as \(every), and each string \(each)")
+    }
+
+    return strings
 }
 
 /// Reads an array element by element, copied, and in place where it can be,
@@ -127,6 +168,19 @@ func elements<T: ArrayElement>(of view: ArrayView<T>) throws -> [T] {
     }
 
     return copy
+}
+
+/// Reads an array of bools, which must agree with its bytes read in place,
+/// true where they aren't 0
+func readBools(_ reader: TableReader, at position: Int) throws -> [Bool] {
+    let bools = try reader.boolArray(at: position)
+    let bytes = try elements(of: reader.uint8Array(at: position))
+
+    guard bools == bytes.map({ $0 != 0 }) else {
+        throw Mismatch(.disagreement, "The bools \(bools) read otherwise than their bytes \(bytes)")
+    }
+
+    return bools
 }
 
 /// Reads a table nested with setTable

@@ -10,6 +10,29 @@ import (
 	tafla "github.com/snovader/tafla/go"
 )
 
+// How soon to do a task
+type Priority int8
+
+// The values of [Priority] that the schema names. A field of it holds any int8,
+// whether it's one of them or not.
+const (
+	PriorityLow    Priority = -1
+	PriorityNormal Priority = 0
+	PriorityHigh   Priority = 1
+)
+
+// What has become of a task
+type State uint16
+
+// The values of [State] that the schema names. A field of it holds any uint16,
+// whether it's one of them or not.
+const (
+	StateWaiting State = 0
+	StateRunning State = 1
+	StateDone    State = 2
+	StateFailed  State = 1000
+)
+
 // A small table of two coordinates, an identifier and a name
 type Point struct {
 	bytes []byte
@@ -762,4 +785,222 @@ func (s *Sample) put(bytes []byte) {
 	binary.LittleEndian.PutUint32(bytes, s.Key)
 	binary.LittleEndian.PutUint32(bytes[4:], math.Float32bits(s.A))
 	binary.LittleEndian.PutUint32(bytes[8:], math.Float32bits(s.B))
+}
+
+// A task, whose fields are enums, alone, in an array and in a struct
+type Task struct {
+	bytes []byte
+}
+
+// NewTask reads a [Task] from bytes, which it keeps rather than copying them.
+func NewTask(bytes []byte) Task {
+	return Task{bytes: bytes}
+}
+
+// layout returns the layout of a [Task], which its getters read it in
+func (Task) layout() tafla.TableLayout {
+	return tafla.TableLayout{}
+}
+
+// Priority fails with a [*tafla.DecodeError] if the field lies outside the
+// bytes.
+func (t Task) Priority() (Priority, error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 0)
+	if err != nil {
+		return 0, err
+	}
+	value, err := reader.GetInt8(position)
+	return Priority(value), err
+}
+
+// The states that the task has been in, the oldest first
+//
+// It fails with a [*tafla.DecodeError] if the field lies outside the bytes.
+func (t Task) History() (tafla.ArrayView[uint16], error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 4)
+	if err != nil {
+		return tafla.ArrayView[uint16]{}, err
+	}
+	return reader.GetUint16Array(position)
+}
+
+// Step fails with a [*tafla.DecodeError] if the field lies outside the bytes.
+func (t Task) Step() (Step, error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 8)
+	if err != nil {
+		return Step{}, err
+	}
+	bytes, err := reader.GetStruct(position, 7)
+	if err != nil {
+		return Step{}, err
+	}
+	return readStep(bytes), nil
+}
+
+// Name fails with a [*tafla.DecodeError] if the field lies outside the bytes.
+func (t Task) Name() (string, error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 12)
+	if err != nil {
+		return "", err
+	}
+	return reader.GetString(position)
+}
+
+// Fields reads every field of a [Task] at once, into the [TaskFields] that it's
+// written from, as its getters read them, and its nested tables and the items
+// of its vectors as their Fields() reads them. Its strings, and its arrays and
+// arrays of structs as their Slice() returns them, share the bytes. It fails
+// with a [*tafla.DecodeError] if a field lies outside the bytes.
+func (t Task) Fields() (TaskFields, error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	var fields TaskFields
+
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 0)
+	if err != nil {
+		return TaskFields{}, err
+	}
+	enum0, err := reader.GetInt8(position)
+	if err != nil {
+		return TaskFields{}, err
+	}
+	fields.Priority = Priority(enum0)
+
+	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 4); err != nil {
+		return TaskFields{}, err
+	}
+	array1, err := reader.GetUint16Array(position)
+	if err != nil {
+		return TaskFields{}, err
+	}
+	fields.History = array1.Slice()
+
+	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 8); err != nil {
+		return TaskFields{}, err
+	}
+	struct2, err := reader.GetStruct(position, 7)
+	if err != nil {
+		return TaskFields{}, err
+	}
+	fields.Step = readStep(struct2)
+
+	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 12); err != nil {
+		return TaskFields{}, err
+	}
+	if fields.Name, err = reader.GetString(position); err != nil {
+		return TaskFields{}, err
+	}
+
+	return fields, nil
+}
+
+// TaskFields are the fields of a [Task], to write.
+type TaskFields struct {
+	Priority Priority
+	// The states that the task has been in, the oldest first
+	History []uint16
+	Step    Step
+	Name    string
+}
+
+// MarshalBinary writes a [Task] with every field. It fails with a
+// [*tafla.BuildError] if it's longer than its offset type, uint32, addresses.
+func (f TaskFields) MarshalBinary() ([]byte, error) {
+	return f.AppendBinary(nil)
+}
+
+// AppendBinary appends a [Task] with every field to bytes, as
+// [TaskFields.MarshalBinary] writes it, and returns the extended bytes, into
+// their capacity when they have room. It fails as MarshalBinary does.
+func (f TaskFields) AppendBinary(bytes []byte) ([]byte, error) {
+	sizer, err := tafla.NewTableSizer(4, Task{}.layout())
+	if err != nil {
+		return nil, err
+	}
+	sizer.AddInt8()
+	sizer.AddUint16Array(len(f.History))
+	sizer.AddStruct(7)
+	sizer.AddString(f.Name)
+
+	writer, err := sizer.AppendWriter(bytes)
+	if err != nil {
+		return nil, err
+	}
+	writer.SetInt8(0, int8(f.Priority))
+	writer.SetUint16Array(1, f.History)
+	f.Step.put(writer.ReserveStruct(2, 7))
+	writer.SetString(3, f.Name)
+
+	return writer.Bytes()
+}
+
+// A state and how long the task has been in it
+type Step struct {
+	State    State
+	Priority Priority
+	Seconds  uint32
+}
+
+// MarshalBinary returns the 7 bytes of a [Step]: its scalars, little-endian,
+// one after another. It never fails.
+func (s Step) MarshalBinary() ([]byte, error) {
+	bytes := make([]byte, 7)
+	s.put(bytes)
+	return bytes, nil
+}
+
+// AppendBinary appends the 7 bytes of a [Step] to bytes, as
+// [Step.MarshalBinary] writes them, and returns the extended bytes. It never
+// fails.
+func (s Step) AppendBinary(bytes []byte) ([]byte, error) {
+	start := len(bytes)
+	bytes = append(bytes, make([]byte, 7)...)
+	s.put(bytes[start:])
+	return bytes, nil
+}
+
+// UnmarshalBinary reads a [Step] from the start of bytes. It fails with a
+// [*tafla.DecodeError] if bytes are shorter than 7.
+func (s *Step) UnmarshalBinary(bytes []byte) error {
+	if len(bytes) < 7 {
+		return &tafla.DecodeError{Kind: tafla.OutOfRange, ByteLength: 7, Available: len(bytes)}
+	}
+
+	*s = readStep(bytes)
+	return nil
+}
+
+// ReadStep reads a [Step] from the start of bytes and returns it, which the
+// compiler can keep in registers, where [Step.UnmarshalBinary] reads into a
+// struct in memory. It fails with a [*tafla.DecodeError] if bytes are shorter
+// than 7.
+func ReadStep(bytes []byte) (Step, error) {
+	if len(bytes) < 7 {
+		return Step{}, &tafla.DecodeError{Kind: tafla.OutOfRange, ByteLength: 7, Available: len(bytes)}
+	}
+
+	return readStep(bytes), nil
+}
+
+// readStep reads the scalars of a [Step] from the start of bytes, which hold at
+// least its 7 bytes
+func readStep(bytes []byte) Step {
+	_ = bytes[6]
+	var s Step
+	s.State = State(binary.LittleEndian.Uint16(bytes))
+	s.Priority = Priority(bytes[2])
+	s.Seconds = binary.LittleEndian.Uint32(bytes[3:])
+	return s
+}
+
+// put writes the scalars of a [Step] into the start of bytes, which hold at
+// least its 7 bytes
+func (s *Step) put(bytes []byte) {
+	_ = bytes[6]
+	binary.LittleEndian.PutUint16(bytes, uint16(s.State))
+	bytes[2] = byte(s.Priority)
+	binary.LittleEndian.PutUint32(bytes[3:], s.Seconds)
 }

@@ -126,6 +126,7 @@ protocol FieldTarget: ~Copyable {
     mutating func setUInt64Array(_ values: [UInt64]) throws(BuildError)
     mutating func setFloat32Array(_ values: [Float]) throws(BuildError)
     mutating func setFloat64Array(_ values: [Double]) throws(BuildError)
+    mutating func setBoolArray(_ values: [Bool]) throws(BuildError)
     mutating func setString(_ value: String) throws(BuildError)
     mutating func setStruct(_ bytes: [UInt8]) throws(BuildError)
     mutating func setStructArray(_ bytes: [UInt8], size: Int, alignment: Alignment) throws(BuildError)
@@ -135,6 +136,7 @@ protocol FieldTarget: ~Copyable {
         throws(BuildError)
     mutating func setVector(count: Int, fields: Int, _ fill: (Int, inout TableBuilder.Item) throws(BuildError) -> Void)
         throws(BuildError)
+    mutating func setStringVector(_ strings: [String]) throws(BuildError)
 }
 
 extension TableBuilder: FieldTarget {}
@@ -168,6 +170,7 @@ extension FieldTarget where Self: ~Copyable {
         case .uint64Array(let values): try setUInt64Array(values)
         case .float32Array(let bits): try setFloat32Array(bits.map(Float.init(bitPattern:)))
         case .float64Array(let bits): try setFloat64Array(bits.map(Double.init(bitPattern:)))
+        case .boolArray(let values): try setBoolArray(values)
         case .string(let utf8): try setString(String(decoding: utf8, as: UTF8.self))
         case .struct(let scalars): try setStruct(structBytes(scalars))
         case .structArray(let types, let items):
@@ -188,6 +191,7 @@ extension FieldTarget where Self: ~Copyable {
                 tables.append(try item.nestedTable())
             }
             try setVector(tables)
+        case .stringVector(let utf8): try setStringVector(utf8.map { String(decoding: $0, as: UTF8.self) })
         }
     }
 

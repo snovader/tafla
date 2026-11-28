@@ -1,7 +1,7 @@
 # tafla-gen
 
-Compiles a schema of messages, tables and structs into code that writes and
-reads them with tafla's runtime for TypeScript, JavaScript, Python, Java,
+Compiles a schema of messages, tables, structs and enums into code that
+writes and reads them with tafla's runtime for TypeScript, JavaScript, Python, Java,
 Rust, Go, C++, Swift or C#. It runs as a command, as a Rust library, and as a
 WebAssembly module without imports, which the packages for the other
 languages run.
@@ -31,7 +31,7 @@ every part of the language.
 
 ## Schemas
 
-A schema declares messages, tables and structs, in any order:
+A schema declares messages, tables, structs and enums, in any order:
 
 - A **message** is a table that's sent on its own and read from its bytes.
   Its attributes set its layout, as the
@@ -48,6 +48,9 @@ A schema declares messages, tables and structs, in any order:
   frames of a stream, and tables hold it in place, like a scalar, and in
   arrays, which store its values one struct after another, aligned to its
   largest scalar.
+- An **enum** names some of the integers of an integer type, which stores
+  it. A field of an enum is a field of that type, in tables and structs, and
+  an array of an enum is an array of it.
 
 Each field is `name: type;`, of one of these types:
 
@@ -57,18 +60,84 @@ Each field is `name: type;`, of one of these types:
 | `float32`, `float64`                                                     | A float                   |
 | `bool`                                                                   | A bool, in one byte       |
 | `[int8]` … `[float64]`                                                   | An array of a scalar type |
+| `[bool]`                                                                 | An array of bools         |
 | `string`                                                                 | A UTF-8 string            |
+| `[string]`                                                               | A vector of strings       |
 | A struct's name                                                          | A struct, in place        |
 | `[` a struct's name `]`                                                  | An array of structs       |
 | A table's name                                                           | A nested table            |
 | `[` a table's name `]`                                                   | A vector of tables        |
+| An enum's name                                                           | An integer of the enum    |
+| `[` an enum's name `]`                                                   | An array of the enum      |
 
 A `bool` is written as 0 or 1 and read as true when its byte isn't 0, as the
 format describes it, so that any byte reads as a value. It's `boolean` in
 TypeScript, JavaScript and Java, `bool` in Python, Rust, Go, C++ and C#, and
 `Bool` in Swift, and the generated code reads and writes it with the runtime's
-`uint8` getters and setters. It's a scalar, in structs too, but has no arrays: a `[uint8]` of 0
-and 1 holds bools in the meantime.
+`uint8` getters and setters. It's a scalar, in structs too.
+
+An array of bools is an array of `uint8` in the format, written as 0 and 1
+and read as true where a byte isn't 0. Its getter returns the bytes, as a
+`[uint8]` field's getter does: a `Uint8Array` in TypeScript and JavaScript,
+a `memoryview` in Python, a `&[u8]` in Rust, a `[]byte` in Go, a
+`std::span<const std::uint8_t>` in C++, an `ArrayView<UInt8>` in Swift and a
+`ReadOnlySpan<byte>` in C#. Java's getter copies them into a `boolean[]`, as
+its getters copy arrays, and `<field>View()` views the bytes. The fields that
+a message is written from, and that `fields()` reads, hold the language's
+bools, which the runtime's `setBoolArray()` writes and `getBoolArray()`
+reads, under each language's names.
+
+A `[string]` is a vector of strings: a count, the end of each string and
+the strings' UTF-8, one after another, as `SPEC.md` lays it out. Its
+getter returns the runtime's view of the strings, which reads one string
+from its ends, without reading the others, or every string, and the
+generated code writes it from a list of strings:
+
+| Target                 | Getter                                                                                    | Every string                                     | Written from                         |
+| ---------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------ | ------------------------------------ |
+| TypeScript, JavaScript | `StringVector`, with `length()` and `get(i)`                                              | `toArray()`, and a `string[]` in `fields()`      | `readonly string[]`                  |
+| Python                 | `StringVector`, with `len()` and `view[i]`                                                | `tolist()`, and a `list[str]` in `fields()`      | `Sequence[str]`                      |
+| Java                   | `StringVector`, a random-access, unmodifiable `List<String>`                              | Its iterator, which reads each string's end once | `List<String>`                       |
+| Rust                   | `Result<StringVector<'a>, DecodeError>`, with `len()`, `get(i)` and `iter()`              | `to_vec()`, a `Vec<&'a str>`                     | `&'a [&'a str]`                      |
+| Go                     | `(tafla.StringVector, error)`, with `Len()` and `Get(i)`                                  | `Strings()`, and a `[]string` in `Fields()`      | `[]string`                           |
+| C++                    | `::tafla::StringVector`, with `size()`, `get(i)` and iteration                            | `to_vector()`, a `std::vector<std::string_view>` | `std::span<const std::string_view>`  |
+| Swift                  | `StringVector`, a nonescapable view that throws, with `count` and a throwing subscript    | `Array(view)`, a `[String]`                      | `[String]`                           |
+| C#                     | `global::Tafla.StringVector`, a `ref struct` with `Count`, an indexer and an enumerator    | `ToArray()`, a `string[]`                        | `ReadOnlyMemory<string>`             |
+
+Reading every string returns what reading each string returns, and fails
+where any of them fails. Rust, Go and C++ check the strings' run of bytes
+as UTF-8 once and then that each end falls between characters, TypeScript
+and Python decode runs of ASCII at once, and the others decode each string
+on its own. The strings borrow the bytes in Rust, Go and C++, and are
+copies elsewhere. As with strings and arrays, `fields()` doesn't read a
+table whole when its vector's items hold a `[string]`, since corrupted ends
+could point every item at the same vector.
+
+An enum gives its integer type after its name, and an integer to each of
+its values:
+
+```text
+/// How soon to do a task
+enum Priority: int8 {
+    low = -1;
+    normal = 0;
+    /// Before the others
+    high = 1;
+}
+```
+
+An enum is its integer in the format: a field of `Priority` is stored as an
+`int8`, in the same bytes, and an array of it as an array of `int8`, so
+changing a field from `int8` to `Priority` changes no bytes, and a reader
+without the enum reads the integer. A field of an enum holds any integer of
+its type, not only those that the enum names, as a `bool` reads any byte, so
+that a reader never rejects a value that a newer schema names, and corrupted
+bytes still read as values: the generated code reads and writes an enum
+exactly as it does its integer, without a check, and an array of an enum is
+the view in place of an array of its integer. A value's integer is part of
+the format, so it's given rather than counted, and a value that's renamed
+keeps its integer. The generated code declares each value as a constant, in
+each language's form, as [enums](#enums) describes.
 
 Every field is required, and is read by its index, so its position is part of
 the format: a message that changes its fields needs another version, which
@@ -95,12 +164,14 @@ The grammar, where `NAME` is ASCII letters, digits and `_` that don't start
 with a digit, and `INTEGER` is decimal digits:
 
 ```text
-schema      = declaration*
+schema      = (declaration | enum)*
 declaration = doc* ("message" | "table" | "struct") NAME attributes? "{" field* "}"
 attributes  = "(" (attribute ("," attribute)* ","?)? ")"
 attribute   = NAME (":" (INTEGER | NAME))?
 field       = doc* NAME ":" type ";"
 type        = NAME | "[" NAME "]"
+enum        = doc* "enum" NAME ":" NAME "{" value* "}"
+value       = doc* NAME "=" "-"? INTEGER ";"
 ```
 
 ### Rules
@@ -108,27 +179,44 @@ type        = NAME | "[" NAME "]"
 The checker rejects a schema that breaks a rule, since tafla couldn't write
 or read its tables, or a target couldn't generate its code:
 
-- Declarations are `PascalCase` and fields `snake_case`, in ASCII. Each name
-  is declared once, and a declaration can't take a built-in type's name.
+- Declarations are `PascalCase` and fields and enums' values `snake_case`,
+  in ASCII. Each name is declared once, by a message, table, struct or enum,
+  and a declaration can't take a built-in type's name.
 - A declaration can't take a name that a target's generated code imports or
   relies on, which it would clash with or hide, in any target, so that a
   schema generates code for every target. These are the runtime's classes,
   such as `TableReader` and `TableWriter`, the names of each language's
   standard library that the code names, such as `Number` in TypeScript,
   `TypedDict` in Python, `List`, `String` and `Override` in Java, `Option`
-  in Rust and `Int`, `RawSpan` and `Hashable` in Swift, `Fields`, the record
-  of a Java class's fields, keywords, such as `None` in Python and `Self` in
-  Rust and Swift, the macros of the C standard library that a C++ header
-  may define, such as `NULL` and `EOF`, and the members that C#'s generated
-  types declare, which a type of the same name can't, such as a struct's
-  `Size` and `Write()`, a record's `ToString()` and the `ToArray()` of the
-  view of an array of `To`s, and `Enumerator`, which its views nest; C++ and C# name everything else in full, and Swift names
+  in Rust and `Int`, `RawSpan`, `Hashable` and `RawRepresentable` in Swift,
+  `Fields`, the record of a Java class's fields, keywords, such as `None` in
+  Python and `Self` in Rust and Swift, the macros of the C standard library
+  that a C++ header may define, such as `NULL` and `EOF`, and the members
+  that C#'s generated types declare, which a type of the same name can't,
+  such as a struct's `Size` and `Write()`, a record's `ToString()` and the
+  `ToArray()` of the view of an array of `To`s, and `Enumerator`, which its
+  views nest; C++ and C# name everything else in full, and Swift names
   `Swift.Range`, so that a schema can declare `Range`.
   `src/generate/reserved.rs` lists them.
 - A definition's fields have distinct names in `camelCase` too, which
   TypeScript, JavaScript, Java and Swift name them in. It drops the
   underscores, so `a_1` and `a1` are both `a1`.
-- Messages, tables and structs hold at least one field.
+- Messages, tables and structs hold at least one field, and enums at least
+  one value.
+- An enum's type is an integer type, `int8` to `uint64`. Each of its values
+  is an integer of that type, and no two values share a name, in
+  `camelCase` too, or an integer, so that each integer has at most one name.
+  An enum can't take the name of a variant of Rust's prelude, `Ok`, `Err`,
+  `Some` or `None`, which the function of its tuple struct would hide.
+- An enum has at most 32,750 values, or 21,833 of `uint32`, `int64` or
+  `uint64`, since the generated Java declares a constant of each value. A
+  constant's name takes a slot of the class's constant pool, and its integer
+  one more, or two as a `long`, and tafla-gen allows them 65,500 of the
+  pool's 65,534.
+- A value of an enum can't take a name that the generated Go declares
+  beside the enum, `<Enum><Value>` in `PascalCase`, such as `PriorityHigh`
+  for `high` of `Priority`, where a declaration, a function or constant of
+  the generated Go, or a value of another enum takes it.
 - Only messages have attributes, each at most once.
 - A message's attributes are `sized`, `version: INTEGER` and
   `offset_type: NAME`, where the name is `uint8`, `uint16` or `uint32`.
@@ -140,8 +228,7 @@ or read its tables, or a target couldn't generate its code:
   readers read a nested table's offsets as of its message's offset type, and
   tables have `uint32` offsets.
 - Structs hold scalars and structs only, and a struct can't contain itself,
-  even within another struct. Arrays of strings and of bools aren't
-  supported.
+  even within another struct.
 - A definition's fields fit in a Java constructor, which takes at most 254
   slots of parameters, since the generated Java reads a struct into a record
   of its fields and writes a message or table from a record of them. A
@@ -318,6 +405,39 @@ reads that field of struct `i` without creating the struct; one named after
 the view's own members, `length`, `get` or `fields`, takes a `_`. The view of
 a vector has none, since each would find the item again, which takes longer
 than finding it once for `get(i)`.
+
+### Enums
+
+Each enum is declared before the messages, tables and structs, with its
+values in the order of the schema and their documentation. Where a language
+has a type that holds any integer of the enum's type at no cost, the getters
+of a field of the enum return it and its fields take it; elsewhere they
+return the integer, as they do for a field of that type, and the enum holds
+the values as constants of it. Arrays of an enum are those of its integer
+type in every language, the views in place that a field of that type
+returns, since no language reads a run of integers as a run of another
+type without a copy. Nothing checks that an integer has a name: a value
+that the enum doesn't name reads as itself.
+
+| Target                 | Enum `Priority: int8`                                                 | Value `high`              | A field of the enum          |
+| ---------------------- | --------------------------------------------------------------------- | ------------------------- | ---------------------------- |
+| TypeScript, JavaScript | A frozen object, and a type of its name, an alias of `number`         | `Priority.High`           | `Priority`, that is a number |
+| Python                 | A class of `enum.IntEnum`                                             | `Priority.HIGH`           | `int`, which a member is     |
+| Java                   | A final class of constants, in a file of its own                      | `Priority.HIGH`, a `byte` | The integer's type, `byte`   |
+| Rust                   | `pub struct Priority(pub i8)`, `Copy`, `Eq`, `Ord` and `Hash`         | `Priority::HIGH`          | `Priority`                   |
+| Go                     | `type Priority int8`                                                  | `PriorityHigh`            | `Priority`                   |
+| C++                    | `enum class Priority : std::int8_t`                                   | `Priority::high`          | `Priority`                   |
+| Swift                  | A `RawRepresentable` struct of its `rawValue`, `Hashable`, `Sendable` | `Priority.high`           | `Priority`                   |
+| C#                     | `enum Priority : sbyte`                                               | `Priority.High`           | `Priority`                   |
+
+A value in upper case or `PascalCase`, or after its enum's name as in Go,
+can't be a keyword. C++ gives a value named after one of its keywords, or
+after a macro that a field takes a `_` after, a `_`, as `class_` and
+`linux_`, and Swift escapes a value's name as a field's, as `` `class` ``
+and `self_`. In Python, a field of an enum is an `int`, which a member is,
+so a struct written from members holds them as given, and one read from
+bytes holds integers; the generated code never calls the enum, which would
+reject an integer that it doesn't name.
 
 ### Views
 
@@ -532,6 +652,13 @@ byte[] bytes = new DocumentFields
 var document = new Document(bytes); // checks the version
 ReadOnlySpan<float> a = document.Columns.A; // in place, on a little-endian host
 ```
+
+Rust's getters are `#[inline(always)]`, as the runtime's reads that they
+call are, so that a release build reads each field where its getter is
+called, as `TableReader`'s getters do by hand, rather than calling the getter
+and returning its `Result` through memory, as LLVM did with `#[inline]` where
+a function called several. Their `impl` blocks allow clippy's pedantic
+`inline_always`.
 
 C++'s namespace is the schema's file name, or `--package`'s, each of whose
 names takes a `_` for a run of other characters than ASCII letters and
@@ -1013,7 +1140,8 @@ Run the commands of `rust/README.md` from `rust/`. The tests are:
 - `tests/benchmarks.rs`: the code generated from each language's comparison
   suite's `workloads.tafla` matches the files in the suite, and the suites'
   copies of the schema are the same. So do the code generated from each
-  strings suite's `strings.tafla` and the copies of that schema.
+  strings suite's `strings.tafla` and the copies of that schema, and from
+  each lists suite's `lists.tafla`.
 - `tests/diagnostics.rs`: each invalid schema in `tests/diagnostics/` fails
   with the errors in the `.stderr` file beside it, chains of 10,000 tables or
   structs fail with an error on the WebAssembly module's stack, structs whose
@@ -1086,6 +1214,23 @@ and `STRINGS_SCHEMAS` lists where:
 | ---------- | ------------------------------------------------------------------------------------------------------------------------ |
 | TypeScript | `typescript/benchmarks/strings/strings.tafla`, `typescript/benchmarks/strings/generated/tafla/`                          |
 | Java       | `java/benchmarks/src/main/tafla/strings.tafla`, `…/src/main/java/io/github/snovader/tafla/benchmarks/generated/strings/` |
+| Rust       | `rust/benchmarks/strings.tafla`, `rust/benchmarks/src/codecs/tafla_gen_strings/`                                         |
+| C++        | `cpp/benchmarks/strings.tafla`, `cpp/benchmarks/generated/strings/`                                                      |
+
+The suites of lists of strings, which compare vectors of strings with
+vectors of tables of one string each, have a schema of their own too, and
+`LISTS_SCHEMAS` lists where:
+
+| Target     | Schema and generated code, from the root of the repository                                                           |
+| ---------- | -------------------------------------------------------------------------------------------------------------------- |
+| TypeScript | `typescript/benchmarks/strings/lists/lists.tafla`, `typescript/benchmarks/strings/lists/generated/`                  |
+| Python     | `python/benchmarks/src/tafla_benchmarks/generated/lists.tafla`, `python/benchmarks/src/tafla_benchmarks/generated/lists/` |
+| Java       | `java/benchmarks/src/main/tafla/lists.tafla`, `…/src/main/java/io/github/snovader/tafla/benchmarks/generated/lists/` |
+| Rust       | `rust/benchmarks/lists.tafla`, `rust/benchmarks/src/lists/generated/`                                                |
+| Go         | `go/benchmarks/lists.tafla`, `go/benchmarks/generated/lists/`                                                        |
+| C++        | `cpp/benchmarks/lists.tafla`, `cpp/benchmarks/generated/lists/`                                                      |
+| Swift      | `swift/benchmarks/lists.tafla`, `swift/benchmarks/Sources/GeneratedLists/`, a module                                 |
+| C#         | `csharp/benchmarks/lists.tafla`, `csharp/benchmarks/Tafla.Benchmarks/Generated/Lists/`                               |
 
 After a change to the generator or the schemas, rewrite the golden files,
 the suites' generated code and the expected errors, review their diff, and

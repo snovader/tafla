@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Text;
 using CsCheck;
 using Tafla.Tests.Tables;
 
@@ -140,12 +141,14 @@ public class DecodeExceptionTests
                 reader => Text(reader.GetUInt64Array(position)),
                 reader => Text(reader.GetFloat32Array(position)),
                 reader => Text(reader.GetFloat64Array(position)),
+                reader => Text(reader.GetBoolArray(position)),
                 reader => reader.GetString(position),
                 reader => Text(reader.GetStruct(position, size)),
                 reader => Text(reader.GetStructArray(position, size + 1)),
                 reader => reader.RootOffset(index),
                 reader => reader.FieldOffset(position, index),
                 reader => VectorText(reader.GetVector(position)),
+                reader => StringVectorText(reader.GetStringVector(position)),
                 reader => reader.GetSize(),
                 reader => new TableReader(reader.Bytes, layout with { Version = 0 }).GetVersion(),
             };
@@ -207,6 +210,19 @@ public class DecodeExceptionTests
         return string.Join(";", items);
     }
 
+    /// <summary>Every string of a vector of strings, each found from its ends, and all of them at once</summary>
+    private static string StringVectorText(StringVector vector)
+    {
+        var strings = new List<object>();
+        for (var item = 0; item < vector.Count; item++)
+        {
+            strings.Add(Attempt(vector, vector => vector[item]));
+        }
+
+        strings.Add(Attempt(vector, static vector => string.Join(",", vector.ToArray())));
+        return string.Join(";", strings);
+    }
+
     [Fact]
     public void DescribesAReadOutsideTheBytes()
     {
@@ -233,9 +249,11 @@ public class DecodeExceptionTests
 
         var error = Assert.Throws<DecodeException>(() => new TableReader(bytes).GetFloat64Array(0));
         Assert.Equal((4L, 0xffff_ffffL * 8, 8), (error.Position, error.ByteLength, error.Available));
+        Assert.Throws<DecodeException>(() => new TableReader(bytes).GetBoolArray(0));
         Assert.Throws<DecodeException>(() => new TableReader(bytes).GetStructArray(0, int.MaxValue));
         Assert.Throws<DecodeException>(() => new TableReader(bytes).GetString(0));
         Assert.Throws<DecodeException>(() => new TableReader(bytes).GetVector(0));
+        Assert.Throws<DecodeException>(() => new TableReader(bytes).GetStringVector(0));
     }
 
     /// <summary>An offset past the largest int leads past any bytes, and a position can't hold it</summary>
@@ -250,6 +268,10 @@ public class DecodeExceptionTests
         Assert.Throws<DecodeException>(() => new TableReader(bytes).FieldOffset(int.MaxValue, 0));
     }
 
+    /// <summary>
+    /// Invalid UTF-8 throws in a string of any length, short or long, after any valid UTF-8, with the
+    /// BCL's exception within it, which names the bytes that it couldn't decode
+    /// </summary>
     [Fact]
     public void RejectsInvalidUtf8()
     {
@@ -264,13 +286,26 @@ public class DecodeExceptionTests
             [0xff],
         ];
 
+        int[] limits = [128, 129, 1024, 1025];
+
         foreach (var value in strings)
         {
-            byte[] bytes = [(byte)value.Length, 0, 0, 0, .. value];
+            // After some valid bytes, and as the end of a string of exactly as many bytes as the
+            // reader decodes in each of its ways, 128 and 1,024, and of one byte more
+            int[] valids = [0, 1, 127, 300, 1100, .. limits.Select(limit => limit - value.Length)];
 
-            var error = Assert.Throws<DecodeException>(() => new TableReader(bytes).GetString(0));
-            Assert.Equal((DecodeErrorKind.InvalidUtf8, 0L), (error.Kind, error.Position));
-            Assert.Equal("The string at 0 isn't valid UTF-8", error.Message);
+            foreach (var valid in valids)
+            {
+                var bytes = new byte[sizeof(uint) + valid + value.Length];
+                BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)(valid + value.Length));
+                bytes.AsSpan(sizeof(uint), valid).Fill((byte)'a');
+                value.CopyTo(bytes, sizeof(uint) + valid);
+
+                var error = Assert.Throws<DecodeException>(() => new TableReader(bytes).GetString(0));
+                Assert.Equal((DecodeErrorKind.InvalidUtf8, 0L), (error.Kind, error.Position));
+                Assert.Equal("The string at 0 isn't valid UTF-8", error.Message);
+                Assert.IsType<DecoderFallbackException>(error.InnerException);
+            }
         }
     }
 
@@ -294,6 +329,28 @@ public class DecodeExceptionTests
         // Invalid UTF-8 in so long a string fails as invalid, since its characters can't be counted
         bytes[^1] = 0xff;
         Assert.Equal(DecodeErrorKind.InvalidUtf8, Assert.Throws<DecodeException>(() => new TableReader(bytes).GetString(0)).Kind);
+    }
+
+    /// <summary>
+    /// A vector of one string of 1,073,741,792 NULs, as long as the string above, after its count and
+    /// its end, which a 32-bit process can't allocate either
+    /// </summary>
+    [Fact]
+    public void RejectsAStringOfAVectorLongerThanAStringCanBe()
+    {
+        Assert.SkipUnless(Environment.Is64BitProcess, "A 32-bit process can't allocate the string's 1 GiB");
+
+        const int length = 0x3fff_ffe0;
+        var bytes = new byte[2 * sizeof(uint) + length];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(sizeof(uint)), 2 * sizeof(uint) + length);
+
+        var error = Assert.Throws<DecodeException>(() => new TableReader(bytes).GetStringVector(0)[0]);
+        Assert.Equal((DecodeErrorKind.StringTooLong, 8L, length), (error.Kind, error.Position, error.ByteLength));
+        Assert.Equal(DecodeErrorKind.StringTooLong, Assert.Throws<DecodeException>(() => new TableReader(bytes).GetStringVector(0).ToArray()).Kind);
+
+        bytes[^1] = 0xff;
+        Assert.Equal(DecodeErrorKind.InvalidUtf8, Assert.Throws<DecodeException>(() => new TableReader(bytes).GetStringVector(0)[0]).Kind);
     }
 
     /// <summary>A vector of two items whose second ends before the first does, at 11 rather than 12</summary>
@@ -357,6 +414,7 @@ public class DecodeExceptionTests
         Assert.Throws<DecodeException>(() => default(TableReader).GetString(0));
         Assert.Throws<DecodeException>(() => default(TableReader).GetStruct(0, 1));
         Assert.Throws<DecodeException>(() => default(TableReader).GetVector(0));
+        Assert.Throws<DecodeException>(() => default(TableReader).GetStringVector(0));
 
         var vector = default(Vector);
         var items = 0;

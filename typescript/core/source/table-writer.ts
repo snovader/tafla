@@ -219,6 +219,15 @@ export class TableSizer {
         this.#addArray(count, SIZEOF_64, SIZEOF_64);
     }
 
+    /**
+     * Adds an array of `count` bools, a byte each, which needs no padding
+     *
+     * @throws {RangeError} If `count` isn't a non-negative integer.
+     */
+    addBoolArray(count: number): void {
+        this.#addArray(count, SIZEOF_8, SIZEOF_8);
+    }
+
     /** Adds a string, as UTF-8 with lone surrogates replaced by U+FFFD */
     addString(string: string): void {
         this._position += this._size + utf8Length(string);
@@ -272,6 +281,21 @@ export class TableSizer {
     addVector(count: number): void {
         assertCount(count);
         this._position += (count + 1) * this._size;
+    }
+
+    /**
+     * Adds a vector of strings: its count, the end of each string, and each
+     * string as UTF-8, with lone surrogates replaced by U+FFFD
+     */
+    addStringVector(strings: readonly string[]): void {
+        const count = strings.length;
+
+        let length = (count + 1) * this._size;
+        for (let i = 0; i < count; i++) {
+            length += utf8Length(strings[i]);
+        }
+
+        this._position += length;
     }
 
     /**
@@ -645,6 +669,23 @@ export class TableWriter {
         this.#endArray(index, count, elements, count * SIZEOF_64);
     }
 
+    /**
+     * Writes an array of bools as a `uint8` array, 1 for each true value and
+     * 0 for each false one. A loop writes them, since a `Uint8Array`'s
+     * `set()` took 14 µs to convert 1,000 bools, where the loop took 1.2 µs,
+     * in Node 26.
+     */
+    setBoolArray(index: number, values: ArrayLike<boolean>): void {
+        const count = values.length;
+        const elements = this.#arrayElements(count, SIZEOF_8, SIZEOF_8);
+
+        const bytes = this._bytes;
+        for (let i = 0; i < count; i++) {
+            bytes[elements + i] = values[i] ? 1 : 0;
+        }
+        this.#endArray(index, count, elements, count);
+    }
+
     /** Writes `string` as UTF-8, with lone surrogates replaced by U+FFFD */
     setString(index: number, string: string): void {
         // Its UTF-8 length is known once it's written, so a string that
@@ -730,6 +771,33 @@ export class TableWriter {
             vector + (item + 1) * this._size,
             this._position - vector
         );
+    }
+
+    /**
+     * Writes a vector of strings: its count, the end of each string from the
+     * vector's position, and then each string as UTF-8, one after another,
+     * with lone surrogates replaced by U+FFFD.
+     *
+     * A string's UTF-8 length is known once it's written, so a vector that
+     * doesn't fit throws before its offset and count are written, and has
+     * then written the strings that fit, and their ends, after the position.
+     */
+    setStringVector(index: number, strings: readonly string[]): void {
+        const count = strings.length;
+        const size = this._size;
+        const bytes = this._bytes;
+        const vector = this._position;
+        let position = vector + (count + 1) * size;
+        assertFits(bytes, position);
+
+        for (let i = 0; i < count; i++) {
+            position += encodeInto(strings[i], bytes, position);
+            setSlot(bytes, vector + (i + 1) * size, size, position - vector);
+        }
+
+        this.#setOffset(index);
+        this.#setLength(vector, count);
+        this._position = position;
     }
 
     // The writer's caller writes the fields that the next three reserve,

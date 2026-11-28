@@ -63,5 +63,28 @@ The first release.
 - `ArrayElement`'s `init(littleEndianBytes:at:)`, which reads a scalar at a
   fixed offset in bytes, as a struct's scalars lie, and which the generated
   structs read themselves with.
+- Arrays of bools, stored as `uint8` arrays of 1 and 0:
+  `TableBuilder.setBoolArray(_:)`, `TableSizer.addBoolArray(count:)`,
+  `TableWriter.setBoolArray(_:_:)` and `TableReader.boolArray(at:)`, which
+  reads a new `[Bool]`, true where a byte isn't 0, without reading any byte
+  as a `Bool`. `uint8Array(at:)` reads the same bytes in place.
+- Vectors of strings, which tafla-gen's schemas declare as `[string]`: a
+  count, the end of each string and the strings' UTF-8, one after another.
+  `TableBuilder.setStringVector(_:)`, `TableSizer.addStringVector(_:)` and
+  `TableWriter.setStringVector(_:_:)` write one from an array of strings,
+  and `TableReader.stringVector(at:)` returns a `StringVector`, a
+  nonescapable view whose subscript reads one string from its two ends,
+  without reading the others, and whose `Array(_:)` reads every string.
+  Each string is checked as UTF-8 on its own, and throws
+  `DecodeError.invalidUTF8` at its first byte when it isn't valid, so an
+  end that splits a character fails both strings around it. The code that
+  tafla-gen generates returns a `StringVector` from the getter of a
+  `[string]` field.
+- Every string that a reader reads, of a string field with
+  `TableReader.string(at:)` or of a vector of strings, is validated as a
+  `UTF8Span` and copied with `String(copying:)`, where the standard library
+  has them, from macOS 26 and iOS 26 on and on Linux, in about half the time
+  that `String(validating:as:)`, which older systems use, takes for each
+  string.
 
 [Unreleased]: https://github.com/snovader/tafla/commits/main/swift

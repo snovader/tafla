@@ -1,0 +1,18 @@
+// The lists of strings that the strings suite's lists compare, which
+// tafla-gen's code writes and reads: a vector of strings, and a vector of
+// tables of one string each, which is how a schema holds a list of strings
+// without one.
+
+/// A list of strings, as a vector of strings
+message StringList {
+    items: [string];
+}
+
+/// A list of strings, as a vector of tables of one string each
+message NameList {
+    items: [Name];
+}
+
+table Name {
+    value: string;
+}

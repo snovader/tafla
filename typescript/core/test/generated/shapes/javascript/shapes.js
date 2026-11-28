@@ -2,12 +2,16 @@
 
 import {
     readFloat32,
+    readInt8,
+    readUint16,
     readUint32,
     utf8Length,
     viewOf,
     writeFloat32,
     writeFloat64,
+    writeInt8,
     writeInt64,
+    writeUint16,
     writeUint32,
     writeUtf8,
     DecodeError,
@@ -17,6 +21,33 @@ import {
     TableSizer,
     TableWriter
 } from 'tafla';
+
+/** How soon to do a task */
+export const Priority = globalThis.Object.freeze({
+    Low: -1,
+    Normal: 0,
+    High: 1
+});
+
+/**
+ * A value of {@link Priority}: one that it names, or any other `int8`
+ *
+ * @typedef {number} Priority
+ */
+
+/** What has become of a task */
+export const State = globalThis.Object.freeze({
+    Waiting: 0,
+    Running: 1,
+    Done: 2,
+    Failed: 1000
+});
+
+/**
+ * A value of {@link State}: one that it names, or any other `uint16`
+ *
+ * @typedef {number} State
+ */
 
 /** A small table of two coordinates, an identifier and a name */
 export class Point {
@@ -1006,4 +1037,239 @@ export class Sample {
  * @property {number} key
  * @property {number} a
  * @property {number} b
+ */
+
+/** A state and how long the task has been in it */
+export class Step {
+    /** The byte length of a `Step` */
+    static SIZE = 7;
+
+    /**
+     * The alignment of an array of `Step`: its largest scalar's size
+     *
+     * @type {4}
+     */
+    static ALIGNMENT = 4;
+
+    /**
+     * Reads a `Step` at `offset` in `bytes`, eagerly, so that it
+     * doesn't keep them alive
+     *
+     * @param {Uint8Array} bytes
+     * @param {number} [offset]
+     * @throws {DecodeError} If `bytes` end before the `Step` does.
+     */
+    constructor(bytes, offset = 0) {
+        this._state = readUint16(bytes, offset);
+        this._priority = readInt8(bytes, offset + 2);
+        this._seconds = readUint32(bytes, offset + 3);
+    }
+
+    /**
+     * Reads the fields of a `Step` at `offset` in `bytes`,
+     * without creating a `Step`
+     *
+     * @param {Uint8Array} bytes
+     * @param {number} [offset]
+     * @returns {StepFields}
+     * @throws {DecodeError} If `bytes` end before the `Step` does.
+     */
+    static read(bytes, offset = 0) {
+        return {
+            state: readUint16(bytes, offset),
+            priority: readInt8(bytes, offset + 2),
+            seconds: readUint32(bytes, offset + 3)
+        };
+    }
+
+    /**
+     * Writes a `Step`
+     *
+     * @param {StepFields} fields
+     * @returns {Uint8Array}
+     */
+    static serialize(fields) {
+        const bytes = new Uint8Array(Step.SIZE);
+        Step.writeAt(bytes, 0, fields);
+
+        return bytes;
+    }
+
+    /**
+     * Writes `Step`s one after another, as an array of them holds them
+     *
+     * @param {readonly StepFields[]} items
+     * @returns {Uint8Array}
+     */
+    static serializeArray(items) {
+        const bytes = new Uint8Array(items.length * Step.SIZE);
+        const writer = new StructWriter(bytes);
+        for (const fields of items) {
+            Step.write(writer, fields);
+        }
+
+        return bytes;
+    }
+
+    /**
+     * Writes a `Step` at the writer's position
+     *
+     * @param {StructWriter} writer
+     * @param {StepFields} fields
+     * @returns {void}
+     */
+    static write(writer, fields) {
+        writer.setUint16(fields.state);
+        writer.setInt8(fields.priority);
+        writer.setUint32(fields.seconds);
+    }
+
+    /**
+     * Writes a `Step` at `offset` in `bytes`
+     *
+     * @param {Uint8Array} bytes
+     * @param {number} offset
+     * @param {StepFields} fields
+     * @returns {void}
+     * @throws {RangeError} If `bytes` end before the `Step` does.
+     */
+    static writeAt(bytes, offset, fields) {
+        writeUint16(bytes, offset, fields.state);
+        writeInt8(bytes, offset + 2, fields.priority);
+        writeUint32(bytes, offset + 3, fields.seconds);
+    }
+
+    /** @returns {State} */
+    state() {
+        return this._state;
+    }
+
+    /** @returns {Priority} */
+    priority() {
+        return this._priority;
+    }
+
+    /** @returns {number} */
+    seconds() {
+        return this._seconds;
+    }
+}
+
+/**
+ * The fields of a `Step`, to write
+ *
+ * @typedef {object} StepFields
+ * @property {State} state
+ * @property {Priority} priority
+ * @property {number} seconds
+ */
+
+/** A task, whose fields are enums, alone, in an array and in a struct */
+export class Task {
+    static #LAYOUT = TableLayout.DEFAULT;
+
+    /** @param {Uint8Array} bytes */
+    constructor(bytes) {
+        this._reader = new TableReader(bytes, Task.#LAYOUT);
+    }
+
+    /**
+     * Writes a `Task` with every field
+     *
+     * @param {TaskFields} fields
+     * @returns {Uint8Array}
+     */
+    static serialize(fields) {
+        const sizer = new TableSizer(4, Task.#LAYOUT);
+        sizer.addInt8();
+        sizer.addUint16Array(fields.history.length);
+        sizer.addStruct(Step.SIZE);
+        sizer.addString(fields.name);
+
+        const writer = sizer.writer();
+        writer.setInt8(0, fields.priority);
+        writer.setUint16Array(1, fields.history);
+        writer.setStruct(2, Step.serialize(fields.step));
+        writer.setString(3, fields.name);
+
+        return writer.bytes();
+    }
+
+    /**
+     * Writes a `Task` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @param {TaskFields} fields
+     * @param {Uint8Array} bytes
+     * @returns {Uint8Array}
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(fields, bytes) {
+        const sizer = new TableSizer(4, Task.#LAYOUT);
+        sizer.addInt8();
+        sizer.addUint16Array(fields.history.length);
+        sizer.addStruct(Step.SIZE);
+        sizer.addString(fields.name);
+
+        const writer = sizer.writer(bytes);
+        writer.setInt8(0, fields.priority);
+        writer.setUint16Array(1, fields.history);
+        writer.setStruct(2, Step.serialize(fields.step));
+        writer.setString(3, fields.name);
+
+        return writer.bytes();
+    }
+
+    /** @returns {Priority} */
+    priority() {
+        return this._reader.getInt8(this._reader.rootOffset(0));
+    }
+
+    /**
+     * The states that the task has been in, the oldest first
+     *
+     * @returns {Uint16Array}
+     */
+    history() {
+        return this._reader.getUint16Array(this._reader.rootOffset(1));
+    }
+
+    /** @returns {Step} */
+    step() {
+        return new Step(this._reader.bytes(), this._reader.rootOffset(2));
+    }
+
+    /** @returns {string} */
+    name() {
+        return this._reader.getString(this._reader.rootOffset(3));
+    }
+
+    /**
+     * Reads every field into the `TaskFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     *
+     * @returns {TaskFields}
+     */
+    fields() {
+        return {
+            priority: this._reader.getInt8(this._reader.rootOffset(0)),
+            history: this._reader.getUint16Array(this._reader.rootOffset(1)),
+            step: Step.read(this._reader.bytes(), this._reader.rootOffset(2)),
+            name: this._reader.getString(this._reader.rootOffset(3))
+        };
+    }
+}
+
+/**
+ * The fields of a `Task`, to write
+ *
+ * @typedef {object} TaskFields
+ * @property {Priority} priority
+ * @property {ArrayLike<State> | Uint16Array} history The states that the task has been in, the oldest first
+ * @property {StepFields} step
+ * @property {string} name
  */

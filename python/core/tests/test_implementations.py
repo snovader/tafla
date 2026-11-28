@@ -40,7 +40,15 @@ from hypothesis.strategies import (
 )
 
 import tafla
-from tafla import fixed_fields, layout, table_reader, table_writer
+from tafla import (
+    OffsetType,
+    fixed_fields,
+    layout,
+    string_vector,
+    table_builder,
+    table_reader,
+    table_writer,
+)
 from tests.tables import FORMATS
 from tests.test_fixed_fields import Misreported
 
@@ -50,6 +58,7 @@ except ImportError:
     _native = None
 
 OFFSET_TYPES = ("uint8", "uint16", "uint32")
+TABLE_OFFSET_TYPES: tuple[OffsetType, ...] = OFFSET_TYPES
 
 # Integers at the limits of the arguments that the classes take: within an
 # i64, beyond it, and beyond the digits that Python converts to a string.
@@ -191,6 +200,24 @@ def sequences(elements: SearchStrategy[Any], max_size: int) -> SearchStrategy[An
     )
 
 
+class Truthless:
+    """An object whose truth raises, as ``bool()`` takes it, and whose error
+    both writers raise for an array of bools that holds it"""
+
+    def __bool__(self) -> bool:
+        raise KeyError("no truth")
+
+    @override
+    def __repr__(self) -> str:
+        return "Truthless()"
+
+
+# Elements of the arrays of bools that callers pass: bools, which the native
+# writer converts itself, and anything else, which both convert as bool()
+# takes it, or raise its error for
+BOOL_ELEMENTS: SearchStrategy[Any] = one_of(booleans(), ELEMENTS, builds(Truthless))
+
+
 def convertible(kind: str) -> SearchStrategy[Any]:
     """Elements that ``array()`` converts to an array of ``kind``"""
     code = FORMATS[kind]
@@ -212,6 +239,7 @@ class Implementation:
     FixedFields: Any
     TableLayout: Any
     TableWriter: Any
+    StringVector: Any
 
 
 PURE = Implementation(
@@ -220,6 +248,7 @@ PURE = Implementation(
     fixed_fields.FixedFields,
     layout.TableLayout,
     table_writer.TableWriter,
+    string_vector.StringVector,
 )
 
 
@@ -230,6 +259,7 @@ def native_implementation(module: ModuleType) -> Implementation:
         module.FixedFields,
         module.TableLayout,
         module.TableWriter,
+        module.StringVector,
     )
 
 
@@ -360,12 +390,20 @@ class TestImplementations(unittest.TestCase):
         if tafla.IMPLEMENTATION == "native":
             self.assertIs(tafla.TableWriter, self.native.TableWriter)
             self.assertIs(tafla.TableReader, self.native.TableReader)
+            self.assertIs(tafla.StringVector, self.native.StringVector)
         else:
             self.assertIs(tafla.TableWriter, PURE.TableWriter)
             self.assertIs(tafla.TableReader, PURE.TableReader)
+            self.assertIs(tafla.StringVector, PURE.StringVector)
 
     def test_have_the_same_methods_with_the_same_parameters(self) -> None:
-        for name in ["TableReader", "FixedFields", "TableLayout", "TableWriter"]:
+        for name in [
+            "TableReader",
+            "FixedFields",
+            "TableLayout",
+            "TableWriter",
+            "StringVector",
+        ]:
             pure, native = getattr(PURE, name), getattr(self.native, name)
             names = {
                 attribute
@@ -443,6 +481,33 @@ class TestImplementations(unittest.TestCase):
             self.assertEqual(outcomes[1], outcomes[0], describe_call(method, args))
 
     @given(data())
+    def test_view_vectors_of_strings_as_each_other_whatever_the_bytes(
+        self, draw: DataObject
+    ) -> None:
+        """Each implementation's StringVector, of its own reader: its length,
+        its strings by index and every string, or the errors that they
+        raise"""
+        arguments = draw.draw(layout_arguments())
+        content = draw.draw(one_of(binary(max_size=48), STRING_VECTOR_TABLES))
+        position = draw.draw(one_of(integers(0, 8), POSITIONS))
+        indices = draw.draw(lists(one_of(integers(-8, 8), INTEGERS), max_size=4))
+        outcomes = [
+            outcome(
+                partial(
+                    view_strings, implementation, arguments, content, position, indices
+                )
+            )
+            for implementation in (PURE, self.native)
+        ]
+        self.assertEqual(outcomes[1], outcomes[0])
+
+    def test_native_string_vector_rejects_a_pure_python_reader(self) -> None:
+        reader = PURE.TableReader(bytes(8))
+
+        with self.assertRaises(TypeError):
+            self.native.StringVector(reader, 0)
+
+    @given(data())
     def test_write_the_same_bytes_and_raise_the_same_errors_whatever_the_calls(
         self, draw: DataObject
     ) -> None:
@@ -479,6 +544,32 @@ class TestImplementations(unittest.TestCase):
         if draw.draw(booleans()):
             calls.append(("hold_view", ()))
         calls.append((f"set_{kind}_array", (leading, values)))
+
+        self.assert_same_writes(arguments, leading + 1, None, (0, [], False), calls)
+
+    @given(data())
+    def test_write_the_same_arrays_of_bools_from_lists_and_tuples_of_any_values(
+        self, draw: DataObject
+    ) -> None:
+        """An exact list or tuple of bools is converted natively, and any
+        other values as ``bool()`` takes them: each writes the same bytes of 1
+        and 0, or raises the same error having written nothing, after fields
+        that pad it, and while a view of the bytes is held"""
+        arguments = draw.draw(layout_arguments())
+        values = draw.draw(
+            one_of(
+                sequences(booleans(), max_size=40),
+                sequences(BOOL_ELEMENTS, max_size=6),
+            )
+        )
+        leading = draw.draw(integers(0, 3))
+
+        calls: list[tuple[str, tuple[Any, ...]]] = [
+            ("set_uint8", (index, 1)) for index in range(leading)
+        ]
+        if draw.draw(booleans()):
+            calls.append(("hold_view", ()))
+        calls.append(("set_bool_array", (leading, values)))
 
         self.assert_same_writes(arguments, leading + 1, None, (0, [], False), calls)
 
@@ -793,6 +884,49 @@ class TestImplementations(unittest.TestCase):
                 self.assertEqual(read[1], read[0])
 
 
+def view_strings(
+    implementation: Implementation,
+    arguments: dict[str, Any],
+    content: bytes,
+    position: int,
+    indices: list[int],
+) -> list[object]:
+    """What a view of the vector of strings at ``position`` reads: its
+    length, its strings at ``indices`` and every string, each read's outcome
+    on its own"""
+    reader = implementation.TableReader(content, layout_from(implementation, arguments))
+    vector = implementation.StringVector(reader, position)
+    reads: list[Callable[[], object]] = [
+        partial(len, vector),
+        vector.tolist,
+        partial(list, vector),
+        *(partial(vector.__getitem__, index) for index in indices),
+    ]
+    return [outcome(read) for read in reads]
+
+
+def _string_vector_table(
+    offset_type: OffsetType, strings: list[str], overwrites: list[tuple[int, int]]
+) -> bytes:
+    """A table of a vector of strings, with some of its bytes overwritten"""
+    builder = table_builder.TableBuilder(1, layout.TableLayout(offset_type=offset_type))
+    builder.set_string_vector(strings)
+    data = bytearray(builder.bytes())
+    for at, byte in overwrites:
+        data[at % len(data)] = byte
+    return bytes(data)
+
+
+# Tables of a vector of short strings, which fit any offset type, and some
+# with bytes overwritten
+STRING_VECTOR_TABLES: SearchStrategy[bytes] = builds(
+    _string_vector_table,
+    sampled_from(TABLE_OFFSET_TYPES),
+    lists(text(characters(codec="utf-8"), max_size=4), max_size=5),
+    lists(tuples(integers(0, 100), integers(0, 255)), max_size=2),
+)
+
+
 def _write_message(
     implementation: Implementation,
     arguments: dict[str, Any],
@@ -958,7 +1092,12 @@ def describe_call(method: str, args: tuple[Any, ...]) -> str:
 
 
 # The writer's private methods that TableBuilder calls
-BUILDER_METHODS = {"_checked", "_copy_table", "_set_encoded_string"}
+BUILDER_METHODS = {
+    "_checked",
+    "_copy_table",
+    "_set_encoded_string",
+    "_set_encoded_string_vector",
+}
 
 
 def parameters(method: Callable[..., object]) -> list[str]:
@@ -973,6 +1112,7 @@ ARRAY_READS = [f"get_{kind}_array" for kind in sorted(FORMATS)]
 READS = [
     *SCALAR_READS,
     *ARRAY_READS,
+    "get_bool_array",
     "get_string",
     "root_offset",
     "field_offset",
@@ -986,6 +1126,8 @@ READS = [
     "get_fields",
     "get_vector_fields",
     "iter_vector_fields",
+    "get_string_vector",
+    "get_string_vector_item",
     "get_size",
     "get_version",
     "bytes",
@@ -996,6 +1138,7 @@ SIZES = one_of(integers(-2, 20), INTEGERS)
 
 READ_ARGUMENTS: dict[str, SearchStrategy[tuple[Any, ...]]] = {
     **{method: tuples(POSITIONS) for method in SCALAR_READS + ARRAY_READS},
+    "get_bool_array": tuples(POSITIONS),
     "get_string": tuples(POSITIONS),
     "root_offset": tuples(POSITIONS),
     "field_offset": tuples(POSITIONS, POSITIONS),
@@ -1004,6 +1147,8 @@ READ_ARGUMENTS: dict[str, SearchStrategy[tuple[Any, ...]]] = {
     "get_vector_length": tuples(POSITIONS),
     "get_vector_offset": tuples(POSITIONS, POSITIONS),
     "get_vector_item_offset": tuples(POSITIONS, integers(0, 12), POSITIONS),
+    "get_string_vector": tuples(POSITIONS),
+    "get_string_vector_item": tuples(POSITIONS, integers(0, 12), POSITIONS),
     "get_vector_offsets": tuples(POSITIONS),
     "get_vector": tuples(POSITIONS),
     "get_fields": tuples(POSITIONS),
@@ -1057,6 +1202,15 @@ ARRAYS: SearchStrategy[Any] = one_of(
     binary(min_size=2, max_size=8).map(lambda data: memoryview(data)[::2]),
 )
 
+# What callers pass as an array of bools: sequences of any values, and other
+# iterables, of bytes and of ints, and an object that isn't iterable
+BOOL_ARRAYS: SearchStrategy[Any] = one_of(
+    sequences(BOOL_ELEMENTS, max_size=4),
+    binary(max_size=8),
+    builds(array, just("i"), lists(integers(-2, 2), max_size=4)),
+    none(),
+)
+
 STRUCTS: SearchStrategy[Any] = one_of(
     binary(max_size=12),
     binary(max_size=12).map(bytearray),
@@ -1069,6 +1223,21 @@ ALIGNMENTS: SearchStrategy[Any] = one_of(
 
 INDICES = one_of(integers(-6, 8), INTEGERS)
 
+# Strings as the writers take them, and a lone surrogate, which they reject
+WRITTEN_STRINGS: SearchStrategy[str] = one_of(
+    text(characters(codec="utf-8"), max_size=6), just("\ud800"), just("é" * 300)
+)
+
+# Vectors of strings: lists and tuples of strings, of their subclasses, a str,
+# which the writers reject, and sequences whose len() isn't their number
+STRING_VECTOR_VALUES: SearchStrategy[Any] = one_of(
+    sequences(WRITTEN_STRINGS, max_size=4),
+    WRITTEN_STRINGS,
+    tuples(lists(WRITTEN_STRINGS, max_size=3), sampled_from([-1, 1])).map(
+        lambda drawn: Misreported(drawn[0], max(len(drawn[0]) + drawn[1], 0))
+    ),
+)
+
 WRITES: SearchStrategy[tuple[str, tuple[Any, ...]]] = one_of(
     tuples(
         sampled_from([f"set_{kind}" for kind in sorted(FORMATS)]),
@@ -1078,6 +1247,7 @@ WRITES: SearchStrategy[tuple[str, tuple[Any, ...]]] = one_of(
         sampled_from([f"set_{kind}_array" for kind in sorted(FORMATS)]),
         tuples(INDICES, ARRAYS),
     ),
+    tuples(just("set_bool_array"), tuples(INDICES, BOOL_ARRAYS)),
     tuples(
         just("set_string"),
         tuples(
@@ -1126,6 +1296,12 @@ WRITES: SearchStrategy[tuple[str, tuple[Any, ...]]] = one_of(
             # How far the items' len() is from their number
             one_of(just(0), sampled_from([-1, 1])),
         ),
+    ),
+    tuples(just("set_string_vector"), tuples(INDICES, STRING_VECTOR_VALUES)),
+    # Bytes, which needn't be UTF-8, since TableBuilder encodes them
+    tuples(
+        just("_set_encoded_string_vector"),
+        tuples(INDICES, lists(binary(max_size=300), max_size=4)),
     ),
 )
 

@@ -10,6 +10,7 @@
 #include <limits>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "common/at_byte_offset.hpp"
@@ -69,6 +70,15 @@ std::string result_of(Read read) {
     return text.str();
 }
 
+/// Strings as text to compare between copies of bytes, each after its length
+std::string joined(const std::vector<std::string_view>& strings) {
+    std::string text;
+    for (const auto string : strings) {
+        text += std::to_string(string.size()) + ":" + std::string(string) + " ";
+    }
+    return text;
+}
+
 /// The errors of each read, which must be decode errors of reads that would
 /// leave the bytes, or read mismatches other than of finding vector items
 struct Errors {
@@ -89,7 +99,8 @@ void collect(Errors& errors, Read read) {
 
 /// Reads `bytes` as `table`, and reads each of its root fields at its own root
 /// offset, at root offset `index` and at `position`, and a struct and an
-/// array of structs of `size` bytes at `position`, as text of each read
+/// array of structs of `size` bytes and every string of a vector of strings
+/// at `position`, as text of each read
 std::vector<std::string> reads_of(std::span<const std::uint8_t> bytes, const Table& table, std::size_t position,
                                   std::size_t index, std::size_t size, Errors* errors) {
     const auto& layout = table.layout;
@@ -117,6 +128,7 @@ std::vector<std::string> reads_of(std::span<const std::uint8_t> bytes, const Tab
     read([&] { return reader.field_offset(position, index); });
     read([&] { return reader.get_struct(position, size); });
     read([&] { return reader.get_struct_array(position, size); });
+    read([&] { return joined(reader.get_string_vector(position).to_vector()); });
     return reads;
 }
 
@@ -275,6 +287,7 @@ TEST(DecodeError, ThrownForAnArrayStringStructOrVectorItemOutsideTheBytes) {
     const TableReader reader{std::span(backing).subspan(4, 8), TableLayout()};
 
     expect_outside(error_of([&] { return reader.get_uint8_array(4); }), 8, 13);
+    expect_outside(error_of([&] { return reader.get_bool_array(4); }), 8, 13);
     expect_outside(error_of([&] { return reader.get_string(4); }), 8, 13);
     expect_outside(error_of([&] { return reader.get_float32_array(4); }), 8, 52);
     expect_outside(error_of([&] { return reader.get_struct_array(4, 2); }), 8, 26);

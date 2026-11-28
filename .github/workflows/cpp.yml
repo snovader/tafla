@@ -281,7 +281,7 @@ jobs:
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DTAFLA_BUILD_BENCHMARKS=ON -DTAFLA_WARNINGS_AS_ERRORS=ON
 
       - name: Build
-        run: cmake --build build --target tafla_comparison tafla_encoding tafla_allocation benchmarks_test
+        run: cmake --build build --target tafla_comparison tafla_strings tafla_encoding tafla_allocation tafla_lists benchmarks_test
 
       # Before the benchmarks run, so that a failure doesn't discard the build
       - name: Save the compiler cache
@@ -299,11 +299,20 @@ jobs:
       - name: Run benchmarks briefly
         run: build/benchmarks/tafla_comparison --quick
 
+      - name: Run strings benchmarks briefly
+        run: build/benchmarks/tafla_strings --quick
+
+      - name: Run the lists of strings briefly
+        run: build/benchmarks/tafla_lists --quick
+
       - name: Print encoded sizes
         run: build/benchmarks/tafla_encoding
 
       - name: Print allocations
         run: build/benchmarks/tafla_allocation
+
+      - name: Print allocations of strings
+        run: build/benchmarks/tafla_allocation --strings
 
   # The check that the main branch's ruleset requires. It passes when every job
   # passed, or was skipped because the change doesn't touch C++.

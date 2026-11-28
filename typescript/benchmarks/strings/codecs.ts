@@ -17,8 +17,9 @@ export interface Codec {
 }
 
 /**
- * A table of 16 string fields, since tafla has no vector of strings, written
- * with a `TableBuilder` and read with `TableReader.getString()`
+ * A table of 16 string fields, which the suite times, rather than a vector
+ * of strings, written with a `TableBuilder` and read with
+ * `TableReader.getString()`
  */
 export const tafla: Codec = {
     name: 'tafla',

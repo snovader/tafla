@@ -68,7 +68,7 @@ proptest! {
         }
 
         for error in errors.into_iter().flatten() {
-            prop_assert!(!matches!(error, ReadError::Get { .. }), "{:?}", error);
+            prop_assert!(!matches!(error, ReadError::Get { .. } | ReadError::Strings), "{:?}", error);
         }
     }
 
@@ -98,7 +98,7 @@ proptest! {
         prop_assert_eq!(&Reads::of(within, &table, position, index, size), &reads);
 
         for error in reads.read_errors() {
-            prop_assert!(!matches!(error, ReadError::Get { .. }), "{:?}", error);
+            prop_assert!(!matches!(error, ReadError::Get { .. } | ReadError::Strings), "{:?}", error);
         }
 
         for error in reads.decode_errors() {
@@ -297,6 +297,7 @@ fn test_reject_array_string_struct_and_vector_item_outside_slice() {
     let reader = TableReader::new(&backing[4..12], TableLayout::DEFAULT);
 
     assert_eq!(reader.get_u8_array(4), Err(outside(8, 13)));
+    assert_eq!(reader.get_bool_array(4), Err(outside(8, 13)));
     assert_eq!(reader.get_str(4), Err(outside(8, 13)));
     assert_eq!(reader.get_f32_array(4).unwrap_err(), outside(8, 52));
     assert_eq!(reader.get_struct_array(4, 2), Err(outside(8, 26)));

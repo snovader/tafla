@@ -27,6 +27,9 @@ public class TableReaderTest {
         @ForAll("layouts") LayoutDescription layout,
         @ForAll @IntRange(max = 9) int start
     ) {
+        // A vector of strings' ends count its bytes, which may be more than uint8 holds
+        Assume.that(Descriptions.maxLength(field, layout.width()) <= layout.offsetType().maxValue());
+
         assertReadsBack(field, layout, start);
     }
 
@@ -52,14 +55,19 @@ public class TableReaderTest {
         }
     }
 
-    /** {@return the scalar, array, string, struct or array of structs of the field's type at {@code position}} */
+    /**
+     * {@return the scalar, array, array of bools, string, struct, array of structs or vector of
+     * strings of the field's type at {@code position}}
+     */
     private static FieldDescription readAt(TableReader reader, int position, FieldDescription field) {
         return switch (field) {
             case ScalarField scalar -> new ScalarField(scalar.type(), scalar.type().read(reader, position));
             case ArrayField array -> new ArrayField(array.type(), array.type().readArray(reader, position));
+            case BoolArrayField ignored -> new BoolArrayField(reader.getBoolArray(position));
             case StringField ignored -> new StringField(reader.getString(position));
             case StructField struct -> StructBytes.read(reader, position, struct.types());
             case StructArrayField array -> StructBytes.readArray(reader, position, array.fields());
+            case StringVectorField ignored -> new StringVectorField(List.of(reader.getStringVector(position)));
             default -> throw new IllegalArgumentException("Not a value: " + field);
         };
     }
@@ -103,7 +111,9 @@ public class TableReaderTest {
         return java.nio.ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
     }
 
-    /** Puts a scalar, array, string, struct or array of structs */
+    /**
+     * Puts a scalar, array, array of bools, string, struct, array of structs or vector of strings
+     */
     private static void put(java.nio.ByteBuffer bytes, FieldDescription field, int width) {
         switch (field) {
             case ScalarField scalar -> scalar.type().put(bytes, scalar.value());
@@ -111,6 +121,12 @@ public class TableReaderTest {
                 putUnsigned(bytes, array.values().length, width);
                 for (var value : array.values()) {
                     array.type().put(bytes, value);
+                }
+            }
+            case BoolArrayField array -> {
+                putUnsigned(bytes, array.values().length, width);
+                for (var value : array.values()) {
+                    bytes.put((byte) (value ? 1 : 0));
                 }
             }
             case StringField string -> {
@@ -123,6 +139,11 @@ public class TableReaderTest {
                 putUnsigned(bytes, array.items().size(), width);
                 bytes.put(StructBytes.pack(array.fields(), array.items()));
             }
+            case StringVectorField vector -> putVector(
+                bytes,
+                vector.values().stream().map(string -> string.getBytes(StandardCharsets.UTF_8)).toList(),
+                width
+            );
             default -> throw new IllegalArgumentException("Not a value: " + field);
         }
     }
@@ -273,6 +294,7 @@ public class TableReaderTest {
         assertThrows(DecodeException.class, () -> reader.getUint32Array(0));
         assertThrows(DecodeException.class, () -> reader.getUint8ArrayView(0));
         assertThrows(DecodeException.class, () -> reader.getUint32ArrayView(0));
+        assertThrows(DecodeException.class, () -> reader.getBoolArray(0));
         assertThrows(DecodeException.class, () -> reader.getString(0));
         assertThrows(DecodeException.class, () -> reader.getStructArray(0, 1));
         assertThrows(DecodeException.class, () -> reader.getVectorLength(0));
@@ -305,6 +327,27 @@ public class TableReaderTest {
         bytes[Integer.BYTES + 3] = 0x40;
         assertEquals(4, view.get(0));
         assertEquals(2, view.get(1));
+    }
+
+    @Example
+    void an_array_of_bools_reads_every_byte_but_0_as_true_and_its_bytes_as_a_uint8_array() {
+        // A uint8 count of 5, and then bytes other than 1 too
+        var layout = TableLayout.builder().offsetType(OffsetType.UINT8).build();
+        var reader = new TableReader(new byte[] {5, 1, 0, 2, (byte) 0x80, (byte) 0xff}, layout);
+
+        assertArrayEquals(new boolean[] {true, false, true, true, true}, reader.getBoolArray(0));
+        assertArrayEquals(new short[] {1, 0, 2, 0x80, 0xff}, reader.getUint8Array(0));
+        assertEquals(java.nio.ByteBuffer.wrap(new byte[] {1, 0, 2, (byte) 0x80, (byte) 0xff}), reader.getUint8ArrayView(0));
+    }
+
+    @Example
+    void an_empty_array_of_bools_reads_as_no_bools_and_a_count_past_the_end_throws_DecodeException() {
+        // A count of 0, and a count of 3 with two bytes after it
+        var reader = new TableReader(new byte[] {0, 0, 0, 0, 3, 0, 0, 0, 1, 1});
+
+        assertArrayEquals(new boolean[0], reader.getBoolArray(0));
+        var exception = assertThrows(DecodeException.class, () -> reader.getBoolArray(4));
+        assertEquals("Read exceeds the supplied buffer: 3 bytes at 8 of 10", exception.getMessage());
     }
 
     @Example

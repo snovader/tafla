@@ -73,7 +73,8 @@ public class FormatTests
     /// <summary>
     /// Scalars hold their values' little-endian bytes, structs their scalars', arrays and strings their
     /// counts' and their elements', and vectors their counts' and their items' ends', which count from
-    /// the vector's position, after the ends
+    /// the vector's position, after the ends. A vector of strings holds its strings' UTF-8 after its
+    /// ends, one after another, without padding.
     /// </summary>
     [Fact]
     public void ValuesAreLittleEndian() =>
@@ -94,6 +95,20 @@ public class FormatTests
                     else
                     {
                         Assert.Equal(value.Bytes, bytes);
+                    }
+                }
+                else if (field.Field is StringVectorField strings)
+                {
+                    Assert.Equal(Bytes.SlotBytes(strings.Values.Count, width), bytes[..width]);
+
+                    int end = (strings.Values.Count + 1) * width;
+                    for (var index = 0; index < strings.Values.Count; index++)
+                    {
+                        var utf8 = Encoding.UTF8.GetBytes(strings.Values[index]);
+                        Assert.Equal(utf8, bytes[end..(end + utf8.Length)]);
+
+                        end += utf8.Length;
+                        Assert.Equal(Bytes.SlotBytes(end, width), bytes[((index + 1) * width)..((index + 2) * width)]);
                     }
                 }
                 else if (field.Field is VectorField vector)
@@ -211,6 +226,11 @@ public class FormatTests
                     length = end - position;
                     break;
 
+                case StringVectorField strings:
+                    // The count and the ends, and then the strings
+                    length = (strings.Values.Count + 1) * width + strings.Values.Sum(Encoding.UTF8.GetByteCount);
+                    break;
+
                 default:
                     length = ValueOf(field)!.ByteLength(width);
                     break;
@@ -251,6 +271,8 @@ public class FormatTests
             Scalar scalar => new Value(false, 1, 1, Scalars.StructBytes([scalar])),
             Bool value => new Value(false, 1, 1, [value.Value ? (byte)1 : (byte)0]),
             ArrayField array => new Value(true, array.Type.Size(), array.Bits.Count, Scalars.StructBytes(array.Bits.Select(bits => new Scalar(array.Type, bits)))),
+            // A byte of 1 or 0 for each bool, unpadded
+            BoolArray array => new Value(true, 1, array.Values.Count, [.. array.Values.Select(value => value ? (byte)1 : (byte)0)]),
             StringField value => new Value(true, 1, Encoding.UTF8.GetByteCount(value.Value), Encoding.UTF8.GetBytes(value.Value)),
             StructField value => new Value(false, 1, 1, Scalars.StructBytes(value.Scalars)),
             StructArray array => new Value(true, Scalars.StructAlignment(array.Types), array.Items.Count, [.. array.Items.SelectMany(item => Scalars.StructBytes(item))]),

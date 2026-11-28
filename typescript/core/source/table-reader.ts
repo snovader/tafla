@@ -411,6 +411,27 @@ export class TableReader {
     }
 
     /**
+     * Reads the array of bools at `position`, a `uint8` array whose bytes
+     * are true when they aren't 0, into a new array. `getUint8Array()` reads
+     * the same bytes in place. A loop reads them, since `Array.from()` of
+     * the bytes with a function took 21 µs to read 1,000 bools, where the
+     * loop took 1.8 µs, in Node 26.
+     */
+    getBoolArray(position: number): boolean[] {
+        const length = this.#getSize(position);
+        this.#arrayOffset(position, length);
+
+        const bytes = this._bytes;
+        const start = position + this._size;
+        const bools = new Array<boolean>(length);
+        for (let i = 0; i < length; i++) {
+            bools[i] = bytes[start + i] !== 0;
+        }
+
+        return bools;
+    }
+
+    /**
      * Checks that `byteLength` bytes of elements follow the length prefix at
      * `position`.
      *
@@ -673,6 +694,297 @@ export class TableReader {
     }
 
     /**
+     * Reads every string of the vector of strings at `position`, in order.
+     *
+     * A vector of strings is laid out as a vector of tables is: its count,
+     * the end of each string from the vector's position, and then the
+     * strings' UTF-8, one after another, so the ends are read and checked
+     * as `getVector()` reads a vector's.
+     *
+     * The strings lie one after another, so they're read in chunks, as
+     * `#readChunk()` describes: a string of ASCII and the strings after it,
+     * up to {@link MAX_STRING_RUN} bytes, are decoded as one run, which is
+     * sliced at their ends. Each string reads as reading it on its own with
+     * `getStringVectorItem()` would, and a string that wouldn't read throws.
+     * A string of more than 12 characters sliced from a run keeps the run
+     * alive while it's held, as V8 slices strings, which is why a run is
+     * bounded.
+     *
+     * In Node 26, it read lists of 10 to 10,000 strings of ASCII in
+     * 0.23–0.84 times the time that `StringVector.get()` took to read them a
+     * string at a time, lists with a string outside ASCII in every tenth in
+     * 0.75–0.76 times from 100 strings and 1.10 for 10, and lists outside
+     * ASCII in 0.94–1.00 times: `yarn bench:lists`, which
+     * `benchmarks/README.md` describes.
+     *
+     * @throws {DecodeError} If the count, the ends or the strings don't lie
+     * within the bytes, a string ends before it starts, or one isn't valid
+     * UTF-8.
+     */
+    getStringVector(position: number): string[] {
+        // Checking the ends bounds the count before allocating for it
+        const count = this.getVectorLength(position);
+        const strings = new Array<string>(count);
+
+        let index = 0;
+        let start = (count + 1) * this._size;
+        while (index < count) {
+            index = this.#readChunk(position, count, index, start, strings);
+            start = this.#getSize(position + index * this._size);
+        }
+
+        return strings;
+    }
+
+    /**
+     * Reads a chunk of the vector of strings at `position`, from string
+     * `first`, which starts at `start`, into `strings`, and returns the index
+     * of the string after it.
+     *
+     * Strings are read on their own until two in a row are ASCII. The
+     * strings after those are decoded in runs of at most
+     * {@link MAX_STRING_RUN} bytes, when a run is more than
+     * {@link MIN_STRING_RUN} bytes. A run of ASCII is sliced at every end,
+     * and the next run follows it at once, and any other run is sliced by
+     * `#sliceMixed()`, which ends the chunk. An end that lies before the end
+     * of the string before it, or past the bytes, ends the chunk before its
+     * string, which the next chunk reads on its own, and throws for.
+     */
+    #readChunk(
+        position: number,
+        count: number,
+        first: number,
+        start: number,
+        strings: string[]
+    ): number {
+        const size = this._size;
+
+        // Two strings of ASCII in a row, whose characters are a byte each,
+        // make the strings after them likely ASCII too. Reading the strings
+        // before them here, rather than in a chunk each, read lists outside
+        // ASCII in 0.94–1.00 times the time that reading each string took,
+        // rather than 1.01–1.05, in Node 26.
+        let index = first;
+        let end = start;
+        let ascii = 0;
+        while (ascii < 2) {
+            if (index === count) {
+                return index;
+            }
+
+            const next = this.#getSize(position + (index + 1) * size);
+            const string = this.#itemString(
+                this.#itemOffset(position, end, next),
+                next - end
+            );
+            strings[index] = string;
+            index++;
+
+            // Fewer characters than bytes, when any character isn't ASCII
+            ascii = string.length === next - end ? ascii + 1 : 0;
+            end = next;
+        }
+
+        for (;;) {
+            // The strings that the run holds, from `index` up to `last`
+            const runStart = end;
+            let last = index;
+            while (last < count) {
+                const next = this.#getSize(position + (last + 1) * size);
+                if (!(end <= next && next - runStart <= MAX_STRING_RUN)) {
+                    break;
+                }
+
+                end = next;
+                last++;
+            }
+            if (
+                !(end - runStart > MIN_STRING_RUN) ||
+                !(position + end <= this._bytes.length)
+            ) {
+                return index;
+            }
+
+            const run = this.#decodeRun(position + runStart, end - runStart);
+            if (run === undefined) {
+                // Not valid UTF-8, which reading each string finds
+                return index;
+            }
+
+            // As many characters as bytes, when every character is ASCII
+            if (run.length !== end - runStart) {
+                return this.#sliceMixed(
+                    position,
+                    index,
+                    last,
+                    runStart,
+                    run,
+                    strings
+                );
+            }
+
+            this.#sliceAscii(position, index, last, runStart, run, strings);
+            if (last === count) {
+                return last;
+            }
+            index = last;
+        }
+    }
+
+    /**
+     * Reads strings `first` to `last - 1` of the vector of strings at
+     * `position`, which start at `start` and are decoded as `run`, a run of
+     * ASCII, into `strings`, by slicing it at their ends
+     */
+    #sliceAscii(
+        position: number,
+        first: number,
+        last: number,
+        start: number,
+        run: string,
+        strings: string[]
+    ): void {
+        let from = start;
+        for (let i = first; i < last; i++) {
+            const end = this.#getSize(position + (i + 1) * this._size);
+            strings[i] = run.slice(from - start, end - start);
+            from = end;
+        }
+    }
+
+    /**
+     * Reads strings `first` to `last - 1` of the vector of strings at
+     * `position`, which start at `start` and are decoded as `run`, a run
+     * with characters outside ASCII, into `strings`, and returns the index of
+     * the string after the last that it read.
+     *
+     * A string whose characters in the run are all ASCII is sliced from it,
+     * since its bytes are then those characters, a byte each. Any other
+     * string is read on its own, which checks it as UTF-8 and gives the
+     * length of its characters in the run, so that the strings after it are
+     * found there too. Two strings in a row read on their own end the
+     * strings that it reads, which spares the rest of a list outside ASCII
+     * the search of the run.
+     */
+    #sliceMixed(
+        position: number,
+        first: number,
+        last: number,
+        start: number,
+        run: string,
+        strings: string[]
+    ): number {
+        // The bytes of the strings read so far, less their characters
+        let wide = 0;
+        let nonAscii = nonAsciiFrom(run, 0);
+        let alone = false;
+
+        let from = start;
+        for (let i = first; i < last; i++) {
+            const end = this.#getSize(position + (i + 1) * this._size);
+            const length = end - from;
+            const at = from - start - wide;
+
+            if (at + length <= nonAscii) {
+                strings[i] = run.slice(at, at + length);
+                alone = false;
+            } else {
+                if (alone) {
+                    return i;
+                }
+
+                const string = this.#itemString(position + from, length);
+                strings[i] = string;
+                wide += length - string.length;
+                nonAscii = nonAsciiFrom(run, at + string.length);
+                alone = true;
+            }
+
+            from = end;
+        }
+
+        return last;
+    }
+
+    /**
+     * Decodes the `length` bytes of UTF-8 at `start`, which lie within the
+     * bytes, as one string, or returns `undefined` when they aren't valid
+     * UTF-8
+     */
+    #decodeRun(start: number, length: number): string | undefined {
+        const bytes = new Uint8Array(
+            this._view.buffer,
+            this._view.byteOffset + start,
+            length
+        );
+        try {
+            return decode(bytes);
+        } catch {
+            return undefined;
+        }
+    }
+
+    /**
+     * Reads string `index` of the vector of strings at `position`, from its
+     * end and the end of the string before it, without reading any other
+     * string. It takes the vector's `count`, which the caller has read with
+     * `getVectorLength()`, as `getVectorItemOffset()` does, so that reading
+     * many strings, as a `StringVector` does, reads and checks it once.
+     *
+     * @throws {RangeError} If `index` isn't an integer in [0, `count`).
+     * @throws {DecodeError} If the string's ends or the string don't lie
+     * within the bytes, it ends before it starts, or it isn't valid UTF-8.
+     */
+    getStringVectorItem(
+        position: number,
+        count: number,
+        index: number
+    ): string {
+        const start = this.getVectorItemOffset(position, count, index);
+        // The end that getVectorItemOffset() read, and checked against the
+        // start and the bytes
+        const end =
+            position + this.#getSize(position + (index + 1) * this._size);
+
+        return this.#itemString(start, end - start);
+    }
+
+    /**
+     * Reads the `length` bytes of UTF-8 at `start`, which lie within the
+     * bytes, as `getString()` reads a string's after its count: short ASCII
+     * a byte at a time, and any other out of line
+     */
+    #itemString(start: number, length: number): string {
+        const ascii = decodeShortAscii(this._bytes, start, length);
+        if (ascii !== undefined) {
+            return ascii;
+        }
+
+        return this.#decodeItem(start, length);
+    }
+
+    /** `#itemString()` of a string that isn't short ASCII */
+    #decodeItem(start: number, length: number): string {
+        const short = decodeShortUtf8(this._bytes, start, length);
+        if (short !== undefined) {
+            return short;
+        }
+
+        const bytes = new Uint8Array(
+            this._view.buffer,
+            this._view.byteOffset + start,
+            length
+        );
+        try {
+            return decode(bytes);
+        } catch (error) {
+            throw new DecodeError(`The string at ${start} isn't valid UTF-8`, {
+                cause: error
+            });
+        }
+    }
+
+    /**
      * Checks that a vector item, from `start` to `end` from the vector's
      * position, starts no later than it ends and lies within the bytes. The
      * vector's position and the ends are integers, as in
@@ -778,6 +1090,37 @@ export class TableReader {
             throw readError(position, size, this._bytes);
         }
     }
+}
+
+/**
+ * The fewest bytes of strings after a chunk's first that `getStringVector()`
+ * decodes as one run: decoding takes about 85 ns a call, where a short string
+ * of ASCII takes 20–45 ns to read on its own
+ */
+const MIN_STRING_RUN = 32;
+
+/**
+ * The most bytes of a run of strings that `getStringVector()` decodes at
+ * once, which bounds what a string sliced from it keeps alive. In Node 26, a
+ * string kept from 10,000 strings of 256 characters of ASCII kept 23 KiB
+ * alive so, against 2.5 MB unbounded, and took 1.13 times as long to read
+ * as with runs of 64 KiB, which kept 67 KiB; strings of 8 and 16 characters
+ * took as long with either.
+ */
+const MAX_STRING_RUN = 16_384;
+
+/** A UTF-16 code unit outside ASCII */
+const NON_ASCII = /[\u0080-\uffff]/g;
+
+/**
+ * The index of the first code unit outside ASCII in `string` from `from`,
+ * or its length when there's none
+ */
+function nonAsciiFrom(string: string, from: number): number {
+    NON_ASCII.lastIndex = from;
+    const match = NON_ASCII.exec(string);
+
+    return match === null ? string.length : match.index;
 }
 
 /** Reads an offset of a layout whose offsets are narrower than uint32's */

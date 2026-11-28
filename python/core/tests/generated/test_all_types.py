@@ -201,6 +201,31 @@ class TestTablesBuiltByHand(unittest.TestCase):
 
         self.assertIs(Scalars(data).bool_(), True)
 
+    @SETTINGS
+    @given(arrays_fields, integers(2, 0xFF))
+    def test_reads_an_array_of_bools_bytes_in_place_and_any_byte_but_0_as_true(
+        self, fields: ArraysFields, byte: int
+    ) -> None:
+        """The getter of an array of bools returns its bytes in place, as a
+        uint8 array's does, and fields(), field_values() and read_values()
+        read them as bools, true wherever a byte isn't 0"""
+        fields["bool_"] = [True, False, True]
+        data = bytearray(Arrays.serialize(**fields))
+        # The bools are Arrays' field 10, in a table of the default layout,
+        # whose uint32 count comes first
+        position = TableReader(data, TableLayout.DEFAULT).root_offset(10)
+        data[position + 4] = byte
+
+        arrays = Arrays(data)
+        self.assertEqual(arrays.bool_().tolist(), [byte, 0, 1])
+        for read in [
+            arrays.fields()["bool_"],
+            arrays.field_values()[10],
+            Arrays.read_values(data)[10],
+        ]:
+            # By their names, which tell bools from ints
+            self.assertEqual([repr(each) for each in read], ["True", "False", "True"])
+
 
 class TestDecodeErrors(unittest.TestCase):
     @SETTINGS

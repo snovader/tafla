@@ -73,6 +73,36 @@ class TestTableReader(unittest.TestCase):
         self.assertEqual(read.tolist(), [1, -2])
         self.assertIsNot(read.obj, serialized)
 
+    def test_reads_bools_from_their_bytes_true_wherever_a_byte_isnt_0(self) -> None:
+        builder = TableBuilder(3)
+        builder.set_bool_array([True, False, True])
+        builder.set_uint8_array(bytes([2, 0, 0x80, 0xFF, 1]))
+        builder.set_bool_array([])
+        reader = builder.finalize()
+
+        self.assertEqual(
+            reader.get_bool_array(reader.root_offset(0)), [True, False, True]
+        )
+        self.assertEqual(
+            reader.get_bool_array(reader.root_offset(1)),
+            [True, False, True, True, True],
+        )
+        self.assertEqual(reader.get_bool_array(reader.root_offset(2)), [])
+        # The same bytes in place, as an array of bools is a uint8 array
+        self.assertEqual(
+            bytes(reader.get_uint8_array(reader.root_offset(0))), b"\x01\x00\x01"
+        )
+
+    def test_reads_a_new_list_of_bools_each_time(self) -> None:
+        builder = TableBuilder(1)
+        builder.set_bool_array([True])
+        reader = builder.finalize()
+
+        bools = reader.get_bool_array(reader.root_offset(0))
+        bools.append(False)
+
+        self.assertEqual(reader.get_bool_array(reader.root_offset(0)), [True])
+
     def test_rejects_struct_sizes_less_than_1(self) -> None:
         reader = TableReader(bytes(16))
 

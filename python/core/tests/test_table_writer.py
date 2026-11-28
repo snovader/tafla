@@ -16,6 +16,7 @@ from tests.tables import (
     OffsetType,
     Placement,
     build_table,
+    is_typed_array,
     nested_in_place,
     offset_size_of,
     read_table,
@@ -54,7 +55,7 @@ def byte_swapped_arrays(data: memoryview[int], table: Description) -> bytes:
 
     def swap(placement: Placement) -> None:
         kind = placement.field["type"]
-        if not kind.endswith("[]") or kind == "struct[]":
+        if not is_typed_array(kind):
             return
 
         size = ELEMENT_SIZES[kind.removesuffix("[]")]
@@ -300,6 +301,13 @@ class Unconvertible:
         return f"Unconvertible({self.error.__name__})"
 
 
+class Truthless:
+    """An object whose truth, as ``bool()`` takes it, raises"""
+
+    def __bool__(self) -> bool:
+        raise KeyError("no truth")
+
+
 class TestValues(unittest.TestCase):
     def test_raises_the_errors_that_table_builder_raises_for_values_it_cant_write(
         self,
@@ -401,6 +409,41 @@ class TestValues(unittest.TestCase):
                     self.assertEqual(
                         bytes(writer.bytes()), bytes(TableWriter(1).bytes())
                     )
+
+    def test_writes_a_byte_of_1_or_0_for_each_values_truth_as_table_builder_does(
+        self,
+    ) -> None:
+        # Values of any type, which the setters take as bool() takes them
+        values: list[Any] = [True, False, 2, 0, None, "x", [], 0.5]
+        # The field's offset, then the count and a byte for each value
+        expected = bytes([4, 0, 0, 0, 8, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1])
+
+        for name, convert in [("list", list), ("tuple", tuple), ("iterator", iter)]:
+            with self.subTest(values=name):
+                builder = TableBuilder(1)
+                builder.set_bool_array(convert(values))
+                writer = TableWriter(1)
+                writer.set_bool_array(0, convert(values))
+
+                self.assertEqual(bytes(builder.bytes()), expected)
+                self.assertEqual(bytes(writer.bytes()), expected)
+
+    def test_raises_the_error_of_a_value_whose_truth_raises_and_writes_nothing(
+        self,
+    ) -> None:
+        values: list[Any] = [True, Truthless()]
+
+        builder = TableBuilder(1)
+        with self.assertRaisesRegex(KeyError, "no truth"):
+            builder.set_bool_array(values)
+        writer = TableWriter(1)
+        with self.assertRaisesRegex(KeyError, "no truth"):
+            writer.set_bool_array(0, values)
+
+        # Neither recorded nor wrote any of the field
+        builder.set_bool_array([])
+        self.assertEqual(bytes(builder.bytes()), bytes([4, 0, 0, 0, 0, 0, 0, 0]))
+        self.assertEqual(bytes(writer.bytes()), bytes(4))
 
     def test_raises_type_error_for_a_struct_that_isnt_c_contiguous_as_table_builder_does(
         self,

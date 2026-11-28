@@ -211,6 +211,13 @@ public struct TableBuilder: Sendable {
         try setArray(values)
     }
 
+    /// Sets an array field of bools, which is written as a `uint8` array, 1
+    /// for each true value and 0 for each false one, and throws as
+    /// ``setInt8(_:)`` does.
+    public mutating func setBoolArray(_ values: [Bool]) throws(BuildError) {
+        try add(.array(.bool(values)))
+    }
+
     /// Sets the array field of `T`, as the setter of its type does
     public mutating func setArray<T: ArrayElement>(_ values: [T]) throws(BuildError) {
         try add(.array(Elements(values)))
@@ -220,6 +227,21 @@ public struct TableBuilder: Sendable {
     /// valid. Throws as ``setInt8(_:)`` does.
     public mutating func setString(_ value: String) throws(BuildError) {
         try add(.string(value, utf8Count: value.utf8.count))
+    }
+
+    /// Sets a vector of strings, each as its UTF-8, which a `String` always
+    /// holds valid, after the end of each, which lets readers find any string
+    /// without reading the others. It takes no more bytes for each string
+    /// than the end of it, where a vector of tables of one string takes each
+    /// table's offset and the string's count too. Throws as ``setInt8(_:)``
+    /// does.
+    public mutating func setStringVector(_ strings: [String]) throws(BuildError) {
+        var utf8Count: UInt64 = 0
+        for string in strings {
+            utf8Count = saturating(utf8Count, plus: UInt64(string.utf8.count))
+        }
+
+        try add(.stringVector(strings, utf8Count: utf8Count))
     }
 
     /// Sets a struct field from its bytes: its scalars, little-endian, one

@@ -1,0 +1,3 @@
+enum Color (sized): uint8 {
+    red = 0;
+}

@@ -11,6 +11,11 @@
 //! of its parent, since its length isn't written, and a vector item from the
 //! bytes that `Vector` iterates over. The scalars of structs are read at their
 //! offsets in the bytes that `get_struct()` and `get_struct_array()` return.
+//!
+//! A vector of strings is read whole with `StringVector::to_vec()`, and each
+//! of its strings is also found from its ends alone, with
+//! `StringVector::get()` and `TableReader::get_str_vector_item()`, and
+//! compared with the strings that iterating finds.
 
 use tafla::{DecodeError, TableLayout, TableReader};
 
@@ -31,8 +36,12 @@ pub enum ReadError {
         described: usize,
     },
     /// `Vector::get()` or `Vector::get_in_place()` found item `index` other
-    /// than iterating did
+    /// than iterating did, or `StringVector::get()` or
+    /// `TableReader::get_str_vector_item()` found string `index` so
     Get { index: usize },
+    /// `StringVector::to_vec()` read other strings, or another error, than
+    /// reading each string did
+    Strings,
 }
 
 impl From<DecodeError> for ReadError {
@@ -154,6 +163,7 @@ impl<const V: bool> Reader<'_, V> {
             Field::U64Array(_) => Field::U64Array(reader.get_u64_array(position)?.to_vec()),
             Field::F32Array(_) => Field::F32Array(reader.get_f32_array(position)?.to_vec()),
             Field::F64Array(_) => Field::F64Array(reader.get_f64_array(position)?.to_vec()),
+            Field::BoolArray(_) => Field::BoolArray(reader.get_bool_array(position)?),
             Field::String(_) => Field::String(reader.get_str(position)?.to_owned()),
             Field::Struct(scalars) => {
                 let size = struct_size(struct_types(scalars));
@@ -182,7 +192,35 @@ impl<const V: bool> Reader<'_, V> {
                 alignment: *alignment,
             },
             Field::Vector(items) => Field::Vector(self.read_vector(position, items)?),
+            Field::StringVector(_) => Field::StringVector(self.read_strings(position)?),
         })
+    }
+
+    /// Reads a vector of strings whole, after checking that finding each
+    /// from its ends alone, and none past the last, finds what iterating
+    /// finds, and that reading them whole reads what reading each does
+    fn read_strings(&self, position: usize) -> Result<Vec<String>, ReadError> {
+        let reader = &self.0;
+        let vector = reader.get_str_vector(position)?;
+        let count = vector.len();
+        let iterated: Vec<_> = vector.iter().collect();
+
+        for index in 0..=iterated.len() {
+            let string = iterated.get(index).cloned();
+            if vector.get(index) != string
+                || reader.get_str_vector_item(position, count, index) != string
+            {
+                return Err(ReadError::Get { index });
+            }
+        }
+
+        let each = iterated.into_iter().collect::<Result<Vec<_>, _>>();
+        let all = vector.to_vec();
+        if all != each {
+            return Err(ReadError::Strings);
+        }
+
+        Ok(all?.into_iter().map(str::to_owned).collect())
     }
 
     /// Reads a table nested with `set_table()`

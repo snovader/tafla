@@ -52,7 +52,8 @@ func addSeeds(f *testing.F) {
 
 // FuzzTableReader reads arbitrary bytes with every getter of TableReader, at
 // every position and past the end, in every offset type and header, and
-// reads every array, struct array and vector that it finds there. Each read
+// reads every array, struct array, vector and vector of strings that it
+// finds there. Each read
 // must return the bytes or value that lie where the format puts them, from
 // the input, exactly when they lie within it, and the decode error otherwise.
 func FuzzTableReader(f *testing.F) {
@@ -206,6 +207,7 @@ func checkPosition(t *testing.T, reader tafla.TableReader, position int) {
 	}
 
 	checkVector(t, reader, position)
+	checkStringVector(t, reader, position)
 }
 
 func checkScalars(t *testing.T, reader tafla.TableReader, position int) {
@@ -259,6 +261,32 @@ func checkArrays(t *testing.T, reader tafla.TableReader, position int) {
 	checkArray(t, reader, position, tafla.TableReader.GetUint64Array, func(v uint64) uint64 { return v })
 	checkArray(t, reader, position, tafla.TableReader.GetFloat32Array, func(v float32) uint64 { return uint64(math.Float32bits(v)) })
 	checkArray(t, reader, position, tafla.TableReader.GetFloat64Array, math.Float64bits)
+	checkBoolArray(t, reader, position)
+}
+
+// checkBoolArray checks that an array of bools reads a bool for each of its
+// bytes, true where the byte isn't 0. Every bool is compared, since the read
+// reads them all.
+func checkBoolArray(t *testing.T, reader tafla.TableReader, position int) {
+	bytes := reader.Bytes()
+	expected, ok := arrayAt(bytes, reader.Layout().OffsetType(), position, 1)
+
+	bools, err := reader.GetBoolArray(position)
+	switch {
+	case err != nil && ok:
+		t.Fatalf("failed with %v rather than reading % x", err, expected)
+	case err != nil:
+		checkError(t, bytes, err)
+		return
+	case !ok || len(bools) != len(expected):
+		t.Fatalf("read %d bools from % x", len(bools), expected)
+	}
+
+	for index, value := range expected {
+		if bools[index] != (value != 0) {
+			t.Fatalf("bool %d is %v, of the byte %d", index, bools[index], value)
+		}
+	}
 }
 
 // checkArray checks that every way of reading an array's elements reads the
@@ -463,6 +491,107 @@ func checkItem(t *testing.T, bytes []byte, position int, offsetType tafla.Offset
 		}
 	} else if !sameError(readInPlace.err, read.err) {
 		t.Fatalf("item %d failed in place with %v, and with %v", index, readInPlace.err, read.err)
+	}
+}
+
+// checkStringVector reads the vector of strings at position, its first
+// checked strings and its last by index, and every string at once when it
+// has no more than checked, which must read the strings that reading each
+// reads, or fail where the first of them fails
+func checkStringVector(t *testing.T, reader tafla.TableReader, position int) {
+	bytes := reader.Bytes()
+	offsetType := reader.Layout().OffsetType()
+	width := offsetType.Size()
+
+	// A count, and an end for each string after it, within the bytes
+	count, ok := slotAt(bytes, position, offsetType)
+	ok = ok && uint64(position)+uint64(width)*(uint64(count)+1) <= uint64(len(bytes))
+
+	vector, err := reader.GetStringVector(position)
+	if err != nil {
+		if ok {
+			t.Fatalf("a vector of strings at %d: %v", position, err)
+		}
+		checkError(t, bytes, err)
+		return
+	}
+	if !ok || vector.Len() != int(count) {
+		t.Fatalf("a vector of strings at %d of %d strings", position, vector.Len())
+	}
+
+	length := vector.Len()
+	indices := []int{}
+	for index := range min(length, checked) {
+		indices = append(indices, index)
+	}
+	if length > 0 {
+		indices = append(indices, length-1)
+	}
+	for _, index := range indices {
+		value, err := vector.Get(index)
+		checkString(t, bytes, position, offsetType, index, value, err)
+	}
+
+	if length > checked {
+		return
+	}
+	strings, err := vector.Strings()
+	for index := range length {
+		value, valueErr := vector.Get(index)
+		if valueErr != nil {
+			if !sameError(err, valueErr) {
+				t.Fatalf("read every string with %v where string %d fails with %v", err, index, valueErr)
+			}
+			return
+		}
+		if err == nil && strings[index] != value {
+			t.Fatalf("read string %d as %q among every string, and as %q", index, strings[index], value)
+		}
+	}
+	if err != nil || len(strings) != length {
+		t.Fatalf("read %d of %d strings, %v", len(strings), length, err)
+	}
+}
+
+// checkString checks string index of the vector of strings at position,
+// which starts where the one before it ends, and the first after the count
+// and the ends, and must be valid UTF-8 on its own
+func checkString(t *testing.T, bytes []byte, position int, offsetType tafla.OffsetType, index int, value string, err error) {
+	width := offsetType.Size()
+	count, _ := slotAt(bytes, position, offsetType)
+	endOf := func(index int) uint64 {
+		end, _ := slotAt(bytes, position+(index+1)*width, offsetType)
+		return uint64(end)
+	}
+
+	// In uint64, which holds every end, past any 32-bit int too
+	start := (uint64(count) + 1) * uint64(width)
+	if index > 0 {
+		start = endOf(index - 1)
+	}
+	end := endOf(index)
+	rest := uint64(len(bytes) - position)
+	ok := start <= end && end <= rest && utf8.Valid(bytes[position+int(start):position+int(end)])
+
+	var decodeError *tafla.DecodeError
+	switch {
+	case err == nil:
+		if !ok {
+			t.Fatalf("read string %d as %q, from %d to %d", index, value, start, end)
+		}
+		expected := bytes[position+int(start) : position+int(end)]
+		if len(value) != len(expected) || (len(value) > 0 && unsafe.StringData(value) != &expected[0]) {
+			t.Fatalf("read string %d as %q rather than the bytes % x", index, value, expected)
+		}
+	case errors.As(err, &decodeError) && decodeError.Kind == tafla.ItemEndsBeforeStart:
+		if start <= end {
+			t.Fatalf("string %d from %d to %d: %v", index, start, end, err)
+		}
+	default:
+		if ok {
+			t.Fatalf("string %d: %v", index, err)
+		}
+		checkError(t, bytes, err)
 	}
 }
 

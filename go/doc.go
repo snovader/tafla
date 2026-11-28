@@ -1,6 +1,6 @@
-// Package tafla writes and reads binary tables of scalars, strings, arrays,
-// structs and nested tables, in tafla's format, which the TypeScript, Python,
-// Java and Rust runtimes write and read too.
+// Package tafla writes and reads binary tables of scalars, strings, vectors
+// of strings, arrays, structs and nested tables, in tafla's format, which the
+// TypeScript, Python, Java and Rust runtimes write and read too.
 //
 // [TableBuilder] writes a table at its exact size, copying arrays in bulk,
 // and [TableReader] reads fields back by offset, sharing arrays, strings and
@@ -35,9 +35,17 @@
 //     are padded so that their elements are aligned to their size from the
 //     table's start, and arrays of structs to the size of their largest
 //     scalar.
+//   - An array of bools is a uint8 array of 1 and 0, which
+//     [TableBuilder.SetBoolArray] writes from bools and
+//     [TableReader.GetBoolArray] reads into new bools, true where a byte
+//     isn't 0. [TableReader.GetUint8Array] reads its bytes in place.
 //   - A vector starts with its item count, then the end of each item, counted
 //     from the vector's start, and then the items, so [Vector.Get] finds any
 //     item from two ends without reading the others.
+//   - A vector of strings is laid out as a vector is, with its strings' UTF-8
+//     as its items, one after another without padding. [StringVector.Get]
+//     finds any string from two ends, and [StringVector.Strings] reads every
+//     string. Each string must be valid UTF-8 on its own.
 //
 // SPEC.md, at the root of the repository, describes the format in full.
 //
@@ -58,7 +66,7 @@
 // they're aligned to their type in memory, as TableBuilder aligns them
 // within an aligned table. A slice that Go allocates for a table usually
 // is, though Go doesn't promise it, and a subslice or a slice from
-// elsewhere may not be. A string
+// elsewhere may not be. A string, and each string of a [StringVector],
 // shares the bytes too, which Go's strings otherwise don't, so the bytes
 // must not change while it's in use. Byte arrays, structs and vector items
 // are slices of the bytes.
@@ -83,8 +91,8 @@
 // one too long for its offset type, and leave the builder as it was.
 //
 // Functions panic only for mistakes of the code that calls them, which no
-// bytes can cause: an index past an [ArrayView]'s or a [Vector]'s length, as
-// indexing a slice does, an offset type or alignment that isn't one of the
+// bytes can cause: an index past an [ArrayView]'s, a [Vector]'s or a
+// [StringVector]'s length, as indexing a slice does, an offset type or alignment that isn't one of the
 // constants, a negative number of fields or of a vector's items, a negative
 // field index or struct size, the version of a layout without one, or a nil
 // nested table. A [TableWriter] given other fields than its

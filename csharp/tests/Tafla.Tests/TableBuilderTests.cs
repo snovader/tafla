@@ -100,11 +100,13 @@ public class TableBuilderTests
         {
             () => builder.SetUInt8Array(new byte[length]),
             () => builder.SetFloat64Array(new double[length / 8]),
+            () => builder.SetBoolArray(new bool[length]),
             () => builder.SetString(new string('é', length / 2)),
             () => builder.SetStruct(new byte[length]),
             () => builder.SetStructArray(new byte[length], 4, 4),
             () => builder.SetTable(new byte[length]),
             () => builder.SetVector(new byte[length / 2], new byte[length / 2]),
+            () => builder.SetStringVector(new string('a', length / 2), new string('é', length / 4)),
         };
 
         foreach (var set in tooLong)
@@ -750,6 +752,7 @@ public class TableBuilderTests
         Assert.Throws<ArgumentOutOfRangeException>(() => builder.SetStructArray(new byte[4], 0, 1));
         Assert.Throws<ArgumentOutOfRangeException>(() => builder.SetStructArray(new byte[4], 4, 0));
         Assert.Throws<ArgumentNullException>(() => builder.SetString(null!));
+        Assert.Throws<ArgumentNullException>(() => builder.SetStringVector("a", null!));
         Assert.Throws<ArgumentNullException>(() => builder.SetTable((TableBuilder)null!));
         Assert.Throws<ArgumentNullException>(() => builder.SetVector((TableBuilder)null!));
         Assert.Throws<ArgumentNullException>(() => builder.SetVector((byte[])null!));

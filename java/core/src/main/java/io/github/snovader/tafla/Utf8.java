@@ -11,11 +11,14 @@ final class Utf8 {
     /**
      * Strings of fewer {@code char}s than this are sized and written a {@code char} at a time, in
      * place, without allocating. Longer ones are encoded once, with {@link String#getBytes}, which
-     * the JDK vectorizes, and copied. On JDK 26, writing a {@code Point} whose string had 64 ASCII
-     * {@code char}s took 35 ns a {@code char} at a time and 26 ns encoded once, and 4,096 took
-     * 1,950 ns and 280 ns; 32 took 21 ns and 24 ns, with 200 more bytes allocated.
+     * the JDK vectorizes, and copied. In the benchmarks' strings suite on JDK 25, a table of 16
+     * strings of 32 {@code char}s took 0.41 µs to write a {@code char} at a time and 0.23 µs
+     * encoded once if they were ASCII, and 0.94 and 0.87 µs if each {@code char} took 3 bytes.
+     * Shorter strings with characters of 2 to 4 bytes are faster a {@code char} at a time: 8
+     * {@code char}s with one of 2 bytes took 0.24 and 0.38 µs, and 16 with a surrogate pair 0.48
+     * and 0.53 µs, though 16 of ASCII took 0.27 and 0.19 µs.
      */
-    static final int SHORT_LENGTH = 64;
+    static final int SHORT_LENGTH = 32;
 
     /**
      * Encodes {@code string}, with lone surrogates replaced by U+FFFD, as TypeScript's
@@ -24,7 +27,26 @@ final class Utf8 {
     static byte[] encode(String string) {
         // Only a lone surrogate needs replacing; getBytes encodes a pair as its code point. In a
         // string of Latin-1, whose chars can't be surrogates, the JIT drops this loop.
-        for (int i = 0; i < string.length(); i++) {
+        //
+        // The loop calls nothing but charAt(). Generated code inlines this method once for each
+        // string field, and C2 stops inlining once a method's graph passes 18,000 nodes, so in a
+        // large method one copy may keep its calls, made for every char. On JDK 27, 16 fields of
+        // 1,024 chars took 5.3 us rather than 1.5 in most JVMs when the loop also called length()
+        // and isSurrogate(); with charAt() alone, such a copy is rarer and costs 3.6 us.
+        var length = string.length();
+        for (int i = 0; i < length; i++) {
+            var unit = string.charAt(i);
+            if (unit >= Character.MIN_SURROGATE && unit <= Character.MAX_SURROGATE) {
+                return encodeFromSurrogate(string, i);
+            }
+        }
+
+        return string.getBytes(StandardCharsets.UTF_8);
+    }
+
+    /** {@link #encode}s a string whose first surrogate is at {@code start} */
+    private static byte[] encodeFromSurrogate(String string, int start) {
+        for (int i = start; i < string.length(); i++) {
             var unit = string.charAt(i);
             if (!Character.isSurrogate(unit)) {
                 continue;

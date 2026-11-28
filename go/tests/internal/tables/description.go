@@ -60,7 +60,13 @@ type (
 	Uint64Array  []uint64
 	Float32Array []float32
 	Float64Array []float64
-	String       string
+	// BoolArray is an array of bools, which the runtimes write as a uint8
+	// array of 1 and 0, and read as true where a byte isn't 0.
+	BoolArray []bool
+	String    string
+	// StringVector is a vector of strings: a count, the end of each string
+	// and the strings' UTF-8, one after another.
+	StringVector []string
 	// Struct is a struct of scalar fields, one after another.
 	Struct []Field
 	// StructArray is an array of structs of scalars of Types, as the scalar
@@ -99,7 +105,9 @@ func (Int64Array) isField()   {}
 func (Uint64Array) isField()  {}
 func (Float32Array) isField() {}
 func (Float64Array) isField() {}
+func (BoolArray) isField()    {}
 func (String) isField()       {}
+func (StringVector) isField() {}
 func (Struct) isField()       {}
 func (StructArray) isField()  {}
 func (TableField) isField()   {}
@@ -367,6 +375,12 @@ func EqualFields(a, b Field) bool {
 		return ok && equalSlices(a, b, equal)
 	case Uint64Array:
 		b, ok := b.(Uint64Array)
+		return ok && equalSlices(a, b, equal)
+	case BoolArray:
+		b, ok := b.(BoolArray)
+		return ok && equalSlices(a, b, equal)
+	case StringVector:
+		b, ok := b.(StringVector)
 		return ok && equalSlices(a, b, equal)
 	case Struct:
 		b, ok := b.(Struct)

@@ -26,6 +26,7 @@ import type {
 import {
     array,
     bool,
+    boolArray,
     message,
     scalar,
     string,
@@ -69,8 +70,8 @@ type Segment = typescript.Segment | javascript.Segment;
 type Point = typescript.Point | javascript.Point;
 
 /**
- * The scalar types in the order of the fields of `Arrays`, and of `Scalars`
- * and `Packed`, which end with a bool
+ * The scalar types in the order of the fields of `Arrays`, `Scalars` and
+ * `Packed`, which end with a bool or an array of bools
  */
 const SCALAR_TYPES = [
     'int8',
@@ -116,7 +117,9 @@ export function readArrays(arrays: Arrays): ArraysFields {
         int64: Array.from(arrays.int64()),
         uint64: Array.from(arrays.uint64()),
         float32: Array.from(arrays.float32()),
-        float64: Array.from(arrays.float64())
+        float64: Array.from(arrays.float64()),
+        // The bytes in place, true where they aren't 0
+        bool: Array.from(arrays.bool(), byte => byte !== 0)
     };
 }
 
@@ -265,10 +268,10 @@ export function describeScalars(fields: ScalarsFields): TableDescription {
 }
 
 export function describeArrays(fields: ArraysFields): TableDescription {
-    return message(
-        DEFAULT_LAYOUT,
-        SCALAR_TYPES.map(type => array(type, fields[type]))
-    );
+    return message(DEFAULT_LAYOUT, [
+        ...SCALAR_TYPES.map(type => array(type, fields[type])),
+        boolArray(fields.bool)
+    ]);
 }
 
 export function describeNested({
@@ -430,7 +433,8 @@ export const ARRAYS_FIELDS: fc.Arbitrary<ArraysFields> = fc.record({
     int64: arrays(SCALAR_VALUES.int64),
     uint64: arrays(SCALAR_VALUES.uint64),
     float32: arrays(SCALAR_VALUES.float32),
-    float64: arrays(SCALAR_VALUES.float64)
+    float64: arrays(SCALAR_VALUES.float64),
+    bool: arrays(fc.boolean())
 });
 
 /** Trees of vectors of trees, which are empty at the deepest level */

@@ -50,7 +50,33 @@ first commits, for code built from its source before the release.
   version's.
 - A `bool` scalar, one byte that writers write as 0 or 1 and readers read as
   true when it isn't 0, in tables and structs, which tafla-gen generates as
-  each language's boolean. Arrays of bools aren't supported.
+  each language's boolean, and arrays of bools, `[bool]`, which are `uint8`
+  arrays of 0 and 1, whose getter returns the bytes and whose fields hold
+  the language's bools.
+- Enums, such as `enum Priority: int8 { low = -1; high = 1; }`, which name
+  integers of an integer type, `int8` to `uint64`, and are stored as it, in
+  fields, structs and arrays, without changing the format. A field of an
+  enum reads any integer of its type, named or not, as cheaply as the
+  integer, and an array of an enum is the view in place of an array of its
+  integer. tafla-gen declares each enum in every target, as a frozen object
+  and a type alias in TypeScript and JavaScript, an `IntEnum` in Python, a
+  class of constants in Java, a newtype of the integer with constants in
+  Rust, a defined type and constants in Go, an `enum class` in C++, a
+  `RawRepresentable` struct in Swift and an `enum` in C#, and checks that
+  each value fits the type and has a name and an integer of its own, and
+  that an enum has no more values than the constant pool of its Java class
+  holds.
+- `[string]`, a vector of strings, which `SPEC.md` adds to the format, in
+  every target. Its getter returns the runtime's `StringVector`, which reads
+  one string from its ends or every string, and the code writes it from a
+  list of strings: a `readonly string[]` in TypeScript and JavaScript, a
+  `Sequence[str]` in Python, a `List<String>` in Java, a `&[&str]` in Rust,
+  a `[]string` in Go, a `std::span<const std::string_view>` in C++, a
+  `[String]` in Swift and a `ReadOnlyMemory<string>` in C#. Whole reads,
+  where a target has them, give a list of strings. `StringVector` is a
+  reserved name in the targets that name it unqualified: TypeScript,
+  JavaScript, Python, Java, Rust and Swift. The checker rejected `[string]`
+  before.
 - A static `versionOf()` on every versioned message that tafla-gen generates
   (`version_of()` in Python and Rust), which reads the version in the header
   so that an application can choose the reader of that version.
@@ -257,6 +283,16 @@ first commits, for code built from its source before the release.
   into the bytes that the runtime's `TableWriter::table_bytes()` returns. The
   benchmarks' vector of 100 nested tables took 0.15 µs to write rather than
   0.83 µs, and the record 20 ns rather than 30 ns.
+- Generated Rust getters are `#[inline(always)]`, as the runtime's reads that
+  they call are, so that each compiles where it's called, to the read that
+  `TableReader`'s getters make by hand. LLVM called some out of line where a
+  function called several, returning each `Result` through memory. The
+  benchmarks' document of 100 rows read in 10.3 ns rather than 12.6 ns, a
+  table of 16 strings in 0.64 to 0.97 of the time, and a vector of tables of
+  a string each in 0.67 to 0.92. Reading the vector of 100 nested tables
+  into the workload's items took 296 ns rather than 277 ns. The record read
+  took 5.5 ns rather than 5.0 ns, as by hand, until the runtime checked
+  short strings for ASCII where it reads them, which brought both to 5.0 ns.
 - Generated TypeScript and JavaScript write a nested table whose fields'
   sizes the schema fixes whole, with its `writeAt()`, where its parent's
   writer reserves its `SIZE` bytes, and size a vector of them in one call, as

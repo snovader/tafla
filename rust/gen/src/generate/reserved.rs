@@ -25,6 +25,7 @@ const TYPESCRIPT: &[&str] = &[
     "Int8Array",
     "Number",
     "RangeError",
+    "StringVector",
     "StructWriter",
     "TableLayout",
     "TableReader",
@@ -55,6 +56,7 @@ const PYTHON: &[&str] = &[
     "Protocol",
     "Self",
     "Sequence",
+    "StringVector",
     "Struct",
     "TableLayout",
     "TableReader",
@@ -89,6 +91,7 @@ const JAVA: &[&str] = &[
     "RandomAccess",
     "Short",
     "String",
+    "StringVector",
     "SuppressWarnings",
     "TableLayout",
     "TableReader",
@@ -110,6 +113,7 @@ const RUST: &[&str] = &[
     "Option",
     "Result",
     "Self",
+    "StringVector",
     "TableLayout",
     "TableReader",
     "TableSizer",
@@ -117,6 +121,11 @@ const RUST: &[&str] = &[
     "Vec",
     "Vector",
 ];
+
+/// The variants of the prelude that Rust makes and matches, which an enum of
+/// the same name would hide, since its tuple struct is a function too, as
+/// the struct of named fields of a message, table or struct isn't
+const RUST_ENUM: &[&str] = &["Err", "None", "Ok", "Some"];
 
 /// The macros of the C standard library that a name can take, which a header
 /// that C++'s generated code includes may define. C++ names the runtime and
@@ -152,10 +161,12 @@ const SWIFT: &[&str] = &[
     "Int32",
     "Int64",
     "Int8",
+    "RawRepresentable",
     "RawSpan",
     "Self",
     "Sendable",
     "String",
+    "StringVector",
     "Swift",
     "TableLayout",
     "TableReader",
@@ -204,12 +215,25 @@ const RESERVED: [(&[&str], &[&str]); 7] = [
     (&["C#"], CSHARP),
 ];
 
-/// The targets whose generated code uses `name`, which a declaration can't
-/// take, in the order that the README lists them
-pub fn targets_using(name: &str) -> Vec<&'static str> {
+/// What a schema declares by a name, which decides the names that it can't
+/// take
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Declared {
+    /// A message, table or struct
+    Definition,
+    Enum,
+}
+
+/// The targets whose generated code uses `name`, which a declaration of
+/// `declared` can't take, in the order that the README lists them, and then
+/// Rust for a name that only an enum can't take
+pub fn targets_using(name: &str, declared: Declared) -> Vec<&'static str> {
+    let enum_names = (declared == Declared::Enum).then_some((&["Rust"][..], RUST_ENUM));
+
     RESERVED
-        .iter()
+        .into_iter()
+        .chain(enum_names)
         .filter(|(_, names)| names.contains(&name))
-        .flat_map(|&(targets, _)| targets.iter().copied())
+        .flat_map(|(targets, _)| targets.iter().copied())
         .collect()
 }

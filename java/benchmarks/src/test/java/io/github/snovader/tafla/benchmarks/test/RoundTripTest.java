@@ -1,5 +1,6 @@
 package io.github.snovader.tafla.benchmarks.test;
 
+import io.github.snovader.tafla.TableBuilder;
 import io.github.snovader.tafla.benchmarks.*;
 import io.github.snovader.tafla.benchmarks.codecs.*;
 import net.jqwik.api.*;
@@ -98,6 +99,38 @@ public class RoundTripTest {
         @ForAll("stringShapes") StringShape shape
     ) {
         assertReadBack(codec.strings(), shape.strings());
+    }
+
+    @Provide
+    Arbitrary<String> listCodecs() {
+        return Arbitraries.of(List.copyOf(StringListCodecs.all().keySet()));
+    }
+
+    @Provide
+    Arbitrary<ListShape> listShapes() {
+        return Arbitraries.of(ListShapes.ALL);
+    }
+
+    @Property(generation = GenerationMode.EXHAUSTIVE)
+    void should_read_back_every_string_and_the_last_of_each_list(
+        @ForAll("listCodecs") String codec,
+        @ForAll("listShapes") ListShape shape
+    ) {
+        var workload = StringListCodecs.named(codec);
+        var strings = shape.strings();
+
+        assertReadBack(workload, strings);
+        assertEquals(strings.getLast(), workload.readLast(workload.serialize(strings)));
+        assertArrayEquals(workload.serialize(strings), StringListCodecs.serializeChecked(workload, strings));
+    }
+
+    @Property(generation = GenerationMode.EXHAUSTIVE)
+    void should_write_the_builders_vectors_of_strings_from_generated_code(@ForAll("listShapes") ListShape shape) {
+        var builder = new TableBuilder(1);
+        builder.setStringVector(shape.strings());
+
+        var generated = StringListCodecs.named(StringListCodecs.STRING_VECTOR).serialize(shape.strings());
+        assertArrayEquals(builder.bytes(), generated);
     }
 
     @Provide

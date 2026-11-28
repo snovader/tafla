@@ -107,6 +107,29 @@ const STRINGS = [
     'Zürich, 東京 and 🌍'
 ];
 
+/**
+ * The strings of a vector of strings: empty, of one to four bytes a
+ * character, outside the Basic Multilingual Plane, and with a leading U+FEFF
+ */
+const VECTOR_STRINGS = [
+    '',
+    'a',
+    'Göteborg',
+    '東京',
+    '🌍',
+    '\uFEFFStockholm',
+    ''
+];
+
+/**
+ * Six strings of 35 bytes of ASCII and one of 36, which with their count,
+ * their ends and the table's offset make a table of 255 bytes, the longest
+ * that uint8 offsets address
+ */
+const FULL_STRINGS = Array.from({ length: 7 }, (_, index) =>
+    String.fromCharCode(0x61 + index).repeat(index < 6 ? 35 : 36)
+);
+
 const EMPTY = table([]);
 
 /** A table nested in others, whose float64[] aligns it to 8 bytes */
@@ -151,6 +174,16 @@ const VALID_CASES: ValidCase[] = [
         'bools',
         'false and true, which writers write as the bytes 0 and 1, and two more true bools, whose bytes bool-nonzero changes',
         table([bool(false), bool(true), bool(true), bool(true)])
+    ),
+    validCase(
+        'bool-arrays',
+        'Arrays of bools, a byte each, 1 for true and 0 for false, which need no padding: of five, empty, and of one after a uint8. bool-array-nonzero changes the bytes of the first.',
+        table([
+            boolArray([true, false, true, true, false]),
+            boolArray([]),
+            scalar('uint8', 7),
+            boolArray([true])
+        ])
     ),
     validCase(
         'integer-arrays',
@@ -395,6 +428,46 @@ const VALID_CASES: ValidCase[] = [
             layout({ sized: true, versioned: true, offsetType: 'uint16' }),
             0x0102
         )
+    ),
+    validCase(
+        'string-vectors',
+        'A vector of strings that are empty, of one to four bytes a character and with a leading U+FEFF, an empty vector, a vector of three empty strings, a uint8 after them, which shows that nothing is padded, and a vector of strings in a nested table and in a vector item',
+        table([
+            stringVector(VECTOR_STRINGS),
+            stringVector([]),
+            stringVector(['', '', '']),
+            scalar('uint8', 7),
+            nested(
+                fromBuilder(
+                    table([
+                        scalar('uint16', 1),
+                        stringVector(['inner', '東京'])
+                    ])
+                )
+            ),
+            vector([
+                fromBuilder(table([stringVector(['item', ''])])),
+                fromBytes(table([stringVector([]), string('after')]))
+            ])
+        ])
+    ),
+    validCase(
+        'string-vector-offset-type-uint8-full',
+        'A table of 255 bytes, the longest that uint8 offsets address: a vector of seven strings whose ends are a byte each, the last four of 128 and more',
+        table([stringVector(FULL_STRINGS)], layout({ offsetType: 'uint8' }))
+    ),
+    validCase(
+        'string-vector-offset-type-uint16',
+        'uint16 offsets, counts and ends after size and version slots, with a vector of strings between a uint8 and a string',
+        table(
+            [
+                scalar('uint8', 7),
+                stringVector(['one', '', 'Zürich, 東京 and 🌍']),
+                string('after')
+            ],
+            layout({ sized: true, versioned: true, offsetType: 'uint16' }),
+            0x0102
+        )
     )
 ];
 
@@ -406,6 +479,7 @@ export const SUITE: Suite = {
 
 function equivalentCases(): EquivalentCase[] {
     const bools = inspect('bools');
+    const boolArrays = inspect('bool-arrays');
 
     return [
         equivalentCase(
@@ -413,6 +487,16 @@ function equivalentCases(): EquivalentCase[] {
             'The bytes of the last two bools of bools are 2 and 0x80, which read as true, like 1',
             bools,
             overwrite(bools.reader.rootOffset(2), [0x02, 0x80])
+        ),
+        equivalentCase(
+            'bool-array-nonzero',
+            'The bytes of the first array of bool-arrays are 2, 0, 0x80, 0xff and 0, whose bytes other than 0 read as true, like 1',
+            boolArrays,
+            // The elements, after the array's count
+            overwrite(
+                boolArrays.reader.rootOffset(0) + 4,
+                [0x02, 0x00, 0x80, 0xff]
+            )
         )
     ];
 }
@@ -421,6 +505,7 @@ function invalidCases(): InvalidCase[] {
     const integerScalars = inspect('integer-scalars');
     const integerArrays = inspect('integer-arrays');
     const floatArrays = inspect('float-arrays');
+    const boolArrays = inspect('bool-arrays');
     const strings = inspect('strings');
     const full = inspect('offset-type-uint8-full');
     const uint16Offsets = inspect('offset-type-uint16');
@@ -429,10 +514,21 @@ function invalidCases(): InvalidCase[] {
     const itemLayouts = inspect('vector-item-layouts');
     const structs = inspect('structs');
     const structArrays = inspect('struct-arrays');
+    const stringVectors = inspect('string-vectors');
+    const fullStrings = inspect('string-vector-offset-type-uint8-full');
 
     // The vector of vector-item-layouts holds four items
     const itemsVector = itemLayouts.reader.rootOffset(0);
     const lastEnd = itemsVector + 4 * 4;
+
+    // The first vector of string-vectors holds seven strings: its count,
+    // the end of each, and then their bytes
+    const firstVector = stringVectors.reader.rootOffset(0);
+    const endOf = (index: number): number => firstVector + (index + 1) * 4;
+    const startOf = (index: number): number =>
+        firstVector + stringVectors.reader.getUint32(endOf(index - 1));
+    // The vector of three empty strings
+    const empties = stringVectors.reader.rootOffset(2);
 
     return [
         invalidCase(
@@ -476,6 +572,13 @@ function invalidCases(): InvalidCase[] {
             floatArrays,
             lengthenByOne(floatArrays, floatArrays.reader.rootOffset(1)),
             1
+        ),
+        invalidCase(
+            'bool-array-length-past-end',
+            'The count of the last array of bools counts one bool more than the table holds',
+            boolArrays,
+            lengthenByOne(boolArrays, boolArrays.reader.rootOffset(3)),
+            3
         ),
         invalidCase(
             'array-length-max',
@@ -582,6 +685,92 @@ function invalidCases(): InvalidCase[] {
                 littleEndian(0xffff_ffff, 4)
             ),
             1
+        ),
+        invalidCase(
+            'truncated-string-vector-ends',
+            'Cut inside the end of the last string of the first vector of strings',
+            stringVectors,
+            truncate(endOf(6) + 2),
+            0
+        ),
+        invalidCase(
+            'truncated-string-vector',
+            'string-vector-offset-type-uint8-full without its last byte, the last of its last string',
+            fullStrings,
+            truncate(fullStrings.bytes.length - 1),
+            0
+        ),
+        invalidCase(
+            'string-vector-count-past-end',
+            'The count of the first vector of strings counts more strings than the table has bytes for their ends',
+            stringVectors,
+            overwrite(firstVector, littleEndian(stringVectors.bytes.length, 4)),
+            0
+        ),
+        invalidCase(
+            'string-vector-count-max',
+            'The count of the vector of three empty strings is 2^32 - 1, which a reader must not allocate for',
+            stringVectors,
+            overwrite(empties, littleEndian(0xffff_ffff, 4)),
+            2
+        ),
+        invalidCase(
+            'string-vector-end-past-end',
+            'The end of the last string of the first vector of strings is one byte past the end of the table',
+            stringVectors,
+            overwrite(
+                endOf(6),
+                littleEndian(stringVectors.bytes.length - firstVector + 1, 4)
+            ),
+            0
+        ),
+        invalidCase(
+            'string-vector-end-max',
+            'The end of the second string of the first vector of strings is 2^32 - 1',
+            stringVectors,
+            overwrite(endOf(1), littleEndian(0xffff_ffff, 4)),
+            0
+        ),
+        invalidCase(
+            'string-vector-item-ends-before-start',
+            'The end of the third string of the first vector of strings is that of the first, so that it ends before it starts',
+            stringVectors,
+            overwrite(
+                endOf(2),
+                littleEndian(stringVectors.reader.getUint32(endOf(0)), 4)
+            ),
+            0
+        ),
+        invalidCase(
+            'string-vector-end-splits-character',
+            'The end of the fourth string of the first vector of strings is a byte less, within its last character, so that neither it nor the next string is valid UTF-8',
+            stringVectors,
+            overwrite(
+                endOf(3),
+                littleEndian(stringVectors.reader.getUint32(endOf(3)) - 1, 4)
+            ),
+            0
+        ),
+        invalidCase(
+            'string-vector-invalid-utf8-continuation',
+            'The second string of the first vector of strings is a continuation byte, 0x80',
+            stringVectors,
+            overwrite(startOf(1), [0x80]),
+            0
+        ),
+        invalidCase(
+            'string-vector-invalid-utf8-overlong',
+            'The fourth string of the first vector of strings starts with an overlong encoding of U+0000, 0xe0 0x80 0x80',
+            stringVectors,
+            overwrite(startOf(3), [0xe0, 0x80, 0x80]),
+            0
+        ),
+        invalidCase(
+            'string-vector-invalid-utf8-surrogate',
+            'The fourth string of the first vector of strings starts with the surrogate U+D800, 0xed 0xa0 0x80',
+            stringVectors,
+            overwrite(startOf(3), [0xed, 0xa0, 0x80]),
+            0
         )
     ];
 }
@@ -858,8 +1047,16 @@ function structArray(
     };
 }
 
+function boolArray(value: boolean[]): FieldDescription {
+    return { type: 'bool[]', value };
+}
+
 function string(value: string): FieldDescription {
     return { type: 'string', value };
+}
+
+function stringVector(value: string[]): FieldDescription {
+    return { type: 'string[]', value };
 }
 
 function nested(

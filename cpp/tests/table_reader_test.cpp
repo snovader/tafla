@@ -5,9 +5,11 @@
 #include <gtest/gtest.h>
 #include <rapidcheck/gtest.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string_view>
 #include <vector>
 
 #include <tafla/tafla.hpp>
@@ -84,6 +86,85 @@ void check_array(const std::vector<std::uint8_t>& bytes, std::size_t position, s
     }
 }
 
+/// An array of bools holds a count and a byte for each bool, which reads as
+/// true where it isn't 0
+template <class Get>
+void check_bool_array(const std::vector<std::uint8_t>& bytes, std::size_t position, std::uint64_t width, Get get) {
+    const auto count = little_endian(bytes, position, width);
+    const auto start = plus(position, width);
+    const bool fits = count && little_endian(bytes, start, 0).has_value() && *count <= bytes.size() - start;
+
+    const auto read = try_read([&] { return get(position); });
+    RC_ASSERT(read.has_value() == fits);
+    if (read) {
+        RC_ASSERT(read->size() == *count);
+        for (std::size_t index = 0; index < read->size(); ++index) {
+            RC_ASSERT((*read)[index] == (bytes[static_cast<std::size_t>(start) + index] != 0));
+        }
+    }
+}
+
+/// A vector of strings holds a count and then that many ends, as a vector of
+/// tables does. Each string lies from the end of the string before it, or
+/// the first from the end of the ends, to its own end, and reads where it
+/// lies within the bytes and is valid UTF-8, and reading every string reads
+/// them all or fails where one of them fails.
+template <bool Versioned>
+void check_strings(const std::vector<std::uint8_t>& bytes, TableReader<Versioned> reader, std::size_t position,
+                   bool ends_fit) {
+    const std::uint64_t width = reader.layout().offset_size();
+    std::optional<StringVector> strings;
+    try {
+        strings = reader.get_string_vector(position);
+    } catch (const DecodeError& error) {
+        RC_ASSERT(error.kind() == DecodeError::Kind::out_of_range);
+    }
+    RC_ASSERT(strings.has_value() == ends_fit);
+    if (!strings) {
+        return;
+    }
+
+    const auto count = strings->size();
+    RC_ASSERT(count == *little_endian(bytes, position, width));
+
+    std::vector<std::optional<std::string_view>> each;
+    std::uint64_t start = (count + 1) * width;
+    for (std::size_t index = 0; index < count; ++index) {
+        const auto end = *little_endian(bytes, position + (index + 1) * width, width);
+        const bool within = start <= end && end <= bytes.size() - position;
+        const auto* const string = within ? bytes.data() + position + start : nullptr;
+        const bool reads = within && detail::valid_utf8(string, static_cast<std::size_t>(end - start));
+
+        std::optional<std::string_view> read;
+        try {
+            read = strings->get(index);
+        } catch (const DecodeError&) {
+            // Of any kind, for the string's ends or its UTF-8
+        }
+        RC_ASSERT(read.has_value() == reads);
+        if (read) {
+            const bool in_place = static_cast<const void*>(read->data()) == string;
+            RC_ASSERT(in_place);
+            RC_ASSERT(read->size() == end - start);
+        }
+
+        each.push_back(read);
+        start = end;
+    }
+
+    const bool every_reads = std::ranges::all_of(each, [](const auto& read) { return read.has_value(); });
+    try {
+        const auto all = strings->to_vector();
+        RC_ASSERT(every_reads);
+        for (std::size_t index = 0; index < count; ++index) {
+            const bool same = all[index].data() == each[index]->data() && all[index].size() == each[index]->size();
+            RC_ASSERT(same);
+        }
+    } catch (const DecodeError&) {
+        RC_ASSERT(!every_reads);
+    }
+}
+
 template <bool Versioned>
 void check_reads(const std::vector<std::uint8_t>& bytes, TableReader<Versioned> reader, std::size_t position) {
     const std::uint64_t width = reader.layout().offset_size();
@@ -109,6 +190,7 @@ void check_reads(const std::vector<std::uint8_t>& bytes, TableReader<Versioned> 
     check_array<std::uint64_t>(bytes, position, width, [&](std::size_t at) { return reader.get_uint64_array(at); });
     check_array<float>(bytes, position, width, [&](std::size_t at) { return reader.get_float32_array(at); });
     check_array<double>(bytes, position, width, [&](std::size_t at) { return reader.get_float64_array(at); });
+    check_bool_array(bytes, position, width, [&](std::size_t at) { return reader.get_bool_array(at); });
 
     // Offsets lie where the header and the earlier offsets end
     const std::uint64_t header = reader.layout().header_size();
@@ -135,6 +217,8 @@ void check_reads(const std::vector<std::uint8_t>& bytes, TableReader<Versioned> 
     const auto vector = try_read([&] { return reader.get_vector(position); });
     const bool ends_fit = count && little_endian(bytes, plus(position, width), *count * width).has_value();
     RC_ASSERT(vector.has_value() == ends_fit);
+
+    check_strings(bytes, reader, position, ends_fit);
 }
 
 /// Every getter reads arbitrary bytes at every position, past the end too,

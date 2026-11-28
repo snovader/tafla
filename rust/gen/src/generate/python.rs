@@ -1,20 +1,24 @@
 //! Python for `tafla`. Messages and tables are classes that read
 //! fields lazily from their bytes, written from `TypedDict`s of their fields,
 //! and structs are frozen dataclasses packed with `struct`. Vectors and
-//! arrays of structs are read through views of their items. A table's
-//! leading fields of fixed size, and a string after them, are written in one
-//! call, from the runtime's `FixedFields`, and read in one call by
+//! arrays of structs are read through views of their items, and vectors of
+//! strings through the runtime's `StringVector`, whose strings
+//! `field_values()` and `fields()` read into a list. A table's leading
+//! fields of fixed size, and a string after them, are written in one call,
+//! from the runtime's `FixedFields`, and read in one call by
 //! `field_values()`, which reads every field's value into a tuple, nested
 //! tables' included, and by `fields()`. A message of only such fields is
 //! written and read without a writer or a reader. Messages, tables and
-//! structs of scalars are also written from tuples of their values.
+//! structs of scalars are also written from tuples of their values. An enum
+//! is an `IntEnum` of the values that it names, and a field of it is an
+//! `int`, as a field of its integer type is, which any integer reads as.
 
 use std::collections::HashSet;
 
 use super::prose::article;
 use super::writer::{CodeWriter, Expr, Style, call, text};
 use super::{GeneratedFile, Options};
-use crate::model::{Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema};
+use crate::model::{Definition, Enum, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema};
 
 /// The runtime's package, unless [`Options::runtime`] names another
 const RUNTIME: &str = "tafla";
@@ -73,6 +77,11 @@ pub fn generate(
     writer.blank();
     imports(&mut writer, schema, runtime);
 
+    for enumeration in &schema.enums {
+        writer.blanks(2);
+        int_enum(&mut writer, enumeration);
+    }
+
     for (index, definition) in schema.definitions.iter().enumerate() {
         writer.blanks(2);
         match definition.kind {
@@ -121,11 +130,18 @@ fn imports(writer: &mut CodeWriter, schema: &Schema, runtime: &str) {
             .any(|field| predicate(field.field_type))
     };
     let has_array = has_field(|field_type| matches!(field_type, FieldType::Array(_)));
+    // Arrays of integers and floats, which their writers take as buffers too
+    let has_typed_array = has_field(
+        |field_type| matches!(field_type, FieldType::Array(scalar) if scalar != Scalar::Bool),
+    );
     // Vectors and arrays of structs have views, which iterate their items
     let has_view = has_field(|field_type| {
         matches!(field_type, FieldType::Vector(_) | FieldType::StructArray(_))
     });
-    let has_sequence = has_struct || has_view;
+    // Vectors of strings are read through the runtime's view, and written
+    // from a sequence of strings
+    let has_string_vector = has_field(|field_type| field_type == FieldType::StringVector);
+    let has_sequence = has_struct || has_view || has_string_vector;
     let versioned = has(|definition| {
         matches!(
             definition.kind,
@@ -137,7 +153,7 @@ fn imports(writer: &mut CodeWriter, schema: &Schema, runtime: &str) {
     });
 
     let mut abc = Vec::new();
-    if has_message || has_array || has_struct {
+    if has_message || has_typed_array || has_struct {
         abc.push("Buffer");
     }
     if has_array {
@@ -176,6 +192,9 @@ fn imports(writer: &mut CodeWriter, schema: &Schema, runtime: &str) {
     if (0..schema.definitions.len()).any(|index| fixed_fields(schema, index) > 0) {
         runtime_names.push("FixedFields");
     }
+    if has_string_vector {
+        runtime_names.push("StringVector");
+    }
     if has_message {
         runtime_names.push("TableLayout");
     }
@@ -211,6 +230,11 @@ fn imports(writer: &mut CodeWriter, schema: &Schema, runtime: &str) {
     if has_struct {
         writer.line("import builtins as _builtins");
     }
+    // Enums name `enum.IntEnum` through its module, which no declaration can
+    // be named after, rather than import a name that one could take
+    if !schema.enums.is_empty() {
+        writer.line("import enum");
+    }
     for (module, names) in standard {
         if !names.is_empty() {
             from_import(writer, module, &names);
@@ -235,6 +259,32 @@ fn from_import(writer: &mut CodeWriter, module: &str, names: &[&str]) {
         writer.line(format!("{name},"));
     }
     writer.close(")");
+}
+
+/// An enum: an `IntEnum` of the values that the schema names, by their names
+/// in `UPPER_SNAKE_CASE`, which no keyword and no member of `IntEnum` is
+/// written in, so none needs escaping. Each value's documentation follows it,
+/// as an attribute's docstring does.
+///
+/// Fields of the enum stay `int`s: a member is an `int`, so the writers take
+/// it as it is, and a reader returns the integer that it read, which equals
+/// its member if the enum names it. Looking the member up, as `Level(value)`,
+/// would cost every read a call, and raise `ValueError` for an integer that
+/// the enum doesn't name.
+fn int_enum(writer: &mut CodeWriter, enumeration: &Enum) {
+    writer.open(format!("class {}(enum.IntEnum):", enumeration.name));
+    docstring(writer, &enumeration.docs);
+    writer.blank();
+
+    for value in &enumeration.values {
+        writer.line(format!(
+            "{} = {}",
+            value.name.to_ascii_uppercase(),
+            value.value
+        ));
+        docstring(writer, &value.docs);
+    }
+    writer.dedent();
 }
 
 fn message(writer: &mut CodeWriter, schema: &Schema, index: usize, layout: Layout) {
@@ -1305,6 +1355,9 @@ fn writes(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, fir
                 vec![position, text(value)],
             ),
             FieldType::String => ("set_string".to_owned(), vec![position, text(value)]),
+            FieldType::StringVector => {
+                ("set_string_vector".to_owned(), vec![position, text(value)])
+            }
             FieldType::Struct(_) => (
                 "set_struct".to_owned(),
                 vec![position, call(format!("{value}.serialize"), vec![])],
@@ -1458,6 +1511,7 @@ fn fixed_count(schema: &Schema, field_type: FieldType, budget: usize) -> Option<
         }
         FieldType::Array(_)
         | FieldType::String
+        | FieldType::StringVector
         | FieldType::StructArray(_)
         | FieldType::Vector(_) => None,
     }
@@ -1489,7 +1543,10 @@ fn fixed_description(
                 string = true;
                 continue;
             }
-            FieldType::Array(_) | FieldType::StructArray(_) | FieldType::Vector(_) => {
+            FieldType::Array(_)
+            | FieldType::StringVector
+            | FieldType::StructArray(_)
+            | FieldType::Vector(_) => {
                 unreachable!("only fields of fixed size and a string are packed")
             }
         });
@@ -1565,7 +1622,10 @@ fn push_fixed_values(
             }
             // The string is an argument of its own
             FieldType::String => {}
-            FieldType::Array(_) | FieldType::StructArray(_) | FieldType::Vector(_) => {
+            FieldType::Array(_)
+            | FieldType::StringVector
+            | FieldType::StructArray(_)
+            | FieldType::Vector(_) => {
                 unreachable!("only fields of fixed size and a string are packed")
             }
         }
@@ -1574,8 +1634,9 @@ fn push_fixed_values(
 
 /// Whether the message at `index` has `serialize_values()`, which writes it
 /// from the values that `field_values()` reads: whether its fields are
-/// scalars, strings, arrays and vectors of tables of fixed size without
-/// structs, whose items' values its vectors' views read into the tuples that
+/// scalars, strings, arrays, vectors of strings, whose strings it reads into
+/// lists, and vectors of tables of fixed size without structs, whose items'
+/// values its vectors' views read into the tuples that
 /// `TableWriter.set_vector_tables()` writes, as `TableReader.get_fields()`
 /// reads them. A struct's value would be its bytes there, and a nested
 /// table's values would be written by code of its own.
@@ -1586,7 +1647,10 @@ fn has_serialize_values(schema: &Schema, index: usize) -> bool {
             .fields
             .iter()
             .all(|field| match field.field_type {
-                FieldType::Scalar(_) | FieldType::String | FieldType::Array(_) => true,
+                FieldType::Scalar(_)
+                | FieldType::String
+                | FieldType::StringVector
+                | FieldType::Array(_) => true,
                 FieldType::Vector(item) => {
                     let table = schema.definition(item);
                     is_fixed(schema, item) && !holds_struct(schema, table, table.fields.len())
@@ -1822,6 +1886,8 @@ impl<'a> Reads<'a> {
                     call(format!("reader.get_{}_array", scalar.name()), vec![offset])
                 }
                 FieldType::String => call("reader.get_string", vec![offset]),
+                // Every string, in a list, rather than the getter's view
+                FieldType::StringVector => call("reader.get_string_vector", vec![offset]),
                 FieldType::Struct(index) => {
                     let structure = &schema.definition(index).name;
                     let bytes = call(
@@ -2008,6 +2074,16 @@ fn push_value_types(schema: &Schema, definition: &Definition, types: &mut Vec<An
                 push_value_types(schema, schema.definition(index), types);
             }
             FieldType::Table(index) => types.push(values_alias(schema.definition(index))),
+            // The bools that get_bool_array() reads, rather than the bytes
+            // that the getter returns
+            FieldType::Array(Scalar::Bool) => {
+                types.push(Annotation::Name("list[bool]".to_owned()));
+            }
+            // Every string, which `field_values()` reads into a list
+            FieldType::StringVector => types.push(Annotation::Generic(
+                "list",
+                vec![Annotation::Name("str".to_owned())],
+            )),
             field_type => types.push(Annotation::Name(value_type(field_type, schema))),
         }
     }
@@ -2150,6 +2226,7 @@ fn getter_fallback(writer: &mut CodeWriter, schema: &Schema, definition: &Defini
                         format!("*{}.field_values()", getter(field))
                     }
                     FieldType::Table(_) => format!("{}.field_values()", getter(field)),
+                    FieldType::StringVector => format!("{}.tolist()", getter(field)),
                     _ => getter(field),
                 })
                 .map(text)
@@ -2166,6 +2243,7 @@ fn getter_fallback(writer: &mut CodeWriter, schema: &Schema, definition: &Defini
                             format!("{}.fields()", getter(field))
                         }
                         FieldType::StructArray(_) => format!("list({})", getter(field)),
+                        FieldType::StringVector => format!("{}.tolist()", getter(field)),
                         _ => getter(field),
                     };
                     (identifier(&field.name), DictValue::Text(value))
@@ -2190,6 +2268,9 @@ fn reader_docs(schema: &Schema, index: usize, is_root: bool, form: Form) -> Vec<
     let items =
         holds(|field_type| matches!(field_type, FieldType::Vector(_) | FieldType::StructArray(_)));
     let vectors = holds(|field_type| matches!(field_type, FieldType::Vector(_)));
+    // Whose getters return their bytes, which these read as bools
+    let bools = holds(|field_type| field_type == FieldType::Array(Scalar::Bool));
+    let string_vectors = holds(|field_type| field_type == FieldType::StringVector);
 
     let mut docs: Vec<String> = match form {
         // The values that serialize_values() takes, but for a vector's view
@@ -2197,6 +2278,44 @@ fn reader_docs(schema: &Schema, index: usize, is_root: bool, form: Form) -> Vec<
             "Reads every field's value at once into a tuple, in the fields' order, as".to_owned(),
             "`serialize_values()` takes them, as `fields()` reads them into a dict.".to_owned(),
         ],
+        // An array of bools' value is its bools, and a vector of strings' its
+        // strings, rather than the bytes and the view that their getters
+        // return
+        Form::Values if bools || string_vectors => {
+            let mut clauses = Vec::new();
+            if bools {
+                clauses.push("an array of bools' as a list of its bools");
+            }
+            if string_vectors {
+                clauses.push("a vector of strings' as a list of its strings");
+            }
+            if tables {
+                clauses.push(
+                    "a nested table's as its values, in place of it when they're all of fixed \
+                     size, and in a tuple of their own otherwise",
+                );
+            }
+            wrap(&format!(
+                "Reads every field's value into a tuple, in the fields' order, as its getter \
+                 returns it, but {}.",
+                join_clauses(&clauses)
+            ))
+        }
+        Form::Fields if string_vectors => {
+            let written_by = if is_root { "serialize()" } else { "write()" };
+            let mut clauses = Vec::new();
+            if tables {
+                clauses.push("a nested table's fields as its `fields()` reads them");
+            }
+            if items {
+                clauses.push("the items of vectors and arrays of structs in lists");
+            }
+            clauses.push("the strings of vectors of strings in lists");
+            wrap(&format!(
+                "Reads every field at once, as `{written_by}` takes them, with {}.",
+                join_clauses(&clauses)
+            ))
+        }
         Form::Values if tables => vec![
             "Reads every field's value into a tuple, in the fields' order, as its getter"
                 .to_owned(),
@@ -2239,6 +2358,15 @@ fn reader_docs(schema: &Schema, index: usize, is_root: bool, form: Form) -> Vec<
         ]);
     }
     docs
+}
+
+/// The clauses of a sentence's list, with `, and` before the last of them
+fn join_clauses(clauses: &[&str]) -> String {
+    match clauses {
+        [] => String::new(),
+        [only] => (*only).to_owned(),
+        [first @ .., last] => format!("{}, and {last}", first.join(", ")),
+    }
 }
 
 /// The lines of a docstring's paragraph, wrapped at 76 characters, which the
@@ -2553,6 +2681,9 @@ fn serialize_values(writer: &mut CodeWriter, schema: &Schema, index: usize) {
                 vec![position, text(value)],
             ),
             FieldType::String => ("set_string".to_owned(), vec![position, text(value)]),
+            FieldType::StringVector => {
+                ("set_string_vector".to_owned(), vec![position, text(value)])
+            }
             FieldType::Vector(item) => (
                 "set_vector_tables".to_owned(),
                 vec![
@@ -2915,7 +3046,7 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
             identifier(&field.name),
             value_type(field.field_type, schema)
         ));
-        docstring(writer, &field.docs);
+        docstring(writer, &getter_docs(field));
 
         match field.field_type {
             FieldType::Scalar(Scalar::Bool) => {
@@ -2923,6 +3054,12 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
             }
             FieldType::Scalar(scalar) => {
                 let get = call(format!("self._reader.get_{}", scalar.name()), vec![offset]);
+                writer.statement(&STYLE, "return ", &get, "");
+            }
+            // The bytes of an array of bools, in place, as an array of
+            // uint8s' getter reads them
+            FieldType::Array(Scalar::Bool) => {
+                let get = call("self._reader.get_uint8_array", vec![offset]);
                 writer.statement(&STYLE, "return ", &get, "");
             }
             FieldType::Array(scalar) => {
@@ -2954,9 +3091,9 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
                 let read = call(table.clone(), vec![text("self._reader"), offset]);
                 writer.statement(&STYLE, "return ", &read, "");
             }
-            // The view of a vector or an array of structs, which reads each
-            // item when it's asked for
-            FieldType::StructArray(_) | FieldType::Vector(_) => {
+            // The view of a vector, of strings or of tables, or of an array
+            // of structs, which reads each item when it's asked for
+            FieldType::StringVector | FieldType::StructArray(_) | FieldType::Vector(_) => {
                 let view = value_type(field.field_type, schema);
                 let read = call(view, vec![text("self._reader"), offset]);
                 writer.statement(&STYLE, "return ", &read, "");
@@ -2964,6 +3101,20 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
         }
         writer.dedent();
     }
+}
+
+/// The docstring of a field's getter: the schema's, and for an array of bools,
+/// whose getter returns its bytes, what those hold, after a blank line when
+/// the schema has one
+fn getter_docs(field: &Field) -> Vec<String> {
+    let mut docs = field.docs.clone();
+    if field.field_type == FieldType::Array(Scalar::Bool) {
+        if !docs.is_empty() {
+            docs.push(String::new());
+        }
+        docs.push("A byte for each bool, which is true where it isn't 0".to_owned());
+    }
+    docs
 }
 
 /// The position of field `index`, in the root table or a nested one
@@ -3033,11 +3184,16 @@ fn identifier(name: &str) -> String {
     }
 }
 
+/// The type that a field's getter returns
 fn value_type(field_type: FieldType, schema: &Schema) -> String {
     match field_type {
         FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
+        // The bytes of an array of bools, which its getter reads in place
+        FieldType::Array(Scalar::Bool) => "memoryview[int]".to_owned(),
         FieldType::Array(scalar) => format!("memoryview[{}]", scalar_type(scalar)),
         FieldType::String => "str".to_owned(),
+        // A view of the strings, which reads each one when it's asked for
+        FieldType::StringVector => "StringVector".to_owned(),
         FieldType::Struct(index) | FieldType::Table(index) => schema.definition(index).name.clone(),
         // Views, which read each item when it's asked for
         FieldType::Vector(index) => format!("{}Vector", schema.definition(index).name),
@@ -3048,8 +3204,11 @@ fn value_type(field_type: FieldType, schema: &Schema) -> String {
 fn input_type(field_type: FieldType, schema: &Schema) -> String {
     match field_type {
         FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
+        // Bools, which the writer writes as bytes of 1 and 0
+        FieldType::Array(Scalar::Bool) => "Iterable[bool]".to_owned(),
         FieldType::Array(scalar) => format!("Buffer | Iterable[{}]", scalar_type(scalar)),
         FieldType::String => "str".to_owned(),
+        FieldType::StringVector => "Sequence[str]".to_owned(),
         // Structs are written from their dataclasses
         FieldType::Struct(index) => schema.definition(index).name.clone(),
         // Arrays of structs are written from any objects of their fields

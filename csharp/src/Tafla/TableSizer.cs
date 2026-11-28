@@ -227,6 +227,10 @@ public struct TableSizer
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="count"/> is negative.</exception>
     public void AddFloat64Array(int count) => AddArray(count, sizeof(double), sizeof(double));
 
+    /// <summary>Adds an array of <paramref name="count"/> bools, a byte each, which needs no padding.</summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="count"/> is negative.</exception>
+    public void AddBoolArray(int count) => AddArray(count, sizeof(byte), sizeof(byte));
+
     /// <summary>
     /// Adds a string field, of the string's UTF-8, as <see cref="TableBuilder.SetString"/> counts it,
     /// with each lone surrogate as U+FFFD.
@@ -237,6 +241,14 @@ public struct TableSizer
         ArgumentNullException.ThrowIfNull(value);
         _position += _layout.OffsetSize + TableBuilder.Utf8Length(value);
     }
+
+    /// <summary>
+    /// Adds a vector of strings: its count, the end of each string, and each string's UTF-8, as
+    /// <see cref="TableBuilder.SetStringVector"/> counts it, with each lone surrogate as U+FFFD.
+    /// </summary>
+    /// <exception cref="ArgumentNullException">A string is null.</exception>
+    public void AddStringVector(ReadOnlySpan<string> values) =>
+        _position += (values.Length + 1L) * _layout.OffsetSize + TableBuilder.Utf8Length(values);
 
     /// <summary>
     /// Returns the byte length of a string's UTF-8, as <see cref="AddString"/> counts it and

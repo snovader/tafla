@@ -51,6 +51,7 @@ final class DescriptionJson {
 
         return switch (type) {
             case "bool" -> new BoolField(field.getBoolean("value"));
+            case "bool[]" -> readBoolArray(field.getJsonArray("value"));
             case "string" -> new StringField(field.getString("value"));
             case "struct" -> new StructField(
                 field.getJsonArray("fields").stream().map(scalar -> readScalar(scalar.asJsonObject())).toList()
@@ -63,6 +64,9 @@ final class DescriptionJson {
             );
             case "vector" -> new VectorField(
                 field.getJsonArray("items").stream().map(item -> readNestedTable(item.asJsonObject())).toList()
+            );
+            case "string[]" -> new StringVectorField(
+                field.getJsonArray("value").stream().map(string -> ((JsonString) string).getString()).toList()
             );
             default -> type.endsWith("[]")
                 ? readArray(scalarType(type.substring(0, type.length() - "[]".length())), field.getJsonArray("value"))
@@ -116,6 +120,15 @@ final class DescriptionJson {
 
     private static ArrayField readArray(ScalarType type, JsonArray json) {
         return new ArrayField(type, readValues(type, json));
+    }
+
+    private static BoolArrayField readBoolArray(JsonArray json) {
+        var values = new boolean[json.size()];
+        for (int i = 0; i < values.length; i++) {
+            values[i] = json.getBoolean(i);
+        }
+
+        return new BoolArrayField(values);
     }
 
     /** {@return the values of an array of the type, as {@link ScalarType} holds them} */
@@ -203,6 +216,10 @@ final class DescriptionJson {
                 .add("type", array.type().jsonName() + "[]")
                 .add("value", writeValues(array.type(), array.values()))
                 .build();
+            case BoolArrayField array -> Json.createObjectBuilder()
+                .add("type", "bool[]")
+                .add("value", writeBools(array.values()))
+                .build();
             case StringField string -> Json.createObjectBuilder()
                 .add("type", "string")
                 .add("value", string.value())
@@ -211,6 +228,7 @@ final class DescriptionJson {
             case StructArrayField array -> writeStructArray(array);
             case TableField table -> writeTableField(table);
             case VectorField vector -> writeVector(vector);
+            case StringVectorField vector -> writeStringVector(vector);
         };
     }
 
@@ -272,10 +290,28 @@ final class DescriptionJson {
         return Json.createObjectBuilder().add("type", "vector").add("items", items).build();
     }
 
+    private static JsonObject writeStringVector(StringVectorField vector) {
+        var strings = Json.createArrayBuilder();
+        for (var string : vector.values()) {
+            strings.add(string);
+        }
+
+        return Json.createObjectBuilder().add("type", "string[]").add("value", strings).build();
+    }
+
     private static JsonArray writeValues(ScalarType type, long[] values) {
         var json = Json.createArrayBuilder();
         for (var value : values) {
             json.add(writeValue(type, value));
+        }
+
+        return json.build();
+    }
+
+    private static JsonArray writeBools(boolean[] values) {
+        var json = Json.createArrayBuilder();
+        for (var value : values) {
+            json.add(value);
         }
 
         return json.build();

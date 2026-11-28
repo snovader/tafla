@@ -86,10 +86,27 @@ jobs:
               - "typescript/benchmarks/comparison/workloads.tafla"
               - "typescript/benchmarks/comparison/generated/tafla/**"
               # The strings suites' schemas and generated code
+              - "cpp/benchmarks/strings.tafla"
+              - "cpp/benchmarks/generated/strings/**"
               - "java/benchmarks/src/main/tafla/strings.tafla"
               - "java/benchmarks/src/main/java/io/github/snovader/tafla/benchmarks/generated/strings/**"
               - "typescript/benchmarks/strings/strings.tafla"
               - "typescript/benchmarks/strings/generated/tafla/**"
+              # The lists suites' schemas and generated code
+              - "cpp/benchmarks/lists.tafla"
+              - "cpp/benchmarks/generated/lists/**"
+              - "csharp/benchmarks/lists.tafla"
+              - "csharp/benchmarks/Tafla.Benchmarks/Generated/Lists/**"
+              - "go/benchmarks/lists.tafla"
+              - "go/benchmarks/generated/lists/**"
+              - "java/benchmarks/src/main/tafla/lists.tafla"
+              - "java/benchmarks/src/main/java/io/github/snovader/tafla/benchmarks/generated/lists/**"
+              - "python/benchmarks/src/tafla_benchmarks/generated/lists.tafla"
+              - "python/benchmarks/src/tafla_benchmarks/generated/lists/**"
+              - "swift/benchmarks/lists.tafla"
+              - "swift/benchmarks/Sources/GeneratedLists/**"
+              - "typescript/benchmarks/strings/lists/lists.tafla"
+              - "typescript/benchmarks/strings/lists/generated/**"
             # The runtime and what its tests read, which the jobs that test only
             # the runtime, under Miri and on a 32-bit target, run for
             runtime:
@@ -313,8 +330,14 @@ jobs:
       - name: Print encoded sizes
         run: cargo run -p tafla-benchmarks --bin encoding
 
+      - name: Print the strings' encoded sizes
+        run: cargo run -p tafla-benchmarks --bin encoding -- --strings
+
       - name: Print allocations
         run: cargo run --release -p tafla-benchmarks --bin allocation
+
+      - name: Print the strings' allocations
+        run: cargo run --release -p tafla-benchmarks --bin allocation -- --strings
 
   wasm:
     name: WebAssembly

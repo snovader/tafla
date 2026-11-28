@@ -59,6 +59,9 @@
  *     elements are aligned to their size from the table's start. {@code setTable()} aligns a nested
  *     table to the largest alignment of its arrays, arrays of structs and nested tables when given
  *     its builder, and to 4 bytes by default when given bytes.</li>
+ *   <li>An array of bools is a {@code uint8} array of 1 and 0, which {@code setBoolArray()} writes
+ *     from a {@code boolean[]} and {@code getBoolArray()} reads into one, true where a byte isn't
+ *     0. {@code getUint8Array()} and {@code getUint8ArrayView()} read its bytes.</li>
  *   <li>A struct is its scalars one after another, without padding, so that they lie at fixed
  *     offsets from its start. An array of structs starts with its count, and is padded so that its
  *     structs are aligned to the size of their largest scalar. {@code getStruct()} and
@@ -66,6 +69,10 @@
  *   <li>A vector starts with its item count, then the end of each item, counted from the vector's
  *     position, and then the items, one after another. {@code getVectorOffset()} finds any item
  *     from two ends, without reading the items before it.</li>
+ *   <li>A vector of strings is a vector whose items are strings' UTF-8, without counts of their
+ *     own. {@code getStringVector()} reads every string, and a
+ *     {@link io.github.snovader.tafla.StringVector} reads each one from its two ends when it's
+ *     asked for. Each string must be valid UTF-8 on its own.</li>
  * </ul>
  *
  * <p>Java has no unsigned types, so unsigned values are read into the next wider type, such as a
@@ -123,6 +130,8 @@
  *   <tr><td>A {@code double} too large for a {@code float32}</td>
  *     <td>The caller's cast to {@code float}, which makes it infinity of its sign and rounds
  *     other values to the nearest {@code float}.</td></tr>
+ *   <tr><td>A {@code boolean} of an array of bools</td><td>The byte 1 for true, and 0 for
+ *     false.</td></tr>
  *   <tr><td>A lone surrogate in a string</td><td>U+FFFD.</td></tr>
  * </table>
  *
@@ -147,9 +156,10 @@
  *
  * <ul>
  *   <li>{@code TableReader} throws an {@link IllegalArgumentException} for a struct size below 1,
- *     or below 0 for {@code getStruct()}, and {@code getVectorOffset()} and
- *     {@code getVectorItemOffset()} an {@link IndexOutOfBoundsException} for an item outside the
- *     vector, or the count it's given.</li>
+ *     or below 0 for {@code getStruct()}, and {@code getVectorOffset()},
+ *     {@code getVectorItemOffset()} and {@code getStringVectorItem()} an
+ *     {@link IndexOutOfBoundsException} for an item outside the vector, or the count it's given,
+ *     as does a {@code StringVector}'s {@code get()}.</li>
  *   <li>{@code TableLayout} throws an {@link IllegalArgumentException} from its builder's
  *     {@code build()} and from {@code withVersion()} for a version that doesn't fit in the offset
  *     type.</li>

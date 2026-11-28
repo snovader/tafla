@@ -22,12 +22,146 @@ import {
     writeUint16,
     writeUint32,
     writeUint64,
+    StringVector,
     StructWriter,
     TableLayout,
     TableReader,
     TableSizer,
     TableWriter
 } from 'tafla';
+
+/**
+ * How much of something there is.
+ *
+ * A field of it holds any `uint8`, whether it has a name here or not.
+ */
+export const Level = globalThis.Object.freeze({
+    /** The least */
+    Low: 0,
+    Medium: 1,
+    /**
+     * The most, in documentation
+     * of two lines
+     */
+    High: 2
+});
+
+/**
+ * A value of {@link Level}: one that it names, or any other `uint8`
+ *
+ * @typedef {number} Level
+ */
+
+/** An enum of `int8`, with a negative value */
+export const Direction = globalThis.Object.freeze({
+    Backward: -1,
+    None: 0,
+    Forward: 1,
+    /** The least `int8` */
+    FurthestBack: -128
+});
+
+/**
+ * A value of {@link Direction}: one that it names, or any other `int8`
+ *
+ * @typedef {number} Direction
+ */
+
+/** An enum of `uint16`, whose values aren't in order */
+export const Unit = globalThis.Object.freeze({
+    Last: 65535,
+    First: 0,
+    V2: 2
+});
+
+/**
+ * A value of {@link Unit}: one that it names, or any other `uint16`
+ *
+ * @typedef {number} Unit
+ */
+
+export const Change = globalThis.Object.freeze({
+    Least: -32768,
+    Greatest: 32767
+});
+
+/**
+ * A value of {@link Change}: one that it names, or any other `int16`
+ *
+ * @typedef {number} Change
+ */
+
+export const Status = globalThis.Object.freeze({
+    Ok: 0,
+    NotFound: 404,
+    Greatest: 4294967295
+});
+
+/**
+ * A value of {@link Status}: one that it names, or any other `uint32`
+ *
+ * @typedef {number} Status
+ */
+
+export const Sign = globalThis.Object.freeze({
+    Least: -2147483648,
+    Greatest: 2147483647
+});
+
+/**
+ * A value of {@link Sign}: one that it names, or any other `int32`
+ *
+ * @typedef {number} Sign
+ */
+
+/** An enum of `uint64`, with a value that a float64 can't hold exactly */
+export const Mask = globalThis.Object.freeze({
+    None: 0n,
+    One: 1n,
+    BeyondFloat64: 9007199254740993n,
+    All: 18446744073709551615n
+});
+
+/**
+ * A value of {@link Mask}: one that it names, or any other `uint64`
+ *
+ * @typedef {bigint} Mask
+ */
+
+export const Extent = globalThis.Object.freeze({
+    Least: -9223372036854775808n,
+    Zero: 0n,
+    Greatest: 9223372036854775807n
+});
+
+/**
+ * A value of {@link Extent}: one that it names, or any other `int64`
+ *
+ * @typedef {bigint} Extent
+ */
+
+/** Values named after keywords and literals of the target languages */
+export const Word = globalThis.Object.freeze({
+    Class: 0,
+    Default: 1,
+    In: 2,
+    Match: 3,
+    Self: 4,
+    Type: 5,
+    True: 6,
+    Null: 7,
+    None: 8,
+    Init: 9,
+    New: 10,
+    Name: 11,
+    Value: 12
+});
+
+/**
+ * A value of {@link Word}: one that it names, or any other `uint8`
+ *
+ * @typedef {number} Word
+ */
 
 /** A field of every scalar type, and a bool */
 export class Scalars {
@@ -245,7 +379,7 @@ export class Scalars {
  * @property {boolean} bool
  */
 
-/** An array of every scalar type but bool, which has none */
+/** An array of every scalar type, and of bools, which are bytes of 0 and 1 */
 export class Arrays {
     static #LAYOUT = TableLayout.DEFAULT;
 
@@ -261,7 +395,7 @@ export class Arrays {
      * @returns {Uint8Array}
      */
     static serialize(fields) {
-        const sizer = new TableSizer(10, Arrays.#LAYOUT);
+        const sizer = new TableSizer(11, Arrays.#LAYOUT);
         sizer.addInt8Array(fields.int8.length);
         sizer.addUint8Array(fields.uint8.length);
         sizer.addInt16Array(fields.int16.length);
@@ -272,6 +406,7 @@ export class Arrays {
         sizer.addUint64Array(fields.uint64.length);
         sizer.addFloat32Array(fields.float32.length);
         sizer.addFloat64Array(fields.float64.length);
+        sizer.addBoolArray(fields.bool.length);
 
         const writer = sizer.writer();
         writer.setInt8Array(0, fields.int8);
@@ -284,6 +419,7 @@ export class Arrays {
         writer.setUint64Array(7, fields.uint64);
         writer.setFloat32Array(8, fields.float32);
         writer.setFloat64Array(9, fields.float64);
+        writer.setBoolArray(10, fields.bool);
 
         return writer.bytes();
     }
@@ -302,7 +438,7 @@ export class Arrays {
      * any of them is written.
      */
     static serializeInto(fields, bytes) {
-        const sizer = new TableSizer(10, Arrays.#LAYOUT);
+        const sizer = new TableSizer(11, Arrays.#LAYOUT);
         sizer.addInt8Array(fields.int8.length);
         sizer.addUint8Array(fields.uint8.length);
         sizer.addInt16Array(fields.int16.length);
@@ -313,6 +449,7 @@ export class Arrays {
         sizer.addUint64Array(fields.uint64.length);
         sizer.addFloat32Array(fields.float32.length);
         sizer.addFloat64Array(fields.float64.length);
+        sizer.addBoolArray(fields.bool.length);
 
         const writer = sizer.writer(bytes);
         writer.setInt8Array(0, fields.int8);
@@ -325,6 +462,7 @@ export class Arrays {
         writer.setUint64Array(7, fields.uint64);
         writer.setFloat32Array(8, fields.float32);
         writer.setFloat64Array(9, fields.float64);
+        writer.setBoolArray(10, fields.bool);
 
         return writer.bytes();
     }
@@ -380,6 +518,15 @@ export class Arrays {
     }
 
     /**
+     * A byte for each bool, which is true where it isn't 0
+     *
+     * @returns {Uint8Array}
+     */
+    bool() {
+        return this._reader.getUint8Array(this._reader.rootOffset(10));
+    }
+
+    /**
      * Reads every field into the `ArraysFields` that writes it, nested
      * tables and the items of vectors and arrays of structs included
      *
@@ -396,7 +543,8 @@ export class Arrays {
             int64: this._reader.getInt64Array(this._reader.rootOffset(6)),
             uint64: this._reader.getUint64Array(this._reader.rootOffset(7)),
             float32: this._reader.getFloat32Array(this._reader.rootOffset(8)),
-            float64: this._reader.getFloat64Array(this._reader.rootOffset(9))
+            float64: this._reader.getFloat64Array(this._reader.rootOffset(9)),
+            bool: this._reader.getBoolArray(this._reader.rootOffset(10))
         };
     }
 }
@@ -415,6 +563,7 @@ export class Arrays {
  * @property {ArrayLike<bigint> | BigUint64Array} uint64
  * @property {ArrayLike<number> | Float32Array} float32
  * @property {ArrayLike<number> | Float64Array} float64
+ * @property {readonly boolean[]} bool
  */
 
 export class Inner {
@@ -1063,6 +1212,437 @@ export class Reserved {
  *
  * @typedef {object} ReservedFields
  * @property {KeywordsFields} keywords
+ */
+
+/** A nested table whose only field is a vector of strings */
+export class Labels {
+    /**
+     * The alignment that a parent pads a `Labels` to: the largest
+     * alignment of its arrays and nested tables, or 1
+     *
+     * @type {1}
+     */
+    static ALIGNMENT = 1;
+
+    /**
+     * Reads the table at `position`, as its parent's getter finds it
+     *
+     * @param {TableReader} reader
+     * @param {number} position
+     */
+    constructor(reader, position) {
+        this._reader = reader;
+        this._position = position;
+    }
+
+    /**
+     * Reads every field of the table at `position`, as `fields()` does,
+     * without creating a `Labels`
+     *
+     * @param {TableReader} reader
+     * @param {number} position
+     * @returns {LabelsFields}
+     */
+    static read(reader, position) {
+        return {
+            values: reader.getStringVector(reader.fieldOffset(position, 0))
+        };
+    }
+
+    /**
+     * Adds a `Labels` to its parent's sizer, after the field or
+     * vector that holds it
+     *
+     * @param {TableSizer} sizer
+     * @param {LabelsFields} fields
+     * @returns {void}
+     */
+    static size(sizer, fields) {
+        const parent = sizer.startTable(1);
+        sizer.addStringVector(fields.values);
+        sizer.endTable(parent);
+    }
+
+    /**
+     * Writes a `Labels` where its parent's writer is, after the
+     * field or vector that holds it
+     *
+     * @param {TableWriter} writer
+     * @param {LabelsFields} fields
+     * @returns {void}
+     */
+    static write(writer, fields) {
+        const parent = writer.startTable(1);
+        writer.setStringVector(0, fields.values);
+        writer.endTable(parent);
+    }
+
+    /** @returns {StringVector} */
+    values() {
+        return new StringVector(
+            this._reader,
+            this._reader.fieldOffset(this._position, 0)
+        );
+    }
+
+    /**
+     * Reads every field into the `LabelsFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     *
+     * @returns {LabelsFields}
+     */
+    fields() {
+        return Labels.read(this._reader, this._position);
+    }
+}
+
+/**
+ * The fields of a `Labels`, to write
+ *
+ * @typedef {object} LabelsFields
+ * @property {readonly string[]} values
+ */
+
+/** An item of a vector, which holds a string and a vector of strings */
+export class Entry {
+    /**
+     * The alignment that a parent pads an `Entry` to: the largest
+     * alignment of its arrays and nested tables, or 1
+     *
+     * @type {1}
+     */
+    static ALIGNMENT = 1;
+
+    /**
+     * Reads the table at `position`, as its parent's getter finds it
+     *
+     * @param {TableReader} reader
+     * @param {number} position
+     */
+    constructor(reader, position) {
+        this._reader = reader;
+        this._position = position;
+    }
+
+    /**
+     * Reads every field of the table at `position`, as `fields()` does,
+     * without creating an `Entry`
+     *
+     * @param {TableReader} reader
+     * @param {number} position
+     * @returns {EntryFields}
+     */
+    static read(reader, position) {
+        return {
+            key: reader.getString(reader.fieldOffset(position, 0)),
+            aliases: reader.getStringVector(reader.fieldOffset(position, 1))
+        };
+    }
+
+    /**
+     * Adds an `Entry` to its parent's sizer, after the field or
+     * vector that holds it
+     *
+     * @param {TableSizer} sizer
+     * @param {EntryFields} fields
+     * @returns {void}
+     */
+    static size(sizer, fields) {
+        const parent = sizer.startTable(2);
+        sizer.addString(fields.key);
+        sizer.addStringVector(fields.aliases);
+        sizer.endTable(parent);
+    }
+
+    /**
+     * Writes an `Entry` where its parent's writer is, after the
+     * field or vector that holds it
+     *
+     * @param {TableWriter} writer
+     * @param {EntryFields} fields
+     * @returns {void}
+     */
+    static write(writer, fields) {
+        const parent = writer.startTable(2);
+        writer.setString(0, fields.key);
+        writer.setStringVector(1, fields.aliases);
+        writer.endTable(parent);
+    }
+
+    /** @returns {string} */
+    key() {
+        return this._reader.getString(
+            this._reader.fieldOffset(this._position, 0)
+        );
+    }
+
+    /** @returns {StringVector} */
+    aliases() {
+        return new StringVector(
+            this._reader,
+            this._reader.fieldOffset(this._position, 1)
+        );
+    }
+
+    /**
+     * Reads every field into the `EntryFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     *
+     * @returns {EntryFields}
+     */
+    fields() {
+        return Entry.read(this._reader, this._position);
+    }
+}
+
+/**
+ * The fields of an `Entry`, to write
+ *
+ * @typedef {object} EntryFields
+ * @property {string} key
+ * @property {readonly string[]} aliases
+ */
+
+/** A vector of `Entry`s, which reads each item when it's asked for */
+export class EntryVector {
+    /**
+     * Views the vector at `position`, as its parent's getter finds it
+     *
+     * @param {TableReader} reader
+     * @param {number} position
+     * @throws {DecodeError} If the vector's count or the ends of its items lie
+     * outside the bytes.
+     */
+    constructor(reader, position) {
+        this._reader = reader;
+        this._position = position;
+        this._length = reader.getVectorLength(position);
+    }
+
+    /** @returns {number} The number of items */
+    length() {
+        return this._length;
+    }
+
+    /**
+     * Reads item `index`, without reading the others
+     *
+     * @param {number} index
+     * @returns {Entry}
+     * @throws {RangeError} If the vector has no item `index`.
+     * @throws {DecodeError} If the item lies outside the bytes.
+     */
+    get(index) {
+        return new Entry(
+            this._reader,
+            this._reader.getVectorItemOffset(
+                this._position,
+                this._length,
+                index
+            )
+        );
+    }
+}
+
+/**
+ * Vectors of strings beside other fields, in a nested table and in the
+ * items of a vector
+ */
+export class StringVectors {
+    static #LAYOUT = TableLayout.DEFAULT;
+
+    /** @param {Uint8Array} bytes */
+    constructor(bytes) {
+        this._reader = new TableReader(bytes, StringVectors.#LAYOUT);
+    }
+
+    /**
+     * Writes a `StringVectors` with every field
+     *
+     * @param {StringVectorsFields} fields
+     * @returns {Uint8Array}
+     */
+    static serialize(fields) {
+        const sizer = new TableSizer(4, StringVectors.#LAYOUT);
+        sizer.addUint32();
+        sizer.addStringVector(fields.tags);
+        sizer.addTable(Labels.ALIGNMENT);
+        Labels.size(sizer, fields.labels);
+        sizer.addVector(fields.entries.length);
+        for (const item of fields.entries) {
+            Entry.size(sizer, item);
+        }
+
+        const writer = sizer.writer();
+        writer.setUint32(0, fields.id);
+        writer.setStringVector(1, fields.tags);
+        writer.setTable(2, Labels.ALIGNMENT);
+        Labels.write(writer, fields.labels);
+        const vector3 = writer.setVector(3, fields.entries.length);
+        for (let i = 0; i < fields.entries.length; i++) {
+            Entry.write(writer, fields.entries[i]);
+            writer.setItemEnd(vector3, i);
+        }
+
+        return writer.bytes();
+    }
+
+    /**
+     * Writes a `StringVectors` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @param {StringVectorsFields} fields
+     * @param {Uint8Array} bytes
+     * @returns {Uint8Array}
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(fields, bytes) {
+        const sizer = new TableSizer(4, StringVectors.#LAYOUT);
+        sizer.addUint32();
+        sizer.addStringVector(fields.tags);
+        sizer.addTable(Labels.ALIGNMENT);
+        Labels.size(sizer, fields.labels);
+        sizer.addVector(fields.entries.length);
+        for (const item of fields.entries) {
+            Entry.size(sizer, item);
+        }
+
+        const writer = sizer.writer(bytes);
+        writer.setUint32(0, fields.id);
+        writer.setStringVector(1, fields.tags);
+        writer.setTable(2, Labels.ALIGNMENT);
+        Labels.write(writer, fields.labels);
+        const vector3 = writer.setVector(3, fields.entries.length);
+        for (let i = 0; i < fields.entries.length; i++) {
+            Entry.write(writer, fields.entries[i]);
+            writer.setItemEnd(vector3, i);
+        }
+
+        return writer.bytes();
+    }
+
+    /** @returns {number} */
+    id() {
+        return this._reader.getUint32(this._reader.rootOffset(0));
+    }
+
+    /**
+     * A vector of strings, whose getter reads each string when it's asked
+     * for
+     *
+     * @returns {StringVector}
+     */
+    tags() {
+        return new StringVector(this._reader, this._reader.rootOffset(1));
+    }
+
+    /** @returns {Labels} */
+    labels() {
+        return new Labels(this._reader, this._reader.rootOffset(2));
+    }
+
+    /** @returns {EntryVector} */
+    entries() {
+        return new EntryVector(this._reader, this._reader.rootOffset(3));
+    }
+}
+
+/**
+ * The fields of a `StringVectors`, to write
+ *
+ * @typedef {object} StringVectorsFields
+ * @property {number} id
+ * @property {readonly string[]} tags A vector of strings, whose getter reads each string when it's asked for
+ * @property {LabelsFields} labels
+ * @property {readonly EntryFields[]} entries
+ */
+
+/** A vector of strings in a message of `uint16` offsets, before a scalar */
+export class NarrowStringVectors {
+    static #LAYOUT = TableLayout.create({ offsetType: 'uint16' });
+
+    /** @param {Uint8Array} bytes */
+    constructor(bytes) {
+        this._reader = new TableReader(bytes, NarrowStringVectors.#LAYOUT);
+    }
+
+    /**
+     * Writes a `NarrowStringVectors` with every field
+     *
+     * @param {NarrowStringVectorsFields} fields
+     * @returns {Uint8Array}
+     */
+    static serialize(fields) {
+        const sizer = new TableSizer(2, NarrowStringVectors.#LAYOUT);
+        sizer.addStringVector(fields.names);
+        sizer.addUint8();
+
+        const writer = sizer.writer();
+        writer.setStringVector(0, fields.names);
+        writer.setUint8(1, fields.count);
+
+        return writer.bytes();
+    }
+
+    /**
+     * Writes a `NarrowStringVectors` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @param {NarrowStringVectorsFields} fields
+     * @param {Uint8Array} bytes
+     * @returns {Uint8Array}
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(fields, bytes) {
+        const sizer = new TableSizer(2, NarrowStringVectors.#LAYOUT);
+        sizer.addStringVector(fields.names);
+        sizer.addUint8();
+
+        const writer = sizer.writer(bytes);
+        writer.setStringVector(0, fields.names);
+        writer.setUint8(1, fields.count);
+
+        return writer.bytes();
+    }
+
+    /** @returns {StringVector} */
+    names() {
+        return new StringVector(this._reader, this._reader.rootOffset(0));
+    }
+
+    /** @returns {number} */
+    count() {
+        return this._reader.getUint8(this._reader.rootOffset(1));
+    }
+
+    /**
+     * Reads every field into the `NarrowStringVectorsFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     *
+     * @returns {NarrowStringVectorsFields}
+     */
+    fields() {
+        return {
+            names: this._reader.getStringVector(this._reader.rootOffset(0)),
+            count: this._reader.getUint8(this._reader.rootOffset(1))
+        };
+    }
+}
+
+/**
+ * The fields of a `NarrowStringVectors`, to write
+ *
+ * @typedef {object} NarrowStringVectorsFields
+ * @property {readonly string[]} names
+ * @property {number} count
  */
 
 /**
@@ -2324,4 +2904,875 @@ export class Structs {
  * @property {SegmentFields} segment A struct of structs
  * @property {readonly SegmentFields[]} segments
  * @property {PathFields} path A table nested in the message, which holds structs too
+ */
+
+export class Turn {
+    /** The byte length of a `Turn` */
+    static SIZE = 9;
+
+    /**
+     * The alignment of an array of `Turn`: its largest scalar's size
+     *
+     * @type {8}
+     */
+    static ALIGNMENT = 8;
+
+    /**
+     * Reads a `Turn` at `offset` in `bytes`, eagerly, so that it
+     * doesn't keep them alive
+     *
+     * @param {Uint8Array} bytes
+     * @param {number} [offset]
+     * @throws {DecodeError} If `bytes` end before the `Turn` does.
+     */
+    constructor(bytes, offset = 0) {
+        this._direction = readInt8(bytes, offset);
+        this._mask = readUint64(bytes, offset + 1);
+    }
+
+    /**
+     * Reads the fields of a `Turn` at `offset` in `bytes`,
+     * without creating a `Turn`
+     *
+     * @param {Uint8Array} bytes
+     * @param {number} [offset]
+     * @returns {TurnFields}
+     * @throws {DecodeError} If `bytes` end before the `Turn` does.
+     */
+    static read(bytes, offset = 0) {
+        return {
+            direction: readInt8(bytes, offset),
+            mask: readUint64(bytes, offset + 1)
+        };
+    }
+
+    /**
+     * Writes a `Turn`
+     *
+     * @param {TurnFields} fields
+     * @returns {Uint8Array}
+     */
+    static serialize(fields) {
+        const bytes = new Uint8Array(Turn.SIZE);
+        Turn.writeAt(bytes, 0, fields);
+
+        return bytes;
+    }
+
+    /**
+     * Writes `Turn`s one after another, as an array of them holds them
+     *
+     * @param {readonly TurnFields[]} items
+     * @returns {Uint8Array}
+     */
+    static serializeArray(items) {
+        const bytes = new Uint8Array(items.length * Turn.SIZE);
+        const writer = new StructWriter(bytes);
+        for (const fields of items) {
+            Turn.write(writer, fields);
+        }
+
+        return bytes;
+    }
+
+    /**
+     * Writes a `Turn` at the writer's position
+     *
+     * @param {StructWriter} writer
+     * @param {TurnFields} fields
+     * @returns {void}
+     */
+    static write(writer, fields) {
+        writer.setInt8(fields.direction);
+        writer.setUint64(fields.mask);
+    }
+
+    /**
+     * Writes a `Turn` at `offset` in `bytes`
+     *
+     * @param {Uint8Array} bytes
+     * @param {number} offset
+     * @param {TurnFields} fields
+     * @returns {void}
+     * @throws {RangeError} If `bytes` end before the `Turn` does.
+     */
+    static writeAt(bytes, offset, fields) {
+        writeInt8(bytes, offset, fields.direction);
+        writeUint64(bytes, offset + 1, fields.mask);
+    }
+
+    /**
+     * Writes a `Turn` at `offset` in `view`, as `writeAt()` writes it
+     * into bytes
+     *
+     * @param {DataView} view
+     * @param {number} offset
+     * @param {TurnFields} fields
+     * @returns {void}
+     * @throws {RangeError} If `view` ends before the `Turn` does.
+     */
+    static writeView(view, offset, fields) {
+        view.setInt8(offset, fields.direction);
+        view.setBigUint64(offset + 1, fields.mask, true);
+    }
+
+    /** @returns {Direction} */
+    direction() {
+        return this._direction;
+    }
+
+    /** @returns {Mask} */
+    mask() {
+        return this._mask;
+    }
+}
+
+/**
+ * The fields of a `Turn`, to write
+ *
+ * @typedef {object} TurnFields
+ * @property {Direction} direction
+ * @property {Mask} mask
+ */
+
+/**
+ * A struct of enums of 1, 2 and 8 bytes beside a scalar, and of a struct
+ * that holds an enum
+ */
+export class Mark {
+    /** The byte length of a `Mark` */
+    static SIZE = 24;
+
+    /**
+     * The alignment of an array of `Mark`: its largest scalar's size
+     *
+     * @type {8}
+     */
+    static ALIGNMENT = 8;
+
+    /**
+     * Reads a `Mark` at `offset` in `bytes`, eagerly, so that it
+     * doesn't keep them alive
+     *
+     * @param {Uint8Array} bytes
+     * @param {number} [offset]
+     * @throws {DecodeError} If `bytes` end before the `Mark` does.
+     */
+    constructor(bytes, offset = 0) {
+        this._level = readUint8(bytes, offset);
+        this._change = readInt16(bytes, offset + 1);
+        this._weight = readFloat32(bytes, offset + 3);
+        this._extent = readInt64(bytes, offset + 7);
+        this._turn = new Turn(bytes, offset + 15);
+    }
+
+    /**
+     * Reads the fields of a `Mark` at `offset` in `bytes`,
+     * without creating a `Mark`
+     *
+     * @param {Uint8Array} bytes
+     * @param {number} [offset]
+     * @returns {MarkFields}
+     * @throws {DecodeError} If `bytes` end before the `Mark` does.
+     */
+    static read(bytes, offset = 0) {
+        return {
+            level: readUint8(bytes, offset),
+            change: readInt16(bytes, offset + 1),
+            weight: readFloat32(bytes, offset + 3),
+            extent: readInt64(bytes, offset + 7),
+            turn: Turn.read(bytes, offset + 15)
+        };
+    }
+
+    /**
+     * Writes a `Mark`
+     *
+     * @param {MarkFields} fields
+     * @returns {Uint8Array}
+     */
+    static serialize(fields) {
+        const bytes = new Uint8Array(Mark.SIZE);
+        Mark.writeAt(bytes, 0, fields);
+
+        return bytes;
+    }
+
+    /**
+     * Writes `Mark`s one after another, as an array of them holds them
+     *
+     * @param {readonly MarkFields[]} items
+     * @returns {Uint8Array}
+     */
+    static serializeArray(items) {
+        const bytes = new Uint8Array(items.length * Mark.SIZE);
+        const writer = new StructWriter(bytes);
+        for (const fields of items) {
+            Mark.write(writer, fields);
+        }
+
+        return bytes;
+    }
+
+    /**
+     * Writes a `Mark` at the writer's position
+     *
+     * @param {StructWriter} writer
+     * @param {MarkFields} fields
+     * @returns {void}
+     */
+    static write(writer, fields) {
+        writer.setUint8(fields.level);
+        writer.setInt16(fields.change);
+        writer.setFloat32(fields.weight);
+        writer.setInt64(fields.extent);
+        Turn.write(writer, fields.turn);
+    }
+
+    /**
+     * Writes a `Mark` at `offset` in `bytes`
+     *
+     * @param {Uint8Array} bytes
+     * @param {number} offset
+     * @param {MarkFields} fields
+     * @returns {void}
+     * @throws {RangeError} If `bytes` end before the `Mark` does.
+     */
+    static writeAt(bytes, offset, fields) {
+        writeUint8(bytes, offset, fields.level);
+        writeInt16(bytes, offset + 1, fields.change);
+        writeFloat32(bytes, offset + 3, fields.weight);
+        writeInt64(bytes, offset + 7, fields.extent);
+        Turn.writeAt(bytes, offset + 15, fields.turn);
+    }
+
+    /**
+     * Writes a `Mark` at `offset` in `view`, as `writeAt()` writes it
+     * into bytes
+     *
+     * @param {DataView} view
+     * @param {number} offset
+     * @param {MarkFields} fields
+     * @returns {void}
+     * @throws {RangeError} If `view` ends before the `Mark` does.
+     */
+    static writeView(view, offset, fields) {
+        view.setUint8(offset, fields.level);
+        view.setInt16(offset + 1, fields.change, true);
+        view.setFloat32(offset + 3, fields.weight, true);
+        view.setBigInt64(offset + 7, fields.extent, true);
+        Turn.writeView(view, offset + 15, fields.turn);
+    }
+
+    /**
+     * Writes `Mark`s one after another at `offset` in `bytes`, as an array
+     * of them holds them. A run shorter than 128 bytes is written with the
+     * runtime's write functions, and a longer one through a `DataView`, which
+     * writes each scalar faster but takes longer to create.
+     *
+     * @param {Uint8Array} bytes
+     * @param {number} offset
+     * @param {readonly MarkFields[]} items
+     * @returns {void}
+     * @throws {RangeError} If `bytes` end before the last `Mark` does.
+     */
+    static writeItemsAt(bytes, offset, items) {
+        const count = items.length;
+        const length = count * Mark.SIZE;
+        if (length < 128) {
+            for (let i = 0; i < count; i++) {
+                Mark.writeAt(bytes, offset + i * Mark.SIZE, items[i]);
+            }
+
+            return;
+        }
+
+        const view = viewOf(bytes, offset, length);
+        for (let i = 0; i < count; i++) {
+            Mark.writeView(view, i * Mark.SIZE, items[i]);
+        }
+    }
+
+    /** @returns {Level} */
+    level() {
+        return this._level;
+    }
+
+    /** @returns {Change} */
+    change() {
+        return this._change;
+    }
+
+    /** @returns {number} */
+    weight() {
+        return this._weight;
+    }
+
+    /** @returns {Extent} */
+    extent() {
+        return this._extent;
+    }
+
+    /** @returns {Turn} */
+    turn() {
+        return this._turn;
+    }
+}
+
+/**
+ * The fields of a `Mark`, to write
+ *
+ * @typedef {object} MarkFields
+ * @property {Level} level
+ * @property {Change} change
+ * @property {number} weight
+ * @property {Extent} extent
+ * @property {TurnFields} turn
+ */
+
+/**
+ * An array of `Mark`s, which reads each struct when it's asked for.
+ *
+ * Its getters take a struct's index, an integer, which they check only by
+ * reading within the array's bytes.
+ */
+export class MarkArray {
+    /**
+     * Views the array at `position`, as its parent's getter finds it
+     *
+     * @param {TableReader} reader
+     * @param {number} position
+     * @throws {DecodeError} If the array lies outside the bytes.
+     */
+    constructor(reader, position) {
+        this._bytes = reader.getStructArray(position, Mark.SIZE);
+        this._length = this._bytes.length / Mark.SIZE;
+    }
+
+    /** @returns {number} The number of structs */
+    length() {
+        return this._length;
+    }
+
+    /**
+     * Reads struct `index`
+     *
+     * @param {number} index
+     * @returns {Mark}
+     * @throws {DecodeError} If the array has no struct `index`.
+     */
+    get(index) {
+        return new Mark(this._bytes, index * 24);
+    }
+
+    /**
+     * Reads `level` of struct `index`, without reading the others
+     *
+     * @param {number} index
+     * @returns {Level}
+     * @throws {DecodeError} If the array has no struct `index`.
+     */
+    level(index) {
+        return readUint8(this._bytes, index * 24);
+    }
+
+    /**
+     * Reads `change` of struct `index`, without reading the others
+     *
+     * @param {number} index
+     * @returns {Change}
+     * @throws {DecodeError} If the array has no struct `index`.
+     */
+    change(index) {
+        return readInt16(this._bytes, index * 24 + 1);
+    }
+
+    /**
+     * Reads `weight` of struct `index`, without reading the others
+     *
+     * @param {number} index
+     * @returns {number}
+     * @throws {DecodeError} If the array has no struct `index`.
+     */
+    weight(index) {
+        return readFloat32(this._bytes, index * 24 + 3);
+    }
+
+    /**
+     * Reads `extent` of struct `index`, without reading the others
+     *
+     * @param {number} index
+     * @returns {Extent}
+     * @throws {DecodeError} If the array has no struct `index`.
+     */
+    extent(index) {
+        return readInt64(this._bytes, index * 24 + 7);
+    }
+
+    /**
+     * Reads `turn` of struct `index`, without reading the others
+     *
+     * @param {number} index
+     * @returns {Turn}
+     * @throws {DecodeError} If the array has no struct `index`.
+     */
+    turn(index) {
+        return new Turn(this._bytes, index * 24 + 15);
+    }
+
+    /**
+     * Reads the `MarkFields` of every item, from the first to the last
+     *
+     * @returns {MarkFields[]}
+     */
+    fields() {
+        const bytes = this._bytes;
+        const items = /** @type {MarkFields[]} */ (new Array(this._length));
+
+        for (let i = 0; i < items.length; i++) {
+            const offset = i * 24;
+            items[i] = {
+                level: readUint8(bytes, offset),
+                change: readInt16(bytes, offset + 1),
+                weight: readFloat32(bytes, offset + 3),
+                extent: readInt64(bytes, offset + 7),
+                turn: Turn.read(bytes, offset + 15)
+            };
+        }
+
+        return items;
+    }
+}
+
+/** A table of an enum, a struct of enums and a string */
+export class Step {
+    /**
+     * The alignment that a parent pads a `Step` to: the largest
+     * alignment of its arrays and nested tables, or 1
+     *
+     * @type {1}
+     */
+    static ALIGNMENT = 1;
+
+    /**
+     * Reads the table at `position`, as its parent's getter finds it
+     *
+     * @param {TableReader} reader
+     * @param {number} position
+     */
+    constructor(reader, position) {
+        this._reader = reader;
+        this._position = position;
+    }
+
+    /**
+     * Reads every field of the table at `position`, as `fields()` does,
+     * without creating a `Step`
+     *
+     * @param {TableReader} reader
+     * @param {number} position
+     * @returns {StepFields}
+     */
+    static read(reader, position) {
+        return {
+            level: reader.getUint8(reader.fieldOffset(position, 0)),
+            mark: Mark.read(reader.bytes(), reader.fieldOffset(position, 1)),
+            name: reader.getString(reader.fieldOffset(position, 2))
+        };
+    }
+
+    /**
+     * Adds a `Step` to its parent's sizer, after the field or
+     * vector that holds it
+     *
+     * @param {TableSizer} sizer
+     * @param {StepFields} fields
+     * @returns {void}
+     */
+    static size(sizer, fields) {
+        const parent = sizer.startTable(3);
+        sizer.addUint8();
+        sizer.addStruct(Mark.SIZE);
+        sizer.addString(fields.name);
+        sizer.endTable(parent);
+    }
+
+    /**
+     * Writes a `Step` where its parent's writer is, after the
+     * field or vector that holds it
+     *
+     * @param {TableWriter} writer
+     * @param {StepFields} fields
+     * @returns {void}
+     */
+    static write(writer, fields) {
+        const parent = writer.startTable(3);
+        writer.setUint8(0, fields.level);
+        writer.setStruct(1, Mark.serialize(fields.mark));
+        writer.setString(2, fields.name);
+        writer.endTable(parent);
+    }
+
+    /** @returns {Level} */
+    level() {
+        return this._reader.getUint8(
+            this._reader.fieldOffset(this._position, 0)
+        );
+    }
+
+    /** @returns {Mark} */
+    mark() {
+        return new Mark(
+            this._reader.bytes(),
+            this._reader.fieldOffset(this._position, 1)
+        );
+    }
+
+    /** @returns {string} */
+    name() {
+        return this._reader.getString(
+            this._reader.fieldOffset(this._position, 2)
+        );
+    }
+
+    /**
+     * Reads every field into the `StepFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     *
+     * @returns {StepFields}
+     */
+    fields() {
+        return Step.read(this._reader, this._position);
+    }
+}
+
+/**
+ * The fields of a `Step`, to write
+ *
+ * @typedef {object} StepFields
+ * @property {Level} level
+ * @property {MarkFields} mark
+ * @property {string} name
+ */
+
+/** A vector of `Step`s, which reads each item when it's asked for */
+export class StepVector {
+    /**
+     * Views the vector at `position`, as its parent's getter finds it
+     *
+     * @param {TableReader} reader
+     * @param {number} position
+     * @throws {DecodeError} If the vector's count or the ends of its items lie
+     * outside the bytes.
+     */
+    constructor(reader, position) {
+        this._reader = reader;
+        this._position = position;
+        this._length = reader.getVectorLength(position);
+    }
+
+    /** @returns {number} The number of items */
+    length() {
+        return this._length;
+    }
+
+    /**
+     * Reads item `index`, without reading the others
+     *
+     * @param {number} index
+     * @returns {Step}
+     * @throws {RangeError} If the vector has no item `index`.
+     * @throws {DecodeError} If the item lies outside the bytes.
+     */
+    get(index) {
+        return new Step(
+            this._reader,
+            this._reader.getVectorItemOffset(
+                this._position,
+                this._length,
+                index
+            )
+        );
+    }
+}
+
+/** Enums as fields and in arrays, which are stored as their integer types */
+export class Enums {
+    static #LAYOUT = TableLayout.DEFAULT;
+
+    /** @param {Uint8Array} bytes */
+    constructor(bytes) {
+        this._reader = new TableReader(bytes, Enums.#LAYOUT);
+    }
+
+    /**
+     * Writes an `Enums` with every field
+     *
+     * @param {EnumsFields} fields
+     * @returns {Uint8Array}
+     */
+    static serialize(fields) {
+        const sizer = new TableSizer(20, Enums.#LAYOUT);
+        sizer.addUint8();
+        sizer.addUint8Array(fields.levels.length);
+        sizer.addInt8();
+        sizer.addInt8Array(fields.directions.length);
+        sizer.addUint16();
+        sizer.addUint16Array(fields.units.length);
+        sizer.addInt16();
+        sizer.addInt16Array(fields.changes.length);
+        sizer.addUint32();
+        sizer.addUint32Array(fields.statuses.length);
+        sizer.addInt32();
+        sizer.addInt32Array(fields.signs.length);
+        sizer.addUint64();
+        sizer.addUint64Array(fields.masks.length);
+        sizer.addInt64();
+        sizer.addInt64Array(fields.extents.length);
+        sizer.addUint8();
+        sizer.addStruct(Mark.SIZE);
+        sizer.addStructArray(fields.marks.length, Mark.SIZE, Mark.ALIGNMENT);
+        sizer.addVector(fields.steps.length);
+        for (const item of fields.steps) {
+            Step.size(sizer, item);
+        }
+
+        const writer = sizer.writer();
+        writer.setUint8(0, fields.level);
+        writer.setUint8Array(1, fields.levels);
+        writer.setInt8(2, fields.direction);
+        writer.setInt8Array(3, fields.directions);
+        writer.setUint16(4, fields.unit);
+        writer.setUint16Array(5, fields.units);
+        writer.setInt16(6, fields.change);
+        writer.setInt16Array(7, fields.changes);
+        writer.setUint32(8, fields.status);
+        writer.setUint32Array(9, fields.statuses);
+        writer.setInt32(10, fields.sign);
+        writer.setInt32Array(11, fields.signs);
+        writer.setUint64(12, fields.mask);
+        writer.setUint64Array(13, fields.masks);
+        writer.setInt64(14, fields.extent);
+        writer.setInt64Array(15, fields.extents);
+        writer.setUint8(16, fields.word);
+        writer.setStruct(17, Mark.serialize(fields.mark));
+        const items18 = writer.reserveStructArray(
+            18,
+            fields.marks.length,
+            Mark.SIZE,
+            Mark.ALIGNMENT
+        );
+        Mark.writeItemsAt(writer.target(), items18, fields.marks);
+        const vector19 = writer.setVector(19, fields.steps.length);
+        for (let i = 0; i < fields.steps.length; i++) {
+            Step.write(writer, fields.steps[i]);
+            writer.setItemEnd(vector19, i);
+        }
+
+        return writer.bytes();
+    }
+
+    /**
+     * Writes an `Enums` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @param {EnumsFields} fields
+     * @param {Uint8Array} bytes
+     * @returns {Uint8Array}
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(fields, bytes) {
+        const sizer = new TableSizer(20, Enums.#LAYOUT);
+        sizer.addUint8();
+        sizer.addUint8Array(fields.levels.length);
+        sizer.addInt8();
+        sizer.addInt8Array(fields.directions.length);
+        sizer.addUint16();
+        sizer.addUint16Array(fields.units.length);
+        sizer.addInt16();
+        sizer.addInt16Array(fields.changes.length);
+        sizer.addUint32();
+        sizer.addUint32Array(fields.statuses.length);
+        sizer.addInt32();
+        sizer.addInt32Array(fields.signs.length);
+        sizer.addUint64();
+        sizer.addUint64Array(fields.masks.length);
+        sizer.addInt64();
+        sizer.addInt64Array(fields.extents.length);
+        sizer.addUint8();
+        sizer.addStruct(Mark.SIZE);
+        sizer.addStructArray(fields.marks.length, Mark.SIZE, Mark.ALIGNMENT);
+        sizer.addVector(fields.steps.length);
+        for (const item of fields.steps) {
+            Step.size(sizer, item);
+        }
+
+        const writer = sizer.writer(bytes);
+        writer.setUint8(0, fields.level);
+        writer.setUint8Array(1, fields.levels);
+        writer.setInt8(2, fields.direction);
+        writer.setInt8Array(3, fields.directions);
+        writer.setUint16(4, fields.unit);
+        writer.setUint16Array(5, fields.units);
+        writer.setInt16(6, fields.change);
+        writer.setInt16Array(7, fields.changes);
+        writer.setUint32(8, fields.status);
+        writer.setUint32Array(9, fields.statuses);
+        writer.setInt32(10, fields.sign);
+        writer.setInt32Array(11, fields.signs);
+        writer.setUint64(12, fields.mask);
+        writer.setUint64Array(13, fields.masks);
+        writer.setInt64(14, fields.extent);
+        writer.setInt64Array(15, fields.extents);
+        writer.setUint8(16, fields.word);
+        writer.setStruct(17, Mark.serialize(fields.mark));
+        const items18 = writer.reserveStructArray(
+            18,
+            fields.marks.length,
+            Mark.SIZE,
+            Mark.ALIGNMENT
+        );
+        Mark.writeItemsAt(writer.target(), items18, fields.marks);
+        const vector19 = writer.setVector(19, fields.steps.length);
+        for (let i = 0; i < fields.steps.length; i++) {
+            Step.write(writer, fields.steps[i]);
+            writer.setItemEnd(vector19, i);
+        }
+
+        return writer.bytes();
+    }
+
+    /** @returns {Level} An enum of one byte */
+    level() {
+        return this._reader.getUint8(this._reader.rootOffset(0));
+    }
+
+    /**
+     * An array of enums, which is an array of their integer type
+     *
+     * @returns {Uint8Array}
+     */
+    levels() {
+        return this._reader.getUint8Array(this._reader.rootOffset(1));
+    }
+
+    /** @returns {Direction} */
+    direction() {
+        return this._reader.getInt8(this._reader.rootOffset(2));
+    }
+
+    /** @returns {Int8Array} */
+    directions() {
+        return this._reader.getInt8Array(this._reader.rootOffset(3));
+    }
+
+    /** @returns {Unit} */
+    unit() {
+        return this._reader.getUint16(this._reader.rootOffset(4));
+    }
+
+    /** @returns {Uint16Array} */
+    units() {
+        return this._reader.getUint16Array(this._reader.rootOffset(5));
+    }
+
+    /** @returns {Change} */
+    change() {
+        return this._reader.getInt16(this._reader.rootOffset(6));
+    }
+
+    /** @returns {Int16Array} */
+    changes() {
+        return this._reader.getInt16Array(this._reader.rootOffset(7));
+    }
+
+    /** @returns {Status} */
+    status() {
+        return this._reader.getUint32(this._reader.rootOffset(8));
+    }
+
+    /** @returns {Uint32Array} */
+    statuses() {
+        return this._reader.getUint32Array(this._reader.rootOffset(9));
+    }
+
+    /** @returns {Sign} */
+    sign() {
+        return this._reader.getInt32(this._reader.rootOffset(10));
+    }
+
+    /** @returns {Int32Array} */
+    signs() {
+        return this._reader.getInt32Array(this._reader.rootOffset(11));
+    }
+
+    /** @returns {Mask} */
+    mask() {
+        return this._reader.getUint64(this._reader.rootOffset(12));
+    }
+
+    /** @returns {BigUint64Array} */
+    masks() {
+        return this._reader.getUint64Array(this._reader.rootOffset(13));
+    }
+
+    /** @returns {Extent} */
+    extent() {
+        return this._reader.getInt64(this._reader.rootOffset(14));
+    }
+
+    /** @returns {BigInt64Array} */
+    extents() {
+        return this._reader.getInt64Array(this._reader.rootOffset(15));
+    }
+
+    /** @returns {Word} An enum whose values are keywords */
+    word() {
+        return this._reader.getUint8(this._reader.rootOffset(16));
+    }
+
+    /** @returns {Mark} A struct of enums */
+    mark() {
+        return new Mark(this._reader.bytes(), this._reader.rootOffset(17));
+    }
+
+    /** @returns {MarkArray} */
+    marks() {
+        return new MarkArray(this._reader, this._reader.rootOffset(18));
+    }
+
+    /** @returns {StepVector} Tables of an enum, which a vector's view reads */
+    steps() {
+        return new StepVector(this._reader, this._reader.rootOffset(19));
+    }
+}
+
+/**
+ * The fields of an `Enums`, to write
+ *
+ * @typedef {object} EnumsFields
+ * @property {Level} level An enum of one byte
+ * @property {ArrayLike<Level> | Uint8Array} levels An array of enums, which is an array of their integer type
+ * @property {Direction} direction
+ * @property {ArrayLike<Direction> | Int8Array} directions
+ * @property {Unit} unit
+ * @property {ArrayLike<Unit> | Uint16Array} units
+ * @property {Change} change
+ * @property {ArrayLike<Change> | Int16Array} changes
+ * @property {Status} status
+ * @property {ArrayLike<Status> | Uint32Array} statuses
+ * @property {Sign} sign
+ * @property {ArrayLike<Sign> | Int32Array} signs
+ * @property {Mask} mask
+ * @property {ArrayLike<Mask> | BigUint64Array} masks
+ * @property {Extent} extent
+ * @property {ArrayLike<Extent> | BigInt64Array} extents
+ * @property {Word} word An enum whose values are keywords
+ * @property {MarkFields} mark A struct of enums
+ * @property {readonly MarkFields[]} marks
+ * @property {readonly StepFields[]} steps Tables of an enum, which a vector's view reads
  */

@@ -147,6 +147,29 @@ public class TableWriterTest {
         assertArrayEquals(expected, Tables.build(table).bytes(), string::toString);
     }
 
+    @Property
+    void the_strings_of_a_vector_are_written_as_the_JDKs_encoder_encodes_them_with_each_lone_surrogate_as_U_FFFD(
+        @ForAll @Size(max = 4) List<@From("utf16Strings") String> strings
+    ) throws CharacterCodingException {
+        var table = new TableDescription(
+            LayoutDescription.headerless(OffsetType.UINT32),
+            OptionalLong.empty(),
+            List.of(new StringVectorField(strings))
+        );
+
+        // A vector whose items are the strings' bytes
+        var items = new byte[strings.size()][];
+        for (int i = 0; i < items.length; i++) {
+            items[i] = utf8(strings.get(i));
+        }
+        var builder = new TableBuilder(1);
+        builder.setVector(items);
+        var expected = builder.bytes();
+
+        assertArrayEquals(expected, Tables.write(table), strings::toString);
+        assertArrayEquals(expected, Tables.build(table).bytes(), strings::toString);
+    }
+
     /**
      * {@return the string's UTF-8 bytes from the JDK's encoder}, which replaces each lone surrogate
      * with U+FFFD, as TypeScript's {@code TextEncoder} does, rather than with {@code '?'}, as
@@ -478,6 +501,10 @@ public class TableWriterTest {
         // The cast to float makes a double too large for a float32 infinity
         assertConverted(TableSizer::addFloat32, writer -> writer.setFloat32(0, (float) 1e300),
             builder -> builder.setFloat32((float) 1e300), 0, 0, 0x80, 0x7f);
+
+        // A bool of an array of bools is written as 1 or 0
+        assertConverted(sizer -> sizer.addBoolArray(3), writer -> writer.setBoolArray(0, new boolean[] {true, false, true}),
+            builder -> builder.setBoolArray(new boolean[] {true, false, true}), 3, 0, 0, 0, 1, 0, 1);
 
         // A lone surrogate is written as U+FFFD
         assertConverted(sizer -> sizer.addString("\ud800"), writer -> writer.setString(0, "\ud800"),

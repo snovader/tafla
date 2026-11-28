@@ -58,9 +58,11 @@ struct FormatTests {
     }
 
     // Scalars hold their values' little-endian bytes, structs their scalars',
-    // arrays and strings their counts' and their elements', and vectors their
+    // arrays and strings their counts' and their elements', arrays of bools
+    // a byte of 1 or 0 for each after the count, unpadded, and vectors their
     // counts' and their items' ends', which count from the vector's position,
-    // after the ends
+    // after the ends, as vectors of strings hold them before their strings'
+    // UTF-8, one after another
     @Test func valuesAreLittleEndian() async {
         await checkFormat { bytes, table in
             for field in table.fields {
@@ -207,7 +209,7 @@ func defaultAlignment(of nested: Nested) -> Alignment {
 /// table's, and `nil` for any other
 func alignmentFromStart(_ field: Field, nested: Alignment?) -> Alignment? {
     switch field {
-    case .int8Array, .uint8Array: .one
+    case .int8Array, .uint8Array, .boolArray: .one
     case .int16Array, .uint16Array: .two
     case .int32Array, .uint32Array, .float32Array: .four
     case .int64Array, .uint64Array, .float64Array: .eight
@@ -222,7 +224,7 @@ func alignmentFromStart(_ field: Field, nested: Alignment?) -> Alignment? {
 func isArray(_ field: Field) -> Bool {
     switch field {
     case .int8Array, .uint8Array, .int16Array, .uint16Array, .int32Array, .uint32Array, .int64Array,
-        .uint64Array, .float32Array, .float64Array, .structArray:
+        .uint64Array, .float32Array, .float64Array, .boolArray, .structArray:
         true
     default:
         false
@@ -244,7 +246,7 @@ func paddingBefore(_ field: Field, nested: Alignment?, at offset: Int, width: In
 /// The bytes of a field that holds a value rather than tables: the
 /// little-endian bytes of a scalar, or of a struct's scalars, or the count of
 /// an array's elements, of a string's bytes or of an array's structs, and
-/// their little-endian bytes
+/// their little-endian bytes, or a vector of strings' count, ends and UTF-8
 func valueBytes(_ field: Field, width: Int) -> [UInt8] {
     func array<T: FixedWidthInteger>(_ values: [T]) -> [UInt8] {
         littleEndianSlot(values.count, width) + values.flatMap(littleEndianBytes)
@@ -262,10 +264,21 @@ func valueBytes(_ field: Field, width: Int) -> [UInt8] {
     case .uint64Array(let values): return array(values)
     case .float32Array(let bits): return array(bits)
     case .float64Array(let bits): return array(bits)
+    case .boolArray(let values): return littleEndianSlot(values.count, width) + values.map { $0 ? 1 : 0 }
     case .string(let utf8): return littleEndianSlot(utf8.count, width) + utf8
     case .struct(let scalars): return structBytes(scalars)
     case .structArray(_, let items): return littleEndianSlot(items.count, width) + items.flatMap(structBytes)
     case .table, .vector: preconditionFailure("A table or vector holds tables")
+    case .stringVector(let utf8):
+        // The count, the end of each string from the vector's position, and
+        // the strings, one after another
+        var ends: [UInt8] = []
+        var end = (utf8.count + 1) * width
+        for string in utf8 {
+            end += string.count
+            ends += littleEndianSlot(end, width)
+        }
+        return littleEndianSlot(utf8.count, width) + ends + utf8.flatMap { $0 }
     default: return field.scalarBytes
     }
 }

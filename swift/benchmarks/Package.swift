@@ -30,6 +30,12 @@ let package = Package(
             dependencies: [.product(name: "Tafla", package: "tafla")],
             swiftSettings: [lifetimes]
         ),
+        // The code that tafla-gen generates from the lists suite's schema
+        .target(
+            name: "GeneratedLists",
+            dependencies: [.product(name: "Tafla", package: "tafla")],
+            swiftSettings: [lifetimes]
+        ),
         .target(
             name: "GeneratedFlatBuffers",
             dependencies: [.product(name: "FlatBuffers", package: "flatbuffers")]
@@ -38,12 +44,14 @@ let package = Package(
             name: "GeneratedProtobuf",
             dependencies: [.product(name: "SwiftProtobuf", package: "swift-protobuf")]
         ),
-        // Each library's codec of the workloads, and the reads of tafla's items
+        // Each library's codec of the workloads, the reads of tafla's items,
+        // and tafla-gen's codecs of the lists of strings
         .target(
             name: "Codecs",
             dependencies: [
                 "Workloads",
                 "GeneratedTafla",
+                "GeneratedLists",
                 "GeneratedFlatBuffers",
                 "GeneratedProtobuf",
                 .product(name: "Tafla", package: "tafla"),
@@ -55,7 +63,10 @@ let package = Package(
         ),
         // Times variants interleaved, and counts what they allocate
         .target(name: "Harness"),
-        .executableTarget(name: "Comparison", dependencies: ["Codecs", "Harness", "Workloads"]),
+        // The command line and the report that the suites' executables share
+        .target(name: "Reporting", dependencies: ["Harness", "Workloads"]),
+        .executableTarget(name: "Comparison", dependencies: ["Codecs", "Harness", "Reporting", "Workloads"]),
+        .executableTarget(name: "Lists", dependencies: ["Codecs", "Harness", "Reporting", "Workloads"]),
         .executableTarget(name: "Encoding", dependencies: ["Codecs", "Workloads"]),
         .testTarget(name: "CodecsTests", dependencies: ["Codecs", "Workloads"]),
     ]

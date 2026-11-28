@@ -1,7 +1,7 @@
 // Tables read back the values that they were built from. The examples show
 // builders borrowing and owning values, `ArrayView` reading arrays in place or
-// copying them, structs read from their bytes, and vector items found from
-// their ends.
+// copying them, arrays of bools read into bools from their bytes, structs read
+// from their bytes, and vector items found from their ends.
 
 #include <gtest/gtest.h>
 #include <rapidcheck/gtest.h>
@@ -186,6 +186,43 @@ TEST(RoundTrip, ArraysInPlaceWhenAligned) {
         std::reverse(reversed.begin(), reversed.end());
         EXPECT_EQ(bits_of(backwards), bits_of(reversed));
     }
+}
+
+TEST(RoundTrip, ArraysOfBools) {
+    const bool borrowed[] = {true, false, true};
+
+    TableBuilder builder(3, TableLayout());
+    builder.set_bool_array(borrowed);
+    builder.set_bool_array(Bools{false, true});
+    builder.set_bool_array(std::span<const bool>());
+    const auto bytes = builder.to_bytes();
+    const TableReader reader(bytes, TableLayout());
+
+    // A byte of 1 or 0 for each bool, after the count, unpadded
+    EXPECT_EQ(reader.root_offset(1), 19U);
+    EXPECT_EQ(vector_of(reader.get_uint8_array(reader.root_offset(0))), (std::vector<std::uint8_t>{1, 0, 1}));
+    EXPECT_EQ(reader.get_bool_array(reader.root_offset(0)), (Bools{true, false, true}));
+    EXPECT_EQ(reader.get_bool_array(reader.root_offset(1)), (Bools{false, true}));
+    EXPECT_TRUE(reader.get_bool_array(reader.root_offset(2)).empty());
+}
+
+TEST(RoundTrip, BytesOfBoolsOtherThan0And1ReadAsTrueAndRebuildAs1) {
+    TableBuilder builder(1, TableLayout());
+    builder.set_bool_array(Bools{true, false, true, true});
+    const auto written = builder.to_bytes();
+
+    // The bools follow the offset and the count, at 8
+    auto bytes = written.to_vector();
+    const std::vector<std::uint8_t> others{2, 0, 0x80, 0xff};
+    std::ranges::copy(others, bytes.begin() + 8);
+
+    const TableReader reader(bytes, TableLayout());
+    auto bools = reader.get_bool_array(reader.root_offset(0));
+    EXPECT_EQ(bools, (Bools{true, false, true, true}));
+
+    TableBuilder rebuilt(1, TableLayout());
+    rebuilt.set_bool_array(std::move(bools));
+    EXPECT_EQ(rebuilt.to_bytes(), written);
 }
 
 TEST(RoundTrip, BuilderNestedSeveralTimes) {

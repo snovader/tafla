@@ -51,6 +51,7 @@ final class InPlaceTables {
             case ScalarField scalar -> scalar.type().set(item, scalar.value());
             case BoolField bool -> item.setUint8(bool.uint8());
             case ArrayField array -> array.type().setArray(item, array.values());
+            case BoolArrayField array -> item.setBoolArray(array.values());
             case StringField string -> item.setString(string.value());
             case StructField struct -> item.setStruct(StructBytes.pack(struct.types(), List.of(struct.values())));
             case StructArrayField array -> item.setStructArray(
@@ -64,6 +65,7 @@ final class InPlaceTables {
             case VectorField vector when recordsInPlace(vector, offsetType) ->
                 setVector(item::setVector, vector.items(), offsetType);
             case VectorField vector -> setVector(item, vector.items());
+            case StringVectorField vector -> item.setStringVector(vector.values());
         }
     }
 

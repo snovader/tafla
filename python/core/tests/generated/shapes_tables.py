@@ -12,6 +12,7 @@ from tests.generated.descriptions import (
     message,
     scalar,
     string,
+    struct,
     struct_bytes,
     table,
     typed_array,
@@ -31,6 +32,9 @@ from tests.generated.shapes.shapes import (
     Point,
     PointFields,
     Sample,
+    Step,
+    Task,
+    TaskFields,
 )
 from tests.tables import DEFAULT_LAYOUT, Description
 
@@ -70,6 +74,15 @@ def read_item(item: Item) -> ItemFields:
 
 def _read_pair(pair: Pair) -> PairFields:
     return {"first": pair.first(), "second": pair.second()}
+
+
+def read_task(task: Task) -> TaskFields:
+    return {
+        "priority": task.priority(),
+        "history": task.history().tolist(),
+        "step": task.step(),
+        "name": task.name(),
+    }
 
 
 # The tables that the generated code writes, in the conformance suite's model
@@ -138,6 +151,28 @@ def describe_sample(sample: Sample) -> list[Description]:
         scalar("uint32", sample.key),
         scalar("float32", sample.a),
         scalar("float32", sample.b),
+    ]
+
+
+def describe_task(fields: TaskFields) -> Description:
+    """A task, whose enums are the integer types that store them"""
+    return message(
+        DEFAULT_LAYOUT,
+        [
+            scalar("int8", fields["priority"]),
+            typed_array("uint16", fields["history"]),
+            struct(describe_step(fields["step"])),
+            string(fields["name"]),
+        ],
+    )
+
+
+def describe_step(step: Step) -> list[Description]:
+    """The fields of a ``Step``, in the order that they lie in its bytes"""
+    return [
+        scalar("uint16", step.state),
+        scalar("int8", step.priority),
+        scalar("uint32", step.seconds),
     ]
 
 

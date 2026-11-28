@@ -72,6 +72,49 @@ func TestRoundTripsValuesThatChangeAfterTheTableIsWritten(t *testing.T) {
 	}
 }
 
+// An array of bools is a uint8 array of 1 and 0, which the builder and the
+// writer write, GetBoolArray reads into new bools and GetUint8Array reads in
+// place. Every byte other than 0 reads as true, as a bool field's does.
+func TestRoundTripsArraysOfBoolsAsBytesOf1And0(t *testing.T) {
+	bools := []bool{true, false, true, true, false}
+
+	builder := must(tafla.NewTableBuilder(2, tafla.TableLayout{}))
+	check(t, builder.SetBoolArray(bools))
+	check(t, builder.SetBoolArray(nil))
+	table := must(builder.Bytes())
+
+	sizer := must(tafla.NewTableSizer(2, tafla.TableLayout{}))
+	sizer.AddBoolArray(len(bools))
+	sizer.AddBoolArray(0)
+	writer := must(sizer.Writer())
+	writer.SetBoolArray(0, bools)
+	writer.SetBoolArray(1, []bool{})
+	written := must(writer.Bytes())
+
+	// The offsets, 8 and 17, and each array's count and bytes, unpadded
+	expected := []byte{8, 0, 0, 0, 17, 0, 0, 0, 5, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 0}
+	if !bytes.Equal(table, expected) || !bytes.Equal(written, expected) {
+		t.Fatalf("built % x and wrote % x", table, written)
+	}
+
+	reader := tafla.NewTableReader(table, tafla.TableLayout{})
+	position := must(reader.RootOffset(0))
+	if read := must(reader.GetBoolArray(position)); !slices.Equal(read, bools) {
+		t.Errorf("read %v", read)
+	}
+	if read := must(reader.GetBoolArray(must(reader.RootOffset(1)))); len(read) != 0 {
+		t.Errorf("read %v", read)
+	}
+	if inPlace := must(reader.GetUint8Array(position)); &inPlace[0] != &table[12] {
+		t.Errorf("the bytes % x are a copy", inPlace)
+	}
+
+	copy(table[12:], []byte{2, 0, 0x80, 0xff})
+	if read := must(reader.GetBoolArray(position)); !slices.Equal(read, []bool{true, false, true, true, false}) {
+		t.Errorf("read %v", read)
+	}
+}
+
 func TestFindsVectorItemsFromTheirEnds(t *testing.T) {
 	builder := must(tafla.NewTableBuilder(1, tafla.TableLayout{}))
 	check(t, builder.SetVector(tafla.TableBytes{1}, tafla.TableBytes{}, tafla.TableBytes{2, 3}))

@@ -11,6 +11,8 @@
     "bench": "node --no-strip-types --import @snovader/node-hooks/register bundle.ts node --no-strip-types --import @snovader/node-hooks/register --conditions=tafla-bundle benchmarks/fields/main.ts",
     "bench:compare": "node --no-strip-types --import @snovader/node-hooks/register bundle.ts node --no-strip-types --import @snovader/node-hooks/register --conditions=tafla-bundle benchmarks/comparison/main.ts",
     "bench:strings": "node --no-strip-types --import @snovader/node-hooks/register bundle.ts node --no-strip-types --import @snovader/node-hooks/register --conditions=tafla-bundle benchmarks/strings/main.ts",
+    "bench:lists": "node --no-strip-types --import @snovader/node-hooks/register bundle.ts node --no-strip-types --import @snovader/node-hooks/register --conditions=tafla-bundle benchmarks/strings/lists/main.ts",
+    "bench:list-layouts": "node --no-strip-types --import @snovader/node-hooks/register bundle.ts node --no-strip-types --import @snovader/node-hooks/register --conditions=tafla-bundle benchmarks/strings/lists/layouts-main.ts",
     "conformance:generate": "node --no-strip-types --import @snovader/node-hooks/register --conditions=tafla-source core/test/conformance/generate.ts && node --no-strip-types --import @snovader/node-hooks/register --conditions=tafla-source core/test/generated/generate.ts",
     "format:check": "oxfmt --check",
     "format:write": "oxfmt",
@@ -29,8 +31,8 @@
     "@types/node": "^26.6.6",
     "hypotes": "^0.3.1",
     "oxfmt": "^0.79.0",
-    "oxlint": "^1.94.0",
-    "oxlint-tsgolint": "^7.0.2007",
+    "oxlint": "^1.95.0",
+    "oxlint-tsgolint": "^7.0.2008",
     "rolldown": "^1.3.3",
     "typescript": "^7.0.2"
   }

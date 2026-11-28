@@ -444,10 +444,15 @@ const (
 	longNestedBytes
 	// A table of bytes, nested from its builder
 	longNestedBuilder
+	// A vector of one string
+	longStrings
+	// A vector of empty strings, each an end of its own
+	longEmptyStrings
 )
 
 var longFields = []longField{
 	longBytes, longFloats, longString, longStructs, longEmptyItems, longItem, longNestedBytes, longNestedBuilder,
+	longStrings, longEmptyStrings,
 }
 
 func (l longField) field(units int) tables.Field {
@@ -476,6 +481,10 @@ func (l longField) field(units int) tables.Field {
 		return tables.Vector{nestedOf(tables.FromBuilder, bytesTable())}
 	case longNestedBytes:
 		return tables.TableField{Nested: nestedOf(tables.FromBytes, bytesTable())}
+	case longStrings:
+		return tables.StringVector{strings.Repeat("a", units)}
+	case longEmptyStrings:
+		return make(tables.StringVector, units)
 	default:
 		return tables.TableField{Nested: nestedOf(tables.FromBuilder, bytesTable())}
 	}
@@ -489,7 +498,7 @@ func (l longField) unit(width int) int {
 		return 8
 	case longStructs:
 		return 3
-	case longEmptyItems:
+	case longEmptyItems, longEmptyStrings:
 		return width
 	default:
 		return 1

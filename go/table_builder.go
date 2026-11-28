@@ -217,6 +217,11 @@ func (b *TableBuilder) SetFloat32Array(values []float32) error { return setArray
 // until the table is written. It fails as [TableBuilder.SetInt8] does.
 func (b *TableBuilder) SetFloat64Array(values []float64) error { return setArray(b, values) }
 
+// SetBoolArray sets an array field of bools, written as a uint8 array of 1
+// for each true value and 0 for each false one, which the builder keeps
+// until the table is written. It fails as [TableBuilder.SetInt8] does.
+func (b *TableBuilder) SetBoolArray(values []bool) error { return setArray(b, boolBytes(values)) }
+
 // SetString sets a string field, of its bytes, which are UTF-8 if it is. It
 // fails as [TableBuilder.SetInt8] does.
 func (b *TableBuilder) SetString(value string) error {
@@ -224,6 +229,28 @@ func (b *TableBuilder) SetString(value string) error {
 		data:   unsafe.Pointer(unsafe.StringData(value)),
 		length: len(value),
 		kind:   stringField,
+	})
+}
+
+// SetStringVector sets a vector of strings: the end of each string, which
+// lets readers find any string without reading the others, and then each
+// string's bytes, which are UTF-8 if it is. It takes no more bytes for each
+// string than its end, where a vector of tables of one string takes each
+// table's offset and the string's count too. The builder keeps the slice
+// until the table is written, so neither it nor its strings must change in
+// between. It fails as [TableBuilder.SetInt8] does.
+func (b *TableBuilder) SetStringVector(values []string) error {
+	// Up to a length past any table, which fails
+	length := uint64(0)
+	for _, value := range values {
+		length = min(length+uint64(len(value)), past)
+	}
+
+	return b.addField(field{
+		data:   unsafe.Pointer(unsafe.SliceData(values)),
+		length: len(values),
+		bits:   length,
+		kind:   stringVectorField,
 	})
 }
 
@@ -765,6 +792,9 @@ const (
 	bytesField
 	// data and length hold the items, a []NestedTable
 	vectorField
+	// data and length hold the strings, a []string, and bits the sum of
+	// their byte lengths
+	stringVectorField
 
 	// The tables recorded in place come last, which writeFields tells from
 	// the others in one comparison.
@@ -844,6 +874,9 @@ func (f *field) byteLength(width uint64) uint64 {
 			length += width + nestedLength(item)
 		}
 		return length
+	case stringVectorField:
+		// The count, the end of each string, and the strings
+		return (uint64(f.length)+1)*width + f.bits
 	default:
 		return uint64(f.length)
 	}
@@ -895,6 +928,8 @@ func (f *field) write(writer *TableWriter, index int, offsetType OffsetType) {
 			writeNestedTable(writer, table, offsetType)
 			writer.SetItemEnd(vector, item)
 		}
+	case stringVectorField:
+		writer.SetStringVector(index, unsafe.Slice((*string)(f.data), f.length))
 	case tableInPlaceField, vectorInPlaceField:
 		// Of no fields, when writeValues writes every field
 		f.writeInPlace(writer, index, nil, 0, offsetType)

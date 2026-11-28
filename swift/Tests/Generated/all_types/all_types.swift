@@ -2,6 +2,236 @@
 
 import Tafla
 
+/// How much of something there is.
+///
+/// A field of it holds any `uint8`, whether it has a name here or not.
+@frozen
+public struct Level: RawRepresentable, Hashable, Sendable {
+    /// The integer that stores the value
+    public let rawValue: UInt8
+
+    /// The value of `rawValue`, which needn't be one that `Level` names, since a field of it holds any `UInt8`
+    @inlinable
+    public init(rawValue: UInt8) {
+        self.rawValue = rawValue
+    }
+
+    /// The least
+    @inlinable
+    public static var low: Self { Self(rawValue: 0) }
+
+    @inlinable
+    public static var medium: Self { Self(rawValue: 1) }
+
+    /// The most, in documentation
+    /// of two lines
+    @inlinable
+    public static var high: Self { Self(rawValue: 2) }
+}
+
+/// An enum of `int8`, with a negative value
+@frozen
+public struct Direction: RawRepresentable, Hashable, Sendable {
+    /// The integer that stores the value
+    public let rawValue: Int8
+
+    /// The value of `rawValue`, which needn't be one that `Direction` names, since a field of it holds any `Int8`
+    @inlinable
+    public init(rawValue: Int8) {
+        self.rawValue = rawValue
+    }
+
+    @inlinable
+    public static var backward: Self { Self(rawValue: -1) }
+
+    @inlinable
+    public static var none: Self { Self(rawValue: 0) }
+
+    @inlinable
+    public static var forward: Self { Self(rawValue: 1) }
+
+    /// The least `int8`
+    @inlinable
+    public static var furthestBack: Self { Self(rawValue: -128) }
+}
+
+/// An enum of `uint16`, whose values aren't in order
+@frozen
+public struct Unit: RawRepresentable, Hashable, Sendable {
+    /// The integer that stores the value
+    public let rawValue: UInt16
+
+    /// The value of `rawValue`, which needn't be one that `Unit` names, since a field of it holds any `UInt16`
+    @inlinable
+    public init(rawValue: UInt16) {
+        self.rawValue = rawValue
+    }
+
+    @inlinable
+    public static var last: Self { Self(rawValue: 65535) }
+
+    @inlinable
+    public static var first: Self { Self(rawValue: 0) }
+
+    @inlinable
+    public static var v2: Self { Self(rawValue: 2) }
+}
+
+@frozen
+public struct Change: RawRepresentable, Hashable, Sendable {
+    /// The integer that stores the value
+    public let rawValue: Int16
+
+    /// The value of `rawValue`, which needn't be one that `Change` names, since a field of it holds any `Int16`
+    @inlinable
+    public init(rawValue: Int16) {
+        self.rawValue = rawValue
+    }
+
+    @inlinable
+    public static var least: Self { Self(rawValue: -32768) }
+
+    @inlinable
+    public static var greatest: Self { Self(rawValue: 32767) }
+}
+
+@frozen
+public struct Status: RawRepresentable, Hashable, Sendable {
+    /// The integer that stores the value
+    public let rawValue: UInt32
+
+    /// The value of `rawValue`, which needn't be one that `Status` names, since a field of it holds any `UInt32`
+    @inlinable
+    public init(rawValue: UInt32) {
+        self.rawValue = rawValue
+    }
+
+    @inlinable
+    public static var ok: Self { Self(rawValue: 0) }
+
+    @inlinable
+    public static var notFound: Self { Self(rawValue: 404) }
+
+    @inlinable
+    public static var greatest: Self { Self(rawValue: 4294967295) }
+}
+
+@frozen
+public struct Sign: RawRepresentable, Hashable, Sendable {
+    /// The integer that stores the value
+    public let rawValue: Int32
+
+    /// The value of `rawValue`, which needn't be one that `Sign` names, since a field of it holds any `Int32`
+    @inlinable
+    public init(rawValue: Int32) {
+        self.rawValue = rawValue
+    }
+
+    @inlinable
+    public static var least: Self { Self(rawValue: -2147483648) }
+
+    @inlinable
+    public static var greatest: Self { Self(rawValue: 2147483647) }
+}
+
+/// An enum of `uint64`, with a value that a float64 can't hold exactly
+@frozen
+public struct Mask: RawRepresentable, Hashable, Sendable {
+    /// The integer that stores the value
+    public let rawValue: UInt64
+
+    /// The value of `rawValue`, which needn't be one that `Mask` names, since a field of it holds any `UInt64`
+    @inlinable
+    public init(rawValue: UInt64) {
+        self.rawValue = rawValue
+    }
+
+    @inlinable
+    public static var none: Self { Self(rawValue: 0) }
+
+    @inlinable
+    public static var one: Self { Self(rawValue: 1) }
+
+    @inlinable
+    public static var beyondFloat64: Self { Self(rawValue: 9007199254740993) }
+
+    @inlinable
+    public static var all: Self { Self(rawValue: 18446744073709551615) }
+}
+
+@frozen
+public struct Extent: RawRepresentable, Hashable, Sendable {
+    /// The integer that stores the value
+    public let rawValue: Int64
+
+    /// The value of `rawValue`, which needn't be one that `Extent` names, since a field of it holds any `Int64`
+    @inlinable
+    public init(rawValue: Int64) {
+        self.rawValue = rawValue
+    }
+
+    @inlinable
+    public static var least: Self { Self(rawValue: -9223372036854775808) }
+
+    @inlinable
+    public static var zero: Self { Self(rawValue: 0) }
+
+    @inlinable
+    public static var greatest: Self { Self(rawValue: 9223372036854775807) }
+}
+
+/// Values named after keywords and literals of the target languages
+@frozen
+public struct Word: RawRepresentable, Hashable, Sendable {
+    /// The integer that stores the value
+    public let rawValue: UInt8
+
+    /// The value of `rawValue`, which needn't be one that `Word` names, since a field of it holds any `UInt8`
+    @inlinable
+    public init(rawValue: UInt8) {
+        self.rawValue = rawValue
+    }
+
+    @inlinable
+    public static var `class`: Self { Self(rawValue: 0) }
+
+    @inlinable
+    public static var `default`: Self { Self(rawValue: 1) }
+
+    @inlinable
+    public static var `in`: Self { Self(rawValue: 2) }
+
+    @inlinable
+    public static var match: Self { Self(rawValue: 3) }
+
+    @inlinable
+    public static var self_: Self { Self(rawValue: 4) }
+
+    @inlinable
+    public static var type: Self { Self(rawValue: 5) }
+
+    @inlinable
+    public static var `true`: Self { Self(rawValue: 6) }
+
+    @inlinable
+    public static var null: Self { Self(rawValue: 7) }
+
+    @inlinable
+    public static var none: Self { Self(rawValue: 8) }
+
+    @inlinable
+    public static var `init`: Self { Self(rawValue: 9) }
+
+    @inlinable
+    public static var new: Self { Self(rawValue: 10) }
+
+    @inlinable
+    public static var name: Self { Self(rawValue: 11) }
+
+    @inlinable
+    public static var value: Self { Self(rawValue: 12) }
+}
+
 /// A field of every scalar type, and a bool
 @frozen
 public struct Scalars: ~Escapable {
@@ -159,7 +389,7 @@ public struct ScalarsFields: Hashable, Sendable {
     }
 }
 
-/// An array of every scalar type but bool, which has none
+/// An array of every scalar type, and of bools, which are bytes of 0 and 1
 @frozen
 public struct Arrays: ~Escapable {
     /// The layout that an `Arrays` is written and read in
@@ -245,6 +475,15 @@ public struct Arrays: ~Escapable {
         @_lifetime(copy self)
         get throws(DecodeError) { try _reader.float64Array(at: _reader.rootOffset(9)) }
     }
+
+    /// A byte for each bool, which is true where it isn't 0.
+    ///
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var bool: ArrayView<UInt8> {
+        @_lifetime(copy self)
+        get throws(DecodeError) { try _reader.uint8Array(at: _reader.rootOffset(10)) }
+    }
 }
 
 /// The fields of an `Arrays`, to write
@@ -259,6 +498,7 @@ public struct ArraysFields: Hashable, Sendable {
     public var uint64: [UInt64]
     public var float32: [Float]
     public var float64: [Double]
+    public var bool: [Bool]
 
     public init(
         int8: [Int8],
@@ -270,7 +510,8 @@ public struct ArraysFields: Hashable, Sendable {
         int64: [Int64],
         uint64: [UInt64],
         float32: [Float],
-        float64: [Double]
+        float64: [Double],
+        bool: [Bool]
     ) {
         self.int8 = int8
         self.uint8 = uint8
@@ -282,13 +523,14 @@ public struct ArraysFields: Hashable, Sendable {
         self.uint64 = uint64
         self.float32 = float32
         self.float64 = float64
+        self.bool = bool
     }
 
     /// Writes an `Arrays` with every field.
     ///
     /// Throws a `BuildError` if it's longer than its offset type, `uint32`, addresses.
     public func serialize() throws(BuildError) -> [UInt8] {
-        var sizer = try TableSizer(fields: 10, layout: Arrays.layout)
+        var sizer = try TableSizer(fields: 11, layout: Arrays.layout)
         sizer.addInt8Array(count: self.int8.count)
         sizer.addUInt8Array(count: self.uint8.count)
         sizer.addInt16Array(count: self.int16.count)
@@ -299,6 +541,7 @@ public struct ArraysFields: Hashable, Sendable {
         sizer.addUInt64Array(count: self.uint64.count)
         sizer.addFloat32Array(count: self.float32.count)
         sizer.addFloat64Array(count: self.float64.count)
+        sizer.addBoolArray(count: self.bool.count)
 
         return try sizer.bytes { writer in
             writer.setInt8Array(0, self.int8)
@@ -311,6 +554,7 @@ public struct ArraysFields: Hashable, Sendable {
             writer.setUInt64Array(7, self.uint64)
             writer.setFloat32Array(8, self.float32)
             writer.setFloat64Array(9, self.float64)
+            writer.setBoolArray(10, self.bool)
         }
     }
 }
@@ -794,6 +1038,329 @@ public struct ReservedFields: Hashable, Sendable {
         return try sizer.bytes { writer in
             writer.setTable(0, alignment: KeywordsFields.alignment)
             self.keywords.write(to: &writer)
+        }
+    }
+}
+
+/// Vectors of strings beside other fields, in a nested table and in the
+/// items of a vector
+@frozen
+public struct StringVectors: ~Escapable {
+    /// The layout that a `StringVectors` is written and read in
+    @inlinable
+    public static var layout: TableLayout { TableLayout.default }
+
+    @usableFromInline
+    let _reader: TableReader
+
+    /// Reads a `StringVectors` from `bytes`, which it can't outlive
+    @inlinable
+    @_lifetime(copy bytes)
+    public init(_ bytes: RawSpan) {
+        _reader = TableReader(bytes, layout: Self.layout)
+    }
+
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var id: UInt32 {
+        get throws(DecodeError) { try _reader.uint32(at: _reader.rootOffset(0)) }
+    }
+
+    /// A vector of strings, whose getter reads each string when it's asked
+    /// for
+    ///
+    /// A view of the strings, which reads each string when it's asked for, and throws then if
+    /// its bytes are corrupt or aren't valid UTF-8; `Array(_:)` reads every string.
+    ///
+    /// Throws a `DecodeError` if the field, or the vector's count or the ends of its strings,
+    /// lie outside the bytes.
+    @inlinable
+    public var tags: StringVector {
+        @_lifetime(copy self)
+        get throws(DecodeError) { try _reader.stringVector(at: _reader.rootOffset(1)) }
+    }
+
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var labels: Labels {
+        @_lifetime(copy self)
+        get throws(DecodeError) {
+            let field = try _reader.rootOffset(2)
+            return Labels(reader: _reader, position: field)
+        }
+    }
+
+    /// A view of the items, which reads each `Entry` when it's asked for, and throws then if
+    /// its bytes are corrupt.
+    ///
+    /// Throws a `DecodeError` if the field, or the vector's count or the ends of its items, lie
+    /// outside the bytes.
+    @inlinable
+    public var entries: EntryVector {
+        @_lifetime(copy self)
+        get throws(DecodeError) {
+            let field = try _reader.rootOffset(3)
+            return try EntryVector(_reader.vector(at: field))
+        }
+    }
+}
+
+/// The fields of a `StringVectors`, to write
+public struct StringVectorsFields: Hashable, Sendable {
+    public var id: UInt32
+    /// A vector of strings, whose getter reads each string when it's asked
+    /// for
+    public var tags: [String]
+    public var labels: LabelsFields
+    public var entries: [EntryFields]
+
+    public init(id: UInt32, tags: [String], labels: LabelsFields, entries: [EntryFields]) {
+        self.id = id
+        self.tags = tags
+        self.labels = labels
+        self.entries = entries
+    }
+
+    /// Writes a `StringVectors` with every field.
+    ///
+    /// Throws a `BuildError` if it's longer than its offset type, `uint32`, addresses.
+    public func serialize() throws(BuildError) -> [UInt8] {
+        var sizer = try TableSizer(fields: 4, layout: StringVectors.layout)
+        sizer.addUInt32()
+        sizer.addStringVector(self.tags)
+        sizer.addTable(alignment: LabelsFields.alignment)
+        self.labels.add(to: &sizer)
+        sizer.addVector(count: self.entries.count)
+        for item in self.entries {
+            item.add(to: &sizer)
+        }
+
+        return try sizer.bytes { writer in
+            writer.setUInt32(0, self.id)
+            writer.setStringVector(1, self.tags)
+            writer.setTable(2, alignment: LabelsFields.alignment)
+            self.labels.write(to: &writer)
+            let vector3 = writer.setVector(3, count: self.entries.count)
+            for (index, item) in self.entries.enumerated() {
+                item.write(to: &writer)
+                writer.setItemEnd(vector3, item: index)
+            }
+        }
+    }
+}
+
+/// A nested table whose only field is a vector of strings
+@frozen
+public struct Labels: ~Escapable {
+    @usableFromInline
+    let _reader: TableReader
+    @usableFromInline
+    let _position: Int
+
+    /// Reads the table at `position` in the bytes that `reader` reads, as its parent's getter finds it
+    @inlinable
+    @_lifetime(copy reader)
+    init(reader: TableReader, position: Int) {
+        _reader = reader
+        _position = position
+    }
+
+    /// A view of the strings, which reads each string when it's asked for, and throws then if
+    /// its bytes are corrupt or aren't valid UTF-8; `Array(_:)` reads every string.
+    ///
+    /// Throws a `DecodeError` if the field, or the vector's count or the ends of its strings,
+    /// lie outside the bytes.
+    @inlinable
+    public var values: StringVector {
+        @_lifetime(copy self)
+        get throws(DecodeError) { try _reader.stringVector(at: _reader.fieldOffset(0, inTableAt: _position)) }
+    }
+}
+
+/// The fields of a `Labels`, to write
+public struct LabelsFields: Hashable, Sendable {
+    /// The alignment that a parent pads a `Labels` to: the largest alignment of its arrays
+    /// and nested tables, or 1
+    public static let alignment: Alignment = .one
+
+    public var values: [String]
+
+    public init(values: [String]) {
+        self.values = values
+    }
+
+    /// Adds a `Labels` to its parent's sizer, after the field or vector that holds it
+    public func add(to sizer: inout TableSizer) {
+        let parent = sizer.startTable(fields: 1)
+        sizer.addStringVector(self.values)
+        sizer.endTable(parent)
+    }
+
+    /// Writes a `Labels` where its parent's writer is, after the field or vector that holds it
+    public func write(to writer: inout TableWriter) {
+        let parent = writer.startTable(fields: 1)
+        writer.setStringVector(0, self.values)
+        writer.endTable(parent)
+    }
+}
+
+/// An item of a vector, which holds a string and a vector of strings
+@frozen
+public struct Entry: ~Escapable {
+    @usableFromInline
+    let _reader: TableReader
+    @usableFromInline
+    let _position: Int
+
+    /// Reads the table at `position` in the bytes that `reader` reads, as its parent's getter finds it
+    @inlinable
+    @_lifetime(copy reader)
+    init(reader: TableReader, position: Int) {
+        _reader = reader
+        _position = position
+    }
+
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var key: String {
+        get throws(DecodeError) { try _reader.string(at: _reader.fieldOffset(0, inTableAt: _position)) }
+    }
+
+    /// A view of the strings, which reads each string when it's asked for, and throws then if
+    /// its bytes are corrupt or aren't valid UTF-8; `Array(_:)` reads every string.
+    ///
+    /// Throws a `DecodeError` if the field, or the vector's count or the ends of its strings,
+    /// lie outside the bytes.
+    @inlinable
+    public var aliases: StringVector {
+        @_lifetime(copy self)
+        get throws(DecodeError) { try _reader.stringVector(at: _reader.fieldOffset(1, inTableAt: _position)) }
+    }
+}
+
+/// The fields of an `Entry`, to write
+public struct EntryFields: Hashable, Sendable {
+    /// The alignment that a parent pads an `Entry` to: the largest alignment of its arrays
+    /// and nested tables, or 1
+    public static let alignment: Alignment = .one
+
+    public var key: String
+    public var aliases: [String]
+
+    public init(key: String, aliases: [String]) {
+        self.key = key
+        self.aliases = aliases
+    }
+
+    /// Adds an `Entry` to its parent's sizer, after the field or vector that holds it
+    public func add(to sizer: inout TableSizer) {
+        let parent = sizer.startTable(fields: 2)
+        sizer.addString(self.key)
+        sizer.addStringVector(self.aliases)
+        sizer.endTable(parent)
+    }
+
+    /// Writes an `Entry` where its parent's writer is, after the field or vector that holds it
+    public func write(to writer: inout TableWriter) {
+        let parent = writer.startTable(fields: 2)
+        writer.setString(0, self.key)
+        writer.setStringVector(1, self.aliases)
+        writer.endTable(parent)
+    }
+}
+
+/// A vector of `Entry`s, which reads each item when it's asked for
+@frozen
+public struct EntryVector: ~Escapable {
+    @usableFromInline
+    let vector: Vector
+
+    @inlinable
+    @_lifetime(copy vector)
+    init(_ vector: Vector) {
+        self.vector = vector
+    }
+
+    /// The number of items
+    @inlinable
+    public var count: Int { vector.count }
+
+    @inlinable
+    public var isEmpty: Bool { vector.isEmpty }
+
+    /// The indices of the items, from 0 to `count`
+    @inlinable
+    public var indices: Swift.Range<Int> { vector.indices }
+
+    /// Reads item `index`, without reading the others. `index` must be one of `indices`: an index
+    /// outside them is a programming error, which stops the program, as `Array`'s subscript does.
+    ///
+    /// Throws a `DecodeError` if the item lies outside the bytes.
+    @inlinable
+    public subscript(index: Int) -> Entry {
+        @_lifetime(copy self)
+        get throws(DecodeError) {
+            try Entry(reader: TableReader(vector.itemInPlace(at: index)), position: 0)
+        }
+    }
+}
+
+/// A vector of strings in a message of `uint16` offsets, before a scalar
+@frozen
+public struct NarrowStringVectors: ~Escapable {
+    /// The layout that a `NarrowStringVectors` is written and read in
+    @inlinable
+    public static var layout: TableLayout { TableLayout(offsetType: .uint16) }
+
+    @usableFromInline
+    let _reader: TableReader
+
+    /// Reads a `NarrowStringVectors` from `bytes`, which it can't outlive
+    @inlinable
+    @_lifetime(copy bytes)
+    public init(_ bytes: RawSpan) {
+        _reader = TableReader(bytes, layout: Self.layout)
+    }
+
+    /// A view of the strings, which reads each string when it's asked for, and throws then if
+    /// its bytes are corrupt or aren't valid UTF-8; `Array(_:)` reads every string.
+    ///
+    /// Throws a `DecodeError` if the field, or the vector's count or the ends of its strings,
+    /// lie outside the bytes.
+    @inlinable
+    public var names: StringVector {
+        @_lifetime(copy self)
+        get throws(DecodeError) { try _reader.stringVector(at: _reader.rootOffset(0)) }
+    }
+
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var count: UInt8 {
+        get throws(DecodeError) { try _reader.uint8(at: _reader.rootOffset(1)) }
+    }
+}
+
+/// The fields of a `NarrowStringVectors`, to write
+public struct NarrowStringVectorsFields: Hashable, Sendable {
+    public var names: [String]
+    public var count: UInt8
+
+    public init(names: [String], count: UInt8) {
+        self.names = names
+        self.count = count
+    }
+
+    /// Writes a `NarrowStringVectors` with every field.
+    ///
+    /// Throws a `BuildError` if it's longer than its offset type, `uint16`, addresses.
+    public func serialize() throws(BuildError) -> [UInt8] {
+        var sizer = try TableSizer(fields: 2, layout: NarrowStringVectors.layout)
+        sizer.addStringVector(self.names)
+        sizer.addUInt8()
+
+        return try sizer.bytes { writer in
+            writer.setStringVector(0, self.names)
+            writer.setUInt8(1, self.count)
         }
     }
 }
@@ -1452,5 +2019,606 @@ extension Array where Element == Documented {
     @inlinable
     public init(_ view: borrowing DocumentedArray) {
         self = view.indices.map { view[$0] }
+    }
+}
+
+/// Enums as fields and in arrays, which are stored as their integer types
+@frozen
+public struct Enums: ~Escapable {
+    /// The layout that an `Enums` is written and read in
+    @inlinable
+    public static var layout: TableLayout { TableLayout.default }
+
+    @usableFromInline
+    let _reader: TableReader
+
+    /// Reads an `Enums` from `bytes`, which it can't outlive
+    @inlinable
+    @_lifetime(copy bytes)
+    public init(_ bytes: RawSpan) {
+        _reader = TableReader(bytes, layout: Self.layout)
+    }
+
+    /// An enum of one byte
+    ///
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var level: Level {
+        get throws(DecodeError) { try Level(rawValue: _reader.uint8(at: _reader.rootOffset(0))) }
+    }
+
+    /// An array of enums, which is an array of their integer type
+    ///
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var levels: ArrayView<UInt8> {
+        @_lifetime(copy self)
+        get throws(DecodeError) { try _reader.uint8Array(at: _reader.rootOffset(1)) }
+    }
+
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var direction: Direction {
+        get throws(DecodeError) { try Direction(rawValue: _reader.int8(at: _reader.rootOffset(2))) }
+    }
+
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var directions: ArrayView<Int8> {
+        @_lifetime(copy self)
+        get throws(DecodeError) { try _reader.int8Array(at: _reader.rootOffset(3)) }
+    }
+
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var unit: Unit {
+        get throws(DecodeError) { try Unit(rawValue: _reader.uint16(at: _reader.rootOffset(4))) }
+    }
+
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var units: ArrayView<UInt16> {
+        @_lifetime(copy self)
+        get throws(DecodeError) { try _reader.uint16Array(at: _reader.rootOffset(5)) }
+    }
+
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var change: Change {
+        get throws(DecodeError) { try Change(rawValue: _reader.int16(at: _reader.rootOffset(6))) }
+    }
+
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var changes: ArrayView<Int16> {
+        @_lifetime(copy self)
+        get throws(DecodeError) { try _reader.int16Array(at: _reader.rootOffset(7)) }
+    }
+
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var status: Status {
+        get throws(DecodeError) { try Status(rawValue: _reader.uint32(at: _reader.rootOffset(8))) }
+    }
+
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var statuses: ArrayView<UInt32> {
+        @_lifetime(copy self)
+        get throws(DecodeError) { try _reader.uint32Array(at: _reader.rootOffset(9)) }
+    }
+
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var sign: Sign {
+        get throws(DecodeError) { try Sign(rawValue: _reader.int32(at: _reader.rootOffset(10))) }
+    }
+
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var signs: ArrayView<Int32> {
+        @_lifetime(copy self)
+        get throws(DecodeError) { try _reader.int32Array(at: _reader.rootOffset(11)) }
+    }
+
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var mask: Mask {
+        get throws(DecodeError) { try Mask(rawValue: _reader.uint64(at: _reader.rootOffset(12))) }
+    }
+
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var masks: ArrayView<UInt64> {
+        @_lifetime(copy self)
+        get throws(DecodeError) { try _reader.uint64Array(at: _reader.rootOffset(13)) }
+    }
+
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var extent: Extent {
+        get throws(DecodeError) { try Extent(rawValue: _reader.int64(at: _reader.rootOffset(14))) }
+    }
+
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var extents: ArrayView<Int64> {
+        @_lifetime(copy self)
+        get throws(DecodeError) { try _reader.int64Array(at: _reader.rootOffset(15)) }
+    }
+
+    /// An enum whose values are keywords
+    ///
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var word: Word {
+        get throws(DecodeError) { try Word(rawValue: _reader.uint8(at: _reader.rootOffset(16))) }
+    }
+
+    /// A struct of enums
+    ///
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var mark: Mark {
+        get throws(DecodeError) {
+            let field = try _reader.rootOffset(17)
+            return try Mark(_reader.struct(at: field, size: Mark.size), at: 0)
+        }
+    }
+
+    /// A view of the structs, which reads each `Mark` when it's asked for.
+    ///
+    /// Throws a `DecodeError` if the field, or its structs, lie outside the bytes.
+    @inlinable
+    public var marks: MarkArray {
+        @_lifetime(copy self)
+        get throws(DecodeError) {
+            let field = try _reader.rootOffset(18)
+            return try MarkArray(_reader.structArray(at: field, size: Mark.size))
+        }
+    }
+
+    /// Tables of an enum, which a vector's view reads
+    ///
+    /// A view of the items, which reads each `Step` when it's asked for, and throws then if
+    /// its bytes are corrupt.
+    ///
+    /// Throws a `DecodeError` if the field, or the vector's count or the ends of its items, lie
+    /// outside the bytes.
+    @inlinable
+    public var steps: StepVector {
+        @_lifetime(copy self)
+        get throws(DecodeError) {
+            let field = try _reader.rootOffset(19)
+            return try StepVector(_reader.vector(at: field))
+        }
+    }
+}
+
+/// The fields of an `Enums`, to write
+public struct EnumsFields: Hashable, Sendable {
+    /// An enum of one byte
+    public var level: Level
+    /// An array of enums, which is an array of their integer type
+    public var levels: [UInt8]
+    public var direction: Direction
+    public var directions: [Int8]
+    public var unit: Unit
+    public var units: [UInt16]
+    public var change: Change
+    public var changes: [Int16]
+    public var status: Status
+    public var statuses: [UInt32]
+    public var sign: Sign
+    public var signs: [Int32]
+    public var mask: Mask
+    public var masks: [UInt64]
+    public var extent: Extent
+    public var extents: [Int64]
+    /// An enum whose values are keywords
+    public var word: Word
+    /// A struct of enums
+    public var mark: Mark
+    public var marks: [Mark]
+    /// Tables of an enum, which a vector's view reads
+    public var steps: [StepFields]
+
+    public init(
+        level: Level,
+        levels: [UInt8],
+        direction: Direction,
+        directions: [Int8],
+        unit: Unit,
+        units: [UInt16],
+        change: Change,
+        changes: [Int16],
+        status: Status,
+        statuses: [UInt32],
+        sign: Sign,
+        signs: [Int32],
+        mask: Mask,
+        masks: [UInt64],
+        extent: Extent,
+        extents: [Int64],
+        word: Word,
+        mark: Mark,
+        marks: [Mark],
+        steps: [StepFields]
+    ) {
+        self.level = level
+        self.levels = levels
+        self.direction = direction
+        self.directions = directions
+        self.unit = unit
+        self.units = units
+        self.change = change
+        self.changes = changes
+        self.status = status
+        self.statuses = statuses
+        self.sign = sign
+        self.signs = signs
+        self.mask = mask
+        self.masks = masks
+        self.extent = extent
+        self.extents = extents
+        self.word = word
+        self.mark = mark
+        self.marks = marks
+        self.steps = steps
+    }
+
+    /// Writes an `Enums` with every field.
+    ///
+    /// Throws a `BuildError` if it's longer than its offset type, `uint32`, addresses.
+    public func serialize() throws(BuildError) -> [UInt8] {
+        var sizer = try TableSizer(fields: 20, layout: Enums.layout)
+        sizer.addUInt8()
+        sizer.addUInt8Array(count: self.levels.count)
+        sizer.addInt8()
+        sizer.addInt8Array(count: self.directions.count)
+        sizer.addUInt16()
+        sizer.addUInt16Array(count: self.units.count)
+        sizer.addInt16()
+        sizer.addInt16Array(count: self.changes.count)
+        sizer.addUInt32()
+        sizer.addUInt32Array(count: self.statuses.count)
+        sizer.addInt32()
+        sizer.addInt32Array(count: self.signs.count)
+        sizer.addUInt64()
+        sizer.addUInt64Array(count: self.masks.count)
+        sizer.addInt64()
+        sizer.addInt64Array(count: self.extents.count)
+        sizer.addUInt8()
+        sizer.addStruct(size: Mark.size)
+        sizer.addStructArray(count: self.marks.count, size: Mark.size, alignment: Mark.alignment)
+        sizer.addVector(count: self.steps.count)
+        for item in self.steps {
+            item.add(to: &sizer)
+        }
+
+        return try sizer.bytes { writer in
+            writer.setUInt8(0, self.level.rawValue)
+            writer.setUInt8Array(1, self.levels)
+            writer.setInt8(2, self.direction.rawValue)
+            writer.setInt8Array(3, self.directions)
+            writer.setUInt16(4, self.unit.rawValue)
+            writer.setUInt16Array(5, self.units)
+            writer.setInt16(6, self.change.rawValue)
+            writer.setInt16Array(7, self.changes)
+            writer.setUInt32(8, self.status.rawValue)
+            writer.setUInt32Array(9, self.statuses)
+            writer.setInt32(10, self.sign.rawValue)
+            writer.setInt32Array(11, self.signs)
+            writer.setUInt64(12, self.mask.rawValue)
+            writer.setUInt64Array(13, self.masks)
+            writer.setInt64(14, self.extent.rawValue)
+            writer.setInt64Array(15, self.extents)
+            writer.setUInt8(16, self.word.rawValue)
+            writer.setStruct(17)
+            self.mark.write(to: &writer)
+            writer.setStructArray(18, count: self.marks.count, alignment: Mark.alignment)
+            for item in self.marks {
+                item.write(to: &writer)
+            }
+            let vector19 = writer.setVector(19, count: self.steps.count)
+            for (index, item) in self.steps.enumerated() {
+                item.write(to: &writer)
+                writer.setItemEnd(vector19, item: index)
+            }
+        }
+    }
+}
+
+/// A table of an enum, a struct of enums and a string
+@frozen
+public struct Step: ~Escapable {
+    @usableFromInline
+    let _reader: TableReader
+    @usableFromInline
+    let _position: Int
+
+    /// Reads the table at `position` in the bytes that `reader` reads, as its parent's getter finds it
+    @inlinable
+    @_lifetime(copy reader)
+    init(reader: TableReader, position: Int) {
+        _reader = reader
+        _position = position
+    }
+
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var level: Level {
+        get throws(DecodeError) { try Level(rawValue: _reader.uint8(at: _reader.fieldOffset(0, inTableAt: _position))) }
+    }
+
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var mark: Mark {
+        get throws(DecodeError) {
+            let field = try _reader.fieldOffset(1, inTableAt: _position)
+            return try Mark(_reader.struct(at: field, size: Mark.size), at: 0)
+        }
+    }
+
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var name: String {
+        get throws(DecodeError) { try _reader.string(at: _reader.fieldOffset(2, inTableAt: _position)) }
+    }
+}
+
+/// The fields of a `Step`, to write
+public struct StepFields: Hashable, Sendable {
+    /// The alignment that a parent pads a `Step` to: the largest alignment of its arrays
+    /// and nested tables, or 1
+    public static let alignment: Alignment = .one
+
+    public var level: Level
+    public var mark: Mark
+    public var name: String
+
+    public init(level: Level, mark: Mark, name: String) {
+        self.level = level
+        self.mark = mark
+        self.name = name
+    }
+
+    /// Adds a `Step` to its parent's sizer, after the field or vector that holds it
+    public func add(to sizer: inout TableSizer) {
+        let parent = sizer.startTable(fields: 3)
+        sizer.addUInt8()
+        sizer.addStruct(size: Mark.size)
+        sizer.addString(self.name)
+        sizer.endTable(parent)
+    }
+
+    /// Writes a `Step` where its parent's writer is, after the field or vector that holds it
+    public func write(to writer: inout TableWriter) {
+        let parent = writer.startTable(fields: 3)
+        writer.setUInt8(0, self.level.rawValue)
+        writer.setStruct(1)
+        self.mark.write(to: &writer)
+        writer.setString(2, self.name)
+        writer.endTable(parent)
+    }
+}
+
+/// A vector of `Step`s, which reads each item when it's asked for
+@frozen
+public struct StepVector: ~Escapable {
+    @usableFromInline
+    let vector: Vector
+
+    @inlinable
+    @_lifetime(copy vector)
+    init(_ vector: Vector) {
+        self.vector = vector
+    }
+
+    /// The number of items
+    @inlinable
+    public var count: Int { vector.count }
+
+    @inlinable
+    public var isEmpty: Bool { vector.isEmpty }
+
+    /// The indices of the items, from 0 to `count`
+    @inlinable
+    public var indices: Swift.Range<Int> { vector.indices }
+
+    /// Reads item `index`, without reading the others. `index` must be one of `indices`: an index
+    /// outside them is a programming error, which stops the program, as `Array`'s subscript does.
+    ///
+    /// Throws a `DecodeError` if the item lies outside the bytes.
+    @inlinable
+    public subscript(index: Int) -> Step {
+        @_lifetime(copy self)
+        get throws(DecodeError) {
+            try Step(reader: TableReader(vector.itemInPlace(at: index)), position: 0)
+        }
+    }
+}
+
+/// A struct of enums of 1, 2 and 8 bytes beside a scalar, and of a struct
+/// that holds an enum
+@frozen
+public struct Mark: Hashable, Sendable {
+    /// The byte length of a `Mark`
+    public static let size = 24
+    /// The alignment of an array of `Mark`s: its largest scalar's size
+    public static let alignment: Alignment = .eight
+
+    public var level: Level
+    public var change: Change
+    public var weight: Float
+    public var extent: Extent
+    public var turn: Turn
+
+    public init(level: Level, change: Change, weight: Float, extent: Extent, turn: Turn) {
+        self.level = level
+        self.change = change
+        self.weight = weight
+        self.extent = extent
+        self.turn = turn
+    }
+
+    /// Reads a `Mark` from the start of `bytes`.
+    ///
+    /// Throws a `DecodeError` if `bytes` are shorter than `size`.
+    @inlinable
+    public init(_ bytes: RawSpan) throws(DecodeError) {
+        self.init(try TableReader(bytes).struct(at: 0, size: Self.size), at: 0)
+    }
+
+    /// Reads a `Mark` at `offset` in `bytes`, which hold its scalars there
+    @inlinable
+    init(_ bytes: RawSpan, at offset: Int) {
+        self.level = Level(rawValue: UInt8(littleEndianBytes: bytes, at: offset))
+        self.change = Change(rawValue: Int16(littleEndianBytes: bytes, at: offset + 1))
+        self.weight = Float(littleEndianBytes: bytes, at: offset + 3)
+        self.extent = Extent(rawValue: Int64(littleEndianBytes: bytes, at: offset + 7))
+        self.turn = Turn(bytes, at: offset + 15)
+    }
+
+    /// The bytes of a `Mark`: its scalars, little-endian, one after another
+    public func serialize() -> [UInt8] {
+        var bytes: [UInt8] = []
+        bytes.reserveCapacity(Self.size)
+        self.append(to: &bytes)
+        return bytes
+    }
+
+    /// The bytes of an array of `Mark`s, as a table holds them: theirs, one after another
+    public static func serializeArray(_ items: [Self]) -> [UInt8] {
+        var bytes: [UInt8] = []
+        bytes.reserveCapacity(items.count * Self.size)
+        for item in items {
+            item.append(to: &bytes)
+        }
+        return bytes
+    }
+
+    /// Appends the scalars to `bytes`, little-endian
+    func append(to bytes: inout [UInt8]) {
+        bytes.append(self.level.rawValue)
+        withUnsafeBytes(of: self.change.rawValue.littleEndian) { bytes.append(contentsOf: $0) }
+        withUnsafeBytes(of: self.weight.bitPattern.littleEndian) { bytes.append(contentsOf: $0) }
+        withUnsafeBytes(of: self.extent.rawValue.littleEndian) { bytes.append(contentsOf: $0) }
+        self.turn.append(to: &bytes)
+    }
+
+    /// Writes the scalars where `writer` is, little-endian, after the `setStruct(_:)` or the
+    /// `setStructArray(_:count:alignment:)` of the field that holds them
+    public func write(to writer: inout TableWriter) {
+        writer.writeScalar(self.level.rawValue)
+        writer.writeScalar(self.change.rawValue)
+        writer.writeScalar(self.weight)
+        writer.writeScalar(self.extent.rawValue)
+        self.turn.write(to: &writer)
+    }
+}
+
+/// An array of `Mark`s, which reads each struct when it's asked for
+@frozen
+public struct MarkArray: ~Escapable {
+    /// The structs' bytes, one after another
+    public let bytes: RawSpan
+
+    @inlinable
+    @_lifetime(copy bytes)
+    init(_ bytes: RawSpan) {
+        self.bytes = bytes
+    }
+
+    /// The number of structs
+    @inlinable
+    public var count: Int { bytes.byteCount / Mark.size }
+
+    @inlinable
+    public var isEmpty: Bool { bytes.isEmpty }
+
+    /// The indices of the structs, from 0 to `count`
+    @inlinable
+    public var indices: Swift.Range<Int> { 0..<count }
+
+    /// Reads struct `index`, which must be one of `indices`: an index outside them is a programming
+    /// error, which stops the program, as `Array`'s subscript does.
+    @inlinable
+    public subscript(index: Int) -> Mark {
+        precondition(UInt(bitPattern: index) < UInt(count), "Index out of range")
+
+        // The precondition keeps the struct within the bytes
+        let offset = index &* Mark.size
+        return Mark(bytes.extracting(unchecked: offset..<offset &+ Mark.size), at: 0)
+    }
+}
+
+extension Array where Element == Mark {
+    /// Reads every struct of an array read from a table, into an array of their own
+    @inlinable
+    public init(_ view: borrowing MarkArray) {
+        self = view.indices.map { view[$0] }
+    }
+}
+
+@frozen
+public struct Turn: Hashable, Sendable {
+    /// The byte length of a `Turn`
+    public static let size = 9
+    /// The alignment of an array of `Turn`s: its largest scalar's size
+    public static let alignment: Alignment = .eight
+
+    public var direction: Direction
+    public var mask: Mask
+
+    public init(direction: Direction, mask: Mask) {
+        self.direction = direction
+        self.mask = mask
+    }
+
+    /// Reads a `Turn` from the start of `bytes`.
+    ///
+    /// Throws a `DecodeError` if `bytes` are shorter than `size`.
+    @inlinable
+    public init(_ bytes: RawSpan) throws(DecodeError) {
+        self.init(try TableReader(bytes).struct(at: 0, size: Self.size), at: 0)
+    }
+
+    /// Reads a `Turn` at `offset` in `bytes`, which hold its scalars there
+    @inlinable
+    init(_ bytes: RawSpan, at offset: Int) {
+        self.direction = Direction(rawValue: Int8(littleEndianBytes: bytes, at: offset))
+        self.mask = Mask(rawValue: UInt64(littleEndianBytes: bytes, at: offset + 1))
+    }
+
+    /// The bytes of a `Turn`: its scalars, little-endian, one after another
+    public func serialize() -> [UInt8] {
+        var bytes: [UInt8] = []
+        bytes.reserveCapacity(Self.size)
+        self.append(to: &bytes)
+        return bytes
+    }
+
+    /// The bytes of an array of `Turn`s, as a table holds them: theirs, one after another
+    public static func serializeArray(_ items: [Self]) -> [UInt8] {
+        var bytes: [UInt8] = []
+        bytes.reserveCapacity(items.count * Self.size)
+        for item in items {
+            item.append(to: &bytes)
+        }
+        return bytes
+    }
+
+    /// Appends the scalars to `bytes`, little-endian
+    func append(to bytes: inout [UInt8]) {
+        bytes.append(UInt8(bitPattern: self.direction.rawValue))
+        withUnsafeBytes(of: self.mask.rawValue.littleEndian) { bytes.append(contentsOf: $0) }
+    }
+
+    /// Writes the scalars where `writer` is, little-endian, after the `setStruct(_:)` or the
+    /// `setStructArray(_:count:alignment:)` of the field that holds them
+    public func write(to writer: inout TableWriter) {
+        writer.writeScalar(self.direction.rawValue)
+        writer.writeScalar(self.mask.rawValue)
     }
 }

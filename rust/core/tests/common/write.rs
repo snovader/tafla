@@ -112,6 +112,7 @@ impl Field {
             Self::U64Array(values) => sizer.add_u64_array(values.len()),
             Self::F32Array(values) => sizer.add_f32_array(values.len()),
             Self::F64Array(values) => sizer.add_f64_array(values.len()),
+            Self::BoolArray(values) => sizer.add_bool_array(values.len()),
             Self::String(string) => sizer.add_str(string),
             Self::Struct(scalars) => sizer.add_struct(struct_size(struct_types(scalars))),
             Self::StructArray { types, items } => sizer.add_struct_array(
@@ -129,6 +130,7 @@ impl Field {
                     item.table.add_nested(sizer);
                 }
             }
+            Self::StringVector(strings) => sizer.add_str_vector(strings),
         }
     }
 
@@ -156,6 +158,7 @@ impl Field {
             Self::U64Array(values) => writer.set_u64_array(index, values),
             Self::F32Array(values) => writer.set_f32_array(index, values),
             Self::F64Array(values) => writer.set_f64_array(index, values),
+            Self::BoolArray(values) => writer.set_bool_array(index, values),
             Self::String(string) => writer.set_str(index, string),
             Self::Struct(scalars) => writer.set_struct(index, &struct_bytes(scalars)),
             Self::StructArray { types, items } => {
@@ -176,6 +179,7 @@ impl Field {
                     writer.set_item_end(vector, item);
                 }
             }
+            Self::StringVector(strings) => writer.set_str_vector(index, strings),
         }
     }
 

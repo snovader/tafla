@@ -7,7 +7,8 @@ comparison in `typescript/benchmarks/`, with the same values, so that the
 languages' numbers compare. `Tafla.Benchmarks` and its tests,
 `Tafla.Benchmarks.Tests`, are projects of their own, which reference the
 runtime, so that the runtime depends on none of their packages. Run the
-commands below from `csharp/`.
+commands below from `csharp/`. `-- lists` runs the suite of lists of
+strings instead, which [its section](#lists-of-strings) describes.
 
 ## Workloads
 
@@ -494,3 +495,112 @@ Median of the fastest rounds in µs per call, and its ratio to tafla's:
   3.2 ns rather than 6.3 ns, the fixed-size record 1.82 ns rather than
   3.64 ns, every item of the vector 0.42 µs rather than 1.43 µs, and a
   column per getter 85.7 µs rather than 137 µs at 100,000 rows.
+
+## Lists of strings
+
+`dotnet run -c Release --project benchmarks/Tafla.Benchmarks -- lists`
+compares how the code that tafla-gen generates writes and reads lists of
+10, 100 and 10,000 distinct strings of 16 or 256 characters of ASCII, or of
+8 characters of 3 bytes in UTF-8, the CJK ideographs from U+4E00, which are
+one UTF-16 code unit each. They're three of the eight kinds of strings of
+the TypeScript suite of lists, `typescript/benchmarks/strings/lists/`, with
+its values: `ListShapes.cs` makes them with the comparison's xorshift, from
+the seed that TypeScript gives each shape, as `ListsTests` checks against
+values that the TypeScript suite printed. tafla-gen's code of
+`lists.tafla`, a copy of the TypeScript suite's schema, in
+`Tafla.Benchmarks/Generated/Lists/`, writes each list in two ways:
+
+- **tafla-gen [string]**, the vector of strings, `StringList`: its
+  `…Fields` counts the strings' UTF-8 with a `TableSizer` and encodes each
+  string straight into the table with a `TableWriter`, and its getter
+  returns a `StringVector`, whose `ToArray()` reads every string, each
+  string's end once, and whose indexer reads the last from its two ends.
+  It runs again as **A/A**, a copy whose loop is instantiated with a type
+  of its own, as in the comparison.
+- **tafla-gen [Name]**, a vector of tables of one string each, `NameList`,
+  which is how a schema held a list of strings before the vector of strings:
+  the codec creates the generated fields of each table in each call, as the
+  comparison's tafla-gen codec creates the vector's items, reads every
+  string in order through the view's enumerator, each table's end once,
+  and the last string through its indexer.
+
+Each list is **serialized** into new bytes of its length, **deserialized**
+into an array of its strings, each a new `string`, and its **last string**
+read. Both write the tables that `TableBuilder` writes, which `ListsTests`
+checks, and before timing, every variant must read back every string, as
+the comparison's do. The suite runs with the comparison's harness and
+method, interleaved, the fastest of 30 rounds after 3 warm-up rounds and 4
+tiering passes, and each codec's operation is marked `NoInlining`.
+
+```sh
+uptime
+dotnet run -c Release --project benchmarks/Tafla.Benchmarks -- lists
+dotnet run -c Release --project benchmarks/Tafla.Benchmarks -- lists --quick
+```
+
+`--run`, `--rounds` and the comparison's other options apply to it too, and
+`--quick` runs each benchmark briefly, to check that it works, as CI does.
+A full run takes about 2 minutes, an estimate from the method's rounds and
+pauses, and the quick run 10 seconds.
+
+### Results
+
+One full run on 2026-11-28, on an Apple M2 Pro with 32 GB in macOS 27.0.1,
+with .NET 10.0.15 and the workstation GC, through the machine's benchmark
+lock. It took 91 seconds. Other processes kept the 1-minute load average at
+1.76 when it started and 2.23 when it ended, on the 10 cores. The median
+round was within 5% of the fastest for 73 of the 81 variants' runs, with a
+median of 2.1%. The 8 others were the reads of every string of the lists
+of 10,000, which allocate up to 5.4 MB a call, at 5% to 12%, and 62% and
+79% for the vector of strings' 256 characters of ASCII. The A/A pair agreed
+within 2.1%, but for 10,000 × 16 chars of ASCII: deserialize, at 0.93×.
+
+Fastest round in µs per call, its ratio to the vector of strings', and the
+bytes that each call allocates:
+
+| Benchmark | tafla-gen [string] | tafla-gen [Name] | tafla-gen [string] A/A | Allocated by [string], [Name] |
+| --- | ---: | ---: | ---: | ---: |
+| 10 × 16 chars of ASCII: serialize | 0.117 | 0.143 (1.22×) | 0.117 (1.00×) | 232 B, 416 B |
+| 10 × 16 chars of ASCII: deserialize | 0.144 | 0.193 (1.34×) | 0.143 (0.99×) | 664 B, 664 B |
+| 10 × 16 chars of ASCII: read the last string | 0.0192 | 0.0228 (1.19×) | 0.0195 (1.01×) | 56 B, 56 B |
+| 10 × 256 chars of ASCII: serialize | 0.338 | 0.374 (1.11×) | 0.333 (0.98×) | 2,632 B, 2,816 B |
+| 10 × 256 chars of ASCII: deserialize | 0.341 | 0.404 (1.19×) | 0.341 (1.00×) | 5,464 B, 5,464 B |
+| 10 × 256 chars of ASCII: read the last string | 0.0382 | 0.0421 (1.10×) | 0.039 (1.02×) | 536 B, 536 B |
+| 10 × 8 chars of 3 bytes: serialize | 0.236 | 0.234 (0.99×) | 0.24 (1.01×) | 312 B, 496 B |
+| 10 × 8 chars of 3 bytes: deserialize | 0.269 | 0.321 (1.19×) | 0.269 (1.00×) | 504 B, 504 B |
+| 10 × 8 chars of 3 bytes: read the last string | 0.0305 | 0.0351 (1.15×) | 0.0307 (1.01×) | 40 B, 40 B |
+| 100 × 16 chars of ASCII: serialize | 1.1 | 1.34 (1.22×) | 1.09 (0.99×) | 2,032 B, 3,656 B |
+| 100 × 16 chars of ASCII: deserialize | 1.31 | 1.73 (1.33×) | 1.3 (1.00×) | 6,424 B, 6,424 B |
+| 100 × 16 chars of ASCII: read the last string | 0.0196 | 0.0234 (1.19×) | 0.0197 (1.01×) | 56 B, 56 B |
+| 100 × 256 chars of ASCII: serialize | 3.18 | 3.47 (1.09×) | 3.14 (0.99×) | 26,032 B, 27,656 B |
+| 100 × 256 chars of ASCII: deserialize | 3.36 | 3.94 (1.17×) | 3.39 (1.01×) | 54,424 B, 54,424 B |
+| 100 × 256 chars of ASCII: read the last string | 0.0381 | 0.0424 (1.11×) | 0.0387 (1.02×) | 536 B, 536 B |
+| 100 × 8 chars of 3 bytes: serialize | 1.83 | 2.16 (1.18×) | 1.84 (1.00×) | 2,832 B, 4,456 B |
+| 100 × 8 chars of 3 bytes: deserialize | 2.57 | 2.92 (1.14×) | 2.55 (0.99×) | 4,824 B, 4,824 B |
+| 100 × 8 chars of 3 bytes: read the last string | 0.0306 | 0.0348 (1.14×) | 0.0307 (1.00×) | 40 B, 40 B |
+| 10,000 × 16 chars of ASCII: serialize | 119 | 144 (1.21×) | 117 (0.98×) | 200,032 B, 360,056 B |
+| 10,000 × 16 chars of ASCII: deserialize | 148 | 184 (1.24×) | 138 (0.93×) | 640,024 B, 640,024 B |
+| 10,000 × 16 chars of ASCII: read the last string | 0.0193 | 0.0231 (1.19×) | 0.0193 (1.00×) | 56 B, 56 B |
+| 10,000 × 256 chars of ASCII: serialize | 431 | 463 (1.07×) | 428 (0.99×) | 2,600,032 B, 2,760,056 B |
+| 10,000 × 256 chars of ASCII: deserialize | 326 | 388 (1.19×) | 329 (1.01×) | 5,440,024 B, 5,440,024 B |
+| 10,000 × 256 chars of ASCII: read the last string | 0.0382 | 0.0425 (1.11×) | 0.0384 (1.00×) | 536 B, 536 B |
+| 10,000 × 8 chars of 3 bytes: serialize | 191 | 225 (1.18×) | 189 (0.99×) | 280,032 B, 440,056 B |
+| 10,000 × 8 chars of 3 bytes: deserialize | 270 | 301 (1.12×) | 269 (1.00×) | 480,024 B, 480,024 B |
+| 10,000 × 8 chars of 3 bytes: read the last string | 0.0303 | 0.0345 (1.14×) | 0.0301 (0.99×) | 40 B, 40 B |
+
+- The vector of strings is written in 0.82–0.93 times the time of the
+  vector of tables for lists of ASCII, and in 0.85–1.01 times for strings
+  of 3 bytes, allocating only the table, where the vector of tables
+  allocates the fields of each table too.
+- Every string is read in 0.75–0.85 times the time for ASCII, and in
+  0.84–0.90 times for strings of 3 bytes. Both layouts decode each string
+  as `GetString()` decodes a string, in one pass up to 1,024 bytes, so the
+  difference is the layout's: the vector of tables reads each table's
+  header and its field's offset besides the string's ends. It weighs most
+  beside the 16 characters of ASCII, which decode fastest.
+- The last string is found in 0.84–0.91 times the time.
+- Before PR 359 and the vector's decode in one pass, both layouts decoded
+  each string in two passes, counting its characters first. Against that
+  code, run on 2026-11-27, both read 256 characters of ASCII and 8 of 3
+  bytes in 0.68–0.80 of the time, and 16 of ASCII in 0.93–1.00, and the
+  ratios above moved by at most 0.05.

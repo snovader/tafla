@@ -57,11 +57,14 @@ public class TableBuilderTest {
     enum GrowingField {
         INT8_ARRAY,
         FLOAT64_ARRAY,
+        BOOL_ARRAY,
         STRING,
         STRUCT_ARRAY,
         NESTED_TABLE,
         VECTOR_ITEMS,
-        VECTOR_ITEM;
+        VECTOR_ITEM,
+        STRING_VECTOR_ITEMS,
+        STRING_VECTOR_STRING;
 
         /** The scalars of the structs of {@link #STRUCT_ARRAY}: 3 bytes, aligned to 2 */
         private static final List<ScalarType> STRUCT = List.of(ScalarType.UINT16, ScalarType.UINT8);
@@ -79,7 +82,7 @@ public class TableBuilderTest {
                 case FLOAT64_ARRAY -> Double.BYTES;
                 case STRUCT_ARRAY -> StructBytes.size(STRUCT);
                 // Each item's end
-                case VECTOR_ITEMS -> offsetType.size();
+                case VECTOR_ITEMS, STRING_VECTOR_ITEMS -> offsetType.size();
                 default -> Byte.BYTES;
             };
         }
@@ -89,11 +92,14 @@ public class TableBuilderTest {
             return switch (this) {
                 case INT8_ARRAY -> new ArrayField(ScalarType.INT8, new long[length]);
                 case FLOAT64_ARRAY -> new ArrayField(ScalarType.FLOAT64, new long[length]);
+                case BOOL_ARRAY -> new BoolArrayField(new boolean[length]);
                 case STRING -> new StringField("a".repeat(length));
                 case STRUCT_ARRAY -> new StructArrayField(STRUCT, Collections.nCopies(length, List.of(1L, 2L)));
                 case NESTED_TABLE -> new TableField(from, tableOfBytes(length), OptionalInt.empty());
                 case VECTOR_ITEMS -> new VectorField(Collections.nCopies(length, new NestedTable(from, EMPTY)));
                 case VECTOR_ITEM -> new VectorField(List.of(new NestedTable(from, tableOfBytes(length))));
+                case STRING_VECTOR_ITEMS -> new StringVectorField(Collections.nCopies(length, ""));
+                case STRING_VECTOR_STRING -> new StringVectorField(List.of("a".repeat(length)));
             };
         }
 

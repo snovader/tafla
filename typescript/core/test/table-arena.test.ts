@@ -189,6 +189,8 @@ describe('new TableArena()', () => {
 it('should reject a builder without an arena', () => {
     // @ts-expect-error The call that the builder had before it took an arena
     expect(() => new TableBuilder(3)).toThrow(RangeError);
+    /* oxlint-disable typescript/no-unsafe-class-instance-assignment -- an object that isn't an arena, which is what's tested */
     // @ts-expect-error An object that isn't an arena
     expect(() => new TableBuilder({}, 3)).toThrow(TypeError);
+    /* oxlint-enable typescript/no-unsafe-class-instance-assignment */
 });

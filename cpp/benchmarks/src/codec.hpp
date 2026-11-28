@@ -14,6 +14,7 @@
 
 #include <tafla/tafla.hpp>
 
+#include "string_workloads.hpp"
 #include "workloads.hpp"
 
 namespace tafla::benchmarks {

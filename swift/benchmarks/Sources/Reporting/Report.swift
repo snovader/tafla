@@ -9,12 +9,12 @@ struct BenchmarkResult {
 }
 
 /// Prints the fastest call of each benchmark, and its ratio to the first
-/// variant's, tafla's, the median call's distance from it, and then the bytes
-/// and allocations of a call, as tables of Markdown
-func report(_ results: [BenchmarkResult]) {
+/// variant's, which `reference` names, the median call's distance from it,
+/// and then the bytes and allocations of a call, as tables of Markdown
+func report(_ results: [BenchmarkResult], reference: String) {
     let columns = columns(of: results)
 
-    print("Fastest call in µs, and its ratio to tafla's:\n")
+    print("Fastest call in µs, and its ratio to \(reference)'s:\n")
     table(results, columns) { measurement, first in
         let ratio = measurement.name == first.name ? "" : " (\(significant(measurement.fastest / first.fastest))×)"
         return micros(measurement.fastest) + ratio

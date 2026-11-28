@@ -91,6 +91,7 @@ macro_rules! set_field_on {
                     Self::U64Array(values) => target.set_u64_array(values),
                     Self::F32Array(values) => target.set_f32_array(values),
                     Self::F64Array(values) => target.set_f64_array(values),
+                    Self::BoolArray(values) => target.set_bool_array(values),
                     Self::String(string) => target.set_str(string),
                     Self::Struct(scalars) => target.set_struct(struct_bytes(scalars)),
                     Self::StructArray { types, items } => {
@@ -128,6 +129,10 @@ macro_rules! set_field_on {
                             .map(Nested::build)
                             .collect::<Result<Vec<_>, _>>()?;
                         target.set_vector(items)
+                    }
+                    Self::StringVector(strings) => {
+                        let strings: Vec<&str> = strings.iter().map(String::as_str).collect();
+                        target.set_str_vector(strings)
                     }
                 }
             }

@@ -617,6 +617,23 @@ export class TableBuilder {
     }
 
     /**
+     * Sets an array of bools, which is written as a `uint8` array, 1 for
+     * each true value and 0 for each false one. It's written when it's set,
+     * however long, since each value is converted as it's written.
+     */
+    setBoolArray(values: ArrayLike<boolean>): void {
+        const count = values.length;
+        const elements = this.#startArray(count, count, SIZEOF_8);
+
+        const bytes = this._bytes;
+        const start = this._base + elements;
+        for (let i = 0; i < count; i++) {
+            bytes[start + i] = values[i] ? 1 : 0;
+        }
+        this.#endArray(count, elements, count, SIZEOF_8);
+    }
+
+    /**
      * Writes `string` as UTF-8, with lone surrogates replaced by U+FFFD. The
      * builder's buffer makes room for its longest UTF-8, 3 bytes for each
      * UTF-16 code unit, and grows to it for a long string; the table holds
@@ -647,6 +664,60 @@ export class TableBuilder {
         this.#setOffset(index, at);
         this.#setUnsigned(at, length);
         this._end = start + length;
+        this._count = index + 1;
+    }
+
+    /**
+     * Writes a vector of strings, each as UTF-8 with lone surrogates
+     * replaced by U+FFFD, after the end of each, which lets readers find any
+     * string without reading the others. It takes no more bytes for each
+     * string than the end of it, where a vector of tables of one string
+     * takes each table's offset and the string's count too.
+     *
+     * It takes an array, rather than any array-like, since a string is an
+     * array-like of strings too, of one character each.
+     */
+    setStringVector(strings: readonly string[]): void {
+        const index = this.#checkRoom();
+        const count = strings.length;
+        const size = this._size;
+        const at = this._end;
+        const before = at + this._shift - this._table;
+        const ends = (count + 1) * size;
+
+        // With room for each string's longest UTF-8, 3 bytes for each UTF-16
+        // code unit, as setString() makes room for one, the strings need no
+        // count. They're counted only when that room would make the table
+        // too long, so that the vector fails only if it is.
+        let units = 0;
+        for (let i = 0; i < count; i++) {
+            units += strings[i].length;
+        }
+
+        let room = ends + 3 * units;
+        if (!(before + room <= this._maxLength)) {
+            room = ends;
+            for (let i = 0; i < count; i++) {
+                room += utf8Length(strings[i]);
+            }
+            this.#checkLength(index, before + room);
+        }
+
+        if (at + room > this._capacity) {
+            this.#grow(at + room);
+        }
+
+        const bytes = this._bytes;
+        const base = this._base;
+        let position = at + ends;
+        for (let i = 0; i < count; i++) {
+            position += encodeInto(strings[i], bytes, base + position);
+            this.#setUnsigned(at + (i + 1) * size, position - at);
+        }
+
+        this.#setOffset(index, at);
+        this.#setUnsigned(at, count);
+        this._end = position;
         this._count = index + 1;
     }
 

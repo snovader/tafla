@@ -7,7 +7,8 @@ package generated_test
 //   - readFields reads every field of a reader through its getters, into
 //     the struct of fields that writes it, and the items of the views that
 //     the getters of its vectors and arrays of structs return by index and
-//     by iterating, and the structs of arrays of structs all at once,
+//     by iterating, the structs of arrays of structs all at once, and the
+//     strings of vectors of strings by index and all at once,
 //   - checkWhole checks that a reader's Fields() reads what its getters read,
 //   - describe describes a struct of fields as the conformance suite's
 //     description of the table that it writes, which TableBuilder builds,
@@ -69,14 +70,26 @@ func readFields(reader reflect.Value, fieldsType reflect.Type) (reflect.Value, e
 }
 
 // readValue converts what a getter read into the type of the field that
-// writes it: the elements of an ArrayView, the fields of a table's reader,
-// and the items of a view
+// writes it: the elements of an ArrayView, the bools of an array of bools'
+// bytes, the strings of a StringVector, the fields of a table's reader, and
+// the items of a view
 func readValue(read reflect.Value, fieldType reflect.Type) (reflect.Value, error) {
 	switch {
 	case read.Type() == fieldType:
 		return read, nil
 	case read.Kind() == reflect.Struct && strings.HasPrefix(read.Type().Name(), "ArrayView["):
 		return read.MethodByName("Slice").Call(nil)[0], nil
+	case fieldType == reflect.TypeFor[[]bool]() && read.Type() == reflect.TypeFor[[]byte]():
+		// The bytes of an array of bools, in place, true where they aren't 0
+		bytes := read.Interface().([]byte)
+		bools := make([]bool, len(bytes))
+		for index, value := range bytes {
+			bools[index] = value != 0
+		}
+		return reflect.ValueOf(bools), nil
+	case read.Type() == reflect.TypeFor[tafla.StringVector]():
+		values, err := readStringVector(read.Interface().(tafla.StringVector))
+		return reflect.ValueOf(values), err
 	case isFields(fieldType):
 		return readFields(read, fieldType)
 	case isView(read.Type()) && fieldType.Kind() == reflect.Slice:
@@ -151,6 +164,31 @@ func readView(view reflect.Value, fieldType reflect.Type) (reflect.Value, error)
 		if inPlace[1].Bool() && !sameValues(inPlace[0], byIndex) {
 			return byIndex, errors.New("AsSlice() reads other structs than the view reads by index")
 		}
+	}
+
+	return byIndex, nil
+}
+
+// readStringVector reads the strings of a vector of strings, each by index
+// and all at once, and fails unless both read the same strings, or fail
+// with the same error, that of the first string that fails
+func readStringVector(view tafla.StringVector) ([]string, error) {
+	all, allErr := view.Strings()
+
+	byIndex := make([]string, view.Len())
+	for index := range byIndex {
+		value, err := view.Get(index)
+		if err != nil {
+			if !sameError(err, allErr) {
+				return nil, fmt.Errorf("Strings() fails with %v where string %d fails with %v", allErr, index, err)
+			}
+			return nil, err
+		}
+		byIndex[index] = value
+	}
+
+	if allErr != nil || !sameValues(reflect.ValueOf(all), reflect.ValueOf(byIndex)) {
+		return nil, fmt.Errorf("Strings() reads %q, %v rather than the strings %q", all, allErr, byIndex)
 	}
 
 	return byIndex, nil
@@ -245,6 +283,8 @@ func describeField(value reflect.Value) tables.Field {
 	case reflect.Slice:
 		element := value.Type().Elem()
 		switch {
+		case element.Kind() == reflect.String:
+			return tables.StringVector(value.Interface().([]string))
 		case isFields(element):
 			vector := tables.Vector{}
 			for index := range value.Len() {
@@ -323,6 +363,8 @@ func describeArray(value reflect.Value) tables.Field {
 		return tables.Uint64Array(values)
 	case []float32:
 		return tables.Float32Array(values)
+	case []bool:
+		return tables.BoolArray(values)
 	default:
 		return tables.Float64Array(value.Interface().([]float64))
 	}

@@ -6,8 +6,9 @@ import java.nio.*;
 /**
  * Writes values little-endian into bytes, for {@link TableWriter}: the elements of arrays, from
  * {@code position}, and scalars. Arrays of the elements' own Java type are
- * copied in bulk, and unsigned ones are narrowed element by element, as a cast would. Callers
- * check that the values fit; a write past the end throws an {@link IndexOutOfBoundsException}.
+ * copied in bulk, unsigned ones are narrowed element by element, as a cast would, and bools are
+ * written as 1 and 0. Callers check that the values fit; a write past the end throws an
+ * {@link IndexOutOfBoundsException}.
  */
 final class Elements {
     // Views of byte arrays as arrays of wider values, which read and write at any index,
@@ -65,6 +66,18 @@ final class Elements {
 
     static void setFloat64(byte[] bytes, int position, double[] values) {
         view(bytes, position, values.length * Double.BYTES).asDoubleBuffer().put(values);
+    }
+
+    /**
+     * Writes bools as bytes of 1 and 0, in a loop, since the JDK has no bulk conversion from a
+     * {@code boolean[]}: {@code System.arraycopy()} and {@code MemorySegment.copy()} reject one. It
+     * wrote 1,000 bools in 0.16 µs, as fast as the loop of {@link #setUint8} wrote 1,000
+     * {@code uint8}s, where {@link #setInt8} copied 1,000 bytes in 0.015 µs, in JDK 25.
+     */
+    static void setBool(byte[] bytes, int position, boolean[] values) {
+        for (int i = 0; i < values.length; i++) {
+            bytes[position + i] = (byte) (values[i] ? 1 : 0);
+        }
     }
 
     /**

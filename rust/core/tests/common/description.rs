@@ -51,6 +51,9 @@ pub enum Field {
     U64Array(Vec<u64>),
     F32Array(Vec<f32>),
     F64Array(Vec<f64>),
+    /// An array of bools, which is the uint8 array of their bytes, 1 and 0,
+    /// and is read as true where a byte isn't 0
+    BoolArray(Vec<bool>),
     String(String),
     /// A struct of scalar fields, one after another
     Struct(Vec<Self>),
@@ -67,6 +70,9 @@ pub enum Field {
         alignment: Option<Alignment>,
     },
     Vector(Vec<Nested>),
+    /// A vector of strings, each found from its end and the end of the one
+    /// before it
+    StringVector(Vec<String>),
 }
 
 /// A table nested from its builder or from the bytes that its builder
@@ -241,6 +247,7 @@ impl PartialEq for Field {
             (Self::U32Array(a), Self::U32Array(b)) => a == b,
             (Self::I64Array(a), Self::I64Array(b)) => a == b,
             (Self::U64Array(a), Self::U64Array(b)) => a == b,
+            (Self::BoolArray(a), Self::BoolArray(b)) => a == b,
             (Self::String(a), Self::String(b)) => a == b,
             (Self::Struct(a), Self::Struct(b)) => a == b,
             (
@@ -264,6 +271,7 @@ impl PartialEq for Field {
                 },
             ) => a == b && a_alignment == b_alignment,
             (Self::Vector(a), Self::Vector(b)) => a == b,
+            (Self::StringVector(a), Self::StringVector(b)) => a == b,
             _ => false,
         }
     }

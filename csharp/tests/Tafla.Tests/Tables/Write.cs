@@ -110,8 +110,16 @@ public static class Write
                 AddArray(ref sizer, array.Type, array.Bits.Count);
                 break;
 
+            case BoolArray array:
+                sizer.AddBoolArray(array.Values.Count);
+                break;
+
             case StringField value:
                 sizer.AddString(value.Value);
+                break;
+
+            case StringVectorField value:
+                sizer.AddStringVector([.. value.Values]);
                 break;
 
             case StructField value:
@@ -169,8 +177,16 @@ public static class Write
                 SetArray(ref writer, index, array);
                 break;
 
+            case BoolArray array:
+                writer.SetBoolArray(index, [.. array.Values]);
+                break;
+
             case StringField value:
                 writer.SetString(index, value.Value);
+                break;
+
+            case StringVectorField value:
+                writer.SetStringVector(index, [.. value.Values]);
                 break;
 
             case StructField value:

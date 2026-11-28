@@ -1,4 +1,20 @@
-/// Returns the string of UTF-8 `bytes`, or `nil` if they aren't valid UTF-8.
+/// Returns the string of the UTF-8 `bytes`, as a reader reads every string,
+/// of a field or of a vector of strings, or throws
+/// ``DecodeError/invalidUTF8(position:)`` with `position` if they aren't
+/// valid UTF-8: the position of a string field, or the start of a string of
+/// a vector of strings.
+@usableFromInline
+func decodeString(_ bytes: RawSpan, at position: Int) throws(DecodeError) -> String {
+    guard let string = validatedString(bytes) else {
+        throw .invalidUTF8(position: position)
+    }
+
+    return string
+}
+
+/// Returns the string of UTF-8 `bytes`, or `nil` if they aren't valid UTF-8,
+/// on Apple's systems before 2025, whose standard library has no `UTF8Span`
+/// for ``validatedString(_:)``.
 ///
 /// Where the standard library validates and copies in one pass, from Swift
 /// 6.0's runtime on, this calls it. On older Apple systems, it validates the
@@ -14,6 +30,36 @@ func decodeUTF8(_ bytes: UnsafeRawBufferPointer) -> String? {
     }
 
     return String(decoding: bytes, as: UTF8.self)
+}
+
+/// Returns the string of UTF-8 `bytes`, or `nil` if they aren't valid UTF-8.
+///
+/// Where the standard library has `UTF8Span`, from Swift 6.2's runtime on,
+/// it validates the bytes as one, and copies them into a `String` without
+/// validating them again. `String(validating:as:)` takes about twice as long
+/// for each string: on an M2 Pro in macOS 27, 96 rather than 43 ns for a
+/// string of 16 bytes of ASCII, 113 rather than 61 ns for 256 bytes, and 112
+/// rather than 59 ns for 8 characters of 3 bytes. Validating a vector's
+/// strings as one run, and then checking that each string's end starts a
+/// character, saved 2 to 3 ns more a string, which didn't justify a second
+/// way of reading a string.
+///
+/// It's `@usableFromInline` so that the optimizer can inline
+/// ``decodeString(_:at:)`` into code of other modules, such as
+/// `StringVector`'s subscript in a reader of generated code, which then calls
+/// this directly. Without it, reading the last of a vector's strings of 16
+/// bytes took 2 to 5% longer, for the call between them.
+@usableFromInline
+func validatedString(_ bytes: RawSpan) -> String? {
+    if #available(macOS 26, iOS 26, tvOS 26, watchOS 26, visionOS 26, *) {
+        guard let utf8 = try? UTF8Span(validating: Span<UInt8>(_bytes: bytes)) else {
+            return nil
+        }
+
+        return String(copying: utf8)
+    }
+
+    return bytes.withUnsafeBytes(decodeUTF8)
 }
 
 /// Returns whether `bytes` are valid UTF-8, as Unicode's table 3-7 of

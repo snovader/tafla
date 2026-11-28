@@ -199,6 +199,14 @@ public struct TableWriter: ~Copyable {
     @inlinable
     public mutating func setFloat64Array(_ index: Int, _ values: [Double]) { setArray(index, values) }
 
+    /// Writes array field `index` of bools, as a `uint8` array of 1 for each
+    /// true value and 0 for each false one.
+    @inlinable
+    public mutating func setBoolArray(_ index: Int, _ values: [Bool]) {
+        startArray(index, count: values.count, alignment: .one)
+        output.writeBools(values)
+    }
+
     /// Writes array field `index` of `T`, as the setter of its type does
     @inlinable
     public mutating func setArray<T: ArrayElement>(_ index: Int, _ values: [T]) {
@@ -214,6 +222,15 @@ public struct TableWriter: ~Copyable {
         let count = value.utf8.count
         output.writeSlot(UInt32(truncatingIfNeeded: count), offsetType: offsetType)
         output.writeUTF8(of: value, count: count)
+    }
+
+    /// Writes field `index`, a vector of strings: its count, the end of each
+    /// string, counted from the vector's position, and then each string's
+    /// UTF-8, one after another.
+    @inlinable
+    public mutating func setStringVector(_ index: Int, _ strings: [String]) {
+        setOffset(index)
+        output.writeStringVector(strings, offsetType: offsetType)
     }
 
     /// Writes struct field `index` from its bytes: its scalars,

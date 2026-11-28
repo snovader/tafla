@@ -4,7 +4,7 @@ jmh = "1.37"
 protobuf = "4.36.2"
 
 [libraries]
-agrona = "org.agrona:agrona:2.7.1"
+agrona = "org.agrona:agrona:2.7.2"
 chicory-build-time-compiler = { module = "com.dylibso.chicory:build-time-compiler", version.ref = "chicory" }
 chicory-runtime = { module = "com.dylibso.chicory:runtime", version.ref = "chicory" }
 errorprone-core = "com.google.errorprone:error_prone_core:2.53.0"
@@ -19,7 +19,7 @@ nullaway = "com.uber.nullaway:nullaway:0.14.4"
 parsson = "org.eclipse.parsson:parsson:1.1.9"
 protobuf-java = { module = "com.google.protobuf:protobuf-java", version.ref = "protobuf" }
 protoc = { module = "com.google.protobuf:protoc", version.ref = "protobuf" }
-sbe-tool = "uk.co.real-logic:sbe-tool:1.42.0"
+sbe-tool = "uk.co.real-logic:sbe-tool:1.42.1"
 
 [plugins]
 errorprone = { id = "net.ltgt.errorprone", version = "5.2.0" }

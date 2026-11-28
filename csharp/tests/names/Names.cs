@@ -8,6 +8,54 @@
 namespace Names.@event.@global;
 
 /// <summary>
+/// Values named after their enum and after the methods of an enum and
+/// <c>object</c>, which they hide only where the methods aren't called
+/// </summary>
+public enum Member : byte
+{
+    Member = 0,
+
+    Equals = 1,
+
+    GetHashCode = 2,
+
+    ToString = 3,
+
+    GetType = 4,
+
+    HasFlag = 5,
+
+    CompareTo = 6,
+
+    GetTypeCode = 7,
+
+    MemberwiseClone = 8,
+
+    Finalize = 9,
+}
+
+public enum Color : byte
+{
+    Red = 0,
+
+    Green = 1,
+}
+
+public enum Shade : ushort
+{
+    Light = 0,
+
+    Dark = 65535,
+}
+
+public enum Lean : sbyte
+{
+    Left = -1,
+
+    Right = 1,
+}
+
+/// <summary>
 /// Fields named after the members of a message's reader and fields, and of
 /// <c>object</c> and records
 /// </summary>
@@ -1289,5 +1337,217 @@ public readonly ref struct RangeVector
             Current = new Range(new global::Tafla.TableReader(_items.Current), 0);
             return true;
         }
+    }
+}
+
+/// <summary>
+/// Enums in fields named after each other's enums, of a message written
+/// whole, of a table that nests whole and of a struct
+/// </summary>
+public readonly ref struct Enums
+{
+    internal static readonly global::Tafla.TableLayout TableLayout = global::Tafla.TableLayout.Default;
+
+    private readonly global::Tafla.TableReader _reader;
+
+    /// <summary>Reads an <see cref="Enums"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
+    public Enums(global::System.ReadOnlySpan<byte> bytes)
+    {
+        _reader = new global::Tafla.TableReader(bytes, TableLayout);
+    }
+
+    public Color Shade => (Color)_reader.GetUInt8(_reader.RootOffset(0));
+
+    public Shade Color => (Shade)_reader.GetUInt16(_reader.RootOffset(1));
+
+    public Lean Lean => (Lean)_reader.GetInt8(_reader.RootOffset(2));
+
+    public Member Member => (Member)_reader.GetUInt8(_reader.RootOffset(3));
+
+    public Hue Hue => new(_reader, _reader.RootOffset(4));
+
+    public Tint Tint => new(_reader.GetStruct(_reader.RootOffset(5), 4));
+
+    public string Name => _reader.GetString(_reader.RootOffset(6));
+}
+
+/// <summary>The fields of an <see cref="Enums"/>, to write.</summary>
+public readonly record struct EnumsFields
+{
+    public required Color Shade { get; init; }
+
+    public required Shade Color { get; init; }
+
+    public required Lean Lean { get; init; }
+
+    public required Member Member { get; init; }
+
+    public required HueFields Hue { get; init; }
+
+    public required Tint Tint { get; init; }
+
+    public required string Name { get; init; }
+
+    /// <summary>Writes an <see cref="Enums"/> with every field into new bytes of its length.</summary>
+    /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint32, addresses.</exception>
+    public byte[] Serialize()
+    {
+        var length = global::Tafla.TableSizer.Utf8Length(Name);
+        var table = global::Tafla.TableWriter.CreateTableBytes(7, Enums.TableLayout, 57 + length);
+        global::System.Span<byte> bytes = table;
+
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes, 28);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[4..], 29);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[8..], 31);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[12..], 32);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[16..], 33);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[20..], 49);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[24..], 53);
+        bytes[28] = (byte)Shade;
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(bytes[29..], (ushort)Color);
+        bytes[31] = unchecked((byte)Lean);
+        bytes[32] = (byte)Member;
+        Hue.PutTo(bytes[33..]);
+        Tint.Write(bytes[49..]);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[53..], (uint)length);
+        global::System.Text.Encoding.UTF8.GetBytes(Name, bytes[57..]);
+
+        return table;
+    }
+
+    /// <summary>
+    /// Writes an <see cref="Enums"/> with every field into the start of <paramref name="bytes"/>, as
+    /// <see cref="Serialize"/> writes it into new bytes, and returns its length. The bytes needn't be zero,
+    /// and those after the message keep their values. The caller owns them: writing into them again, as the
+    /// next message does, overwrites this one, and what a reader of them reads.
+    /// </summary>
+    /// <returns>The number of bytes that hold the message, from the start of <paramref name="bytes"/>.</returns>
+    /// <exception cref="global::System.ArgumentException">The bytes are shorter than the message, before any of them is written.</exception>
+    /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint32, addresses.</exception>
+    public int SerializeInto(byte[] bytes)
+    {
+        var sizer = new global::Tafla.TableSizer(7, Enums.TableLayout);
+        sizer.AddUInt8();
+        sizer.AddUInt16();
+        sizer.AddInt8();
+        sizer.AddUInt8();
+        sizer.AddTable(alignment: 1);
+        sizer.AddTableBytes(1, size: 16);
+        sizer.AddStruct(size: 4);
+        sizer.AddString(Name);
+
+        var writer = sizer.CreateWriter(bytes);
+        writer.SetUInt8(0, (byte)Shade);
+        writer.SetUInt16(1, (ushort)Color);
+        writer.SetInt8(2, (sbyte)Lean);
+        writer.SetUInt8(3, (byte)Member);
+        writer.SetTable(4, alignment: 1);
+        Hue.PutTo(writer.ReserveTableBytes(16));
+        Tint.Write(writer.ReserveStruct(5, size: 4));
+        writer.SetString(6, Name);
+
+        return writer.ByteLength;
+    }
+}
+
+public readonly ref struct Hue
+{
+    private readonly global::Tafla.TableReader _reader;
+    private readonly int _position;
+
+    internal Hue(global::Tafla.TableReader reader, int position)
+    {
+        _reader = reader;
+        _position = position;
+    }
+
+    public Color Shade => (Color)_reader.GetUInt8(_reader.FieldOffset(_position, 0));
+
+    public Shade Color => (Shade)_reader.GetUInt16(_reader.FieldOffset(_position, 1));
+
+    public Lean Lean => (Lean)_reader.GetInt8(_reader.FieldOffset(_position, 2));
+}
+
+/// <summary>The fields of a <see cref="Hue"/>, to write.</summary>
+public readonly record struct HueFields
+{
+    public required Color Shade { get; init; }
+
+    public required Shade Color { get; init; }
+
+    public required Lean Lean { get; init; }
+
+    /// <summary>Writes a <see cref="Hue"/> whole, its offsets and its fields, into the start of <paramref name="bytes"/>, which hold its 16 bytes, where its parent's writer reserved them.</summary>
+    internal void PutTo(global::System.Span<byte> bytes)
+    {
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes, 12);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[4..], 13);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[8..], 15);
+        bytes[12] = (byte)Shade;
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(bytes[13..], (ushort)Color);
+        bytes[15] = unchecked((byte)Lean);
+    }
+}
+
+public readonly record struct Tint
+{
+    /// <summary>The byte length of a <see cref="Tint"/>.</summary>
+    public const int Size = 4;
+
+    /// <summary>The alignment of an array of <see cref="Tint"/>s: its largest scalar's size.</summary>
+    public const int Alignment = 2;
+
+    /// <summary>Reads a <see cref="Tint"/> from the start of <paramref name="bytes"/>.</summary>
+    /// <exception cref="global::Tafla.DecodeException">The bytes are shorter than a <see cref="Tint"/>.</exception>
+    [global::System.Diagnostics.CodeAnalysis.SetsRequiredMembers]
+    public Tint(global::System.ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.Length < Size)
+        {
+            throw global::Tafla.DecodeException.OutOfRange(0, Size, bytes.Length);
+        }
+
+        Shade = (Color)bytes[0];
+        Color = (Shade)global::System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(bytes[1..]);
+        Lean = (Lean)unchecked((sbyte)bytes[3]);
+    }
+
+    public required Color Shade { get; init; }
+
+    public required Shade Color { get; init; }
+
+    public required Lean Lean { get; init; }
+
+    /// <summary>Returns the bytes of <paramref name="structs"/> one after another, as an array of <see cref="Tint"/>s holds them.</summary>
+    /// <exception cref="global::System.OverflowException">They take more bytes than an <see cref="int"/> counts.</exception>
+    public static byte[] SerializeArray(global::System.ReadOnlySpan<Tint> structs)
+    {
+        var bytes = new byte[checked(structs.Length * Size)];
+        for (var index = 0; index < structs.Length; index++)
+        {
+            structs[index].Write(new global::System.Span<byte>(bytes, index * Size, Size));
+        }
+
+        return bytes;
+    }
+
+    /// <summary>Returns the bytes of the <see cref="Tint"/>: its scalars, little-endian, one after another.</summary>
+    public byte[] Serialize()
+    {
+        var bytes = new byte[Size];
+        Write(bytes);
+
+        return bytes;
+    }
+
+    /// <summary>Writes the <see cref="Tint"/> into the start of <paramref name="bytes"/>.</summary>
+    /// <exception cref="global::System.ArgumentOutOfRangeException">The bytes are shorter than a <see cref="Tint"/>, before any of them is written.</exception>
+    public void Write(global::System.Span<byte> bytes)
+    {
+        global::System.ArgumentOutOfRangeException.ThrowIfLessThan(bytes.Length, Size, nameof(bytes));
+
+        bytes[0] = (byte)Shade;
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(bytes[1..], (ushort)Color);
+        bytes[3] = unchecked((byte)Lean);
     }
 }

@@ -208,8 +208,10 @@ uptime
 ./gradlew :benchmarks:jmh
 ```
 
-The full run takes about 2 hours: 33 minutes for the workloads, and 90 for
-the [strings](#strings), which `--jmhArgs="-e Strings"` leaves out.
+The full run takes about 2 hours and a half: 33 minutes for the workloads, 90
+for the [strings](#strings), which `--jmhArgs="-e Strings"` leaves out, and
+30 for the [lists of strings](#lists-of-strings), which `-e StringLists`
+leaves out, and `-e String` with the strings.
 `--jmhArgs` passes JMH's own options, which override those in
 `build.gradle.kts`: a regular expression selects benchmarks, `-e` excludes
 them, and `-p` sets a parameter.
@@ -219,8 +221,9 @@ them, and `-p` sets a parameter.
 ```
 
 A quick run of one fork, with one warm-up and one measured iteration of
-100 ms, checks that every benchmark works in about 30 seconds, and the 240 of
-the strings in another 100. CI runs it after the round-trip test, on Java 25,
+100 ms, checks that every benchmark works in about 30 seconds, the 240 of
+the strings in another 100, and the 81 of the lists of strings in another 60.
+CI runs it after the round-trip test, on Java 25,
 with three of the strings' shapes, `-p shape=empty,15-one-4-byte,1024-ascii`,
 since the round-trip test checks every shape. Its numbers mean little.
 
@@ -526,7 +529,8 @@ character in two bytes, as UTF-16, so `64-last-3-byte` is a string of UTF-16
 and `64-last-2-byte` one of Latin-1.
 
 Each library writes the 16 strings as it would an array of them, except
-tafla, which has no vector of strings:
+tafla, whose string fields the suite times, rather than a vector of strings,
+which [Lists of strings](#lists-of-strings) times:
 
 - **tafla** writes a table of 16 string fields with a `TableBuilder`'s
   `setString()`, and reads them with `TableReader.getString()`, which decodes
@@ -788,3 +792,159 @@ Reading:
 
 tafla's table holds each string's offset and length in 4 bytes each, protobuf
 a tag and a varint of the length, and msgpack a header of 1 to 3 bytes.
+
+## Lists of strings
+
+`StringListsBenchmark` compares how the code that tafla-gen generates writes
+and reads a list of strings as a vector of strings, `[string]`, and as a
+vector of tables of one string each, `[Name]`. It's the counterpart of
+`yarn bench:lists` in `typescript/benchmarks/`, with three of its eight kinds
+of strings. Each table holds one list of 10, 100 or 10,000 distinct strings,
+which the benchmark's `count` parameter takes, of one kind, which its `kind`
+parameter takes:
+
+- `16-ascii`: 16 characters of ASCII
+- `256-ascii`: 256 characters of ASCII, which tafla encodes with
+  `String.getBytes` rather than a `char` at a time, as the strings suite
+  describes
+- `8-3-byte`: 8 characters of 3 bytes, CJK ideographs
+
+These are the TypeScript suite's strings of the same names, such as
+`10,000 × 16 chars of ASCII`. `ListShapes` generates them with its
+generator, seeds and alphabet, as `StringShapes` does the strings suite's,
+and `ListShapesTest` checks them against values that the TypeScript
+generator printed.
+
+The `codec` parameter takes the variants, which the code that tafla-gen
+generates from `src/main/tafla/lists.tafla`, a copy of the TypeScript
+suite's schema, writes and reads, in the package
+`io.github.snovader.tafla.benchmarks.generated.lists`:
+
+- `string-vector`: `StringList`, a vector of strings, whose items are the
+  strings' UTF-8. Its `TableSizer` counts the strings of fewer than 64
+  `char`s and encodes the longer ones, whose bytes its `TableWriter` copies,
+  as it writes string fields. It reads every string through its getter's
+  `StringVector`, whose iterator reads each string's end once, and the last
+  string with the view's `get()`, from its two ends. It writes the bytes of
+  `TableBuilder.setStringVector()`, which the round-trip test checks.
+- `name-vector`: `NameList`, a vector of tables of one string each, which is
+  how a schema holds a list of strings without a vector of strings. It
+  creates the generated `Name.Fields` of each string in each call, and reads
+  each string through the reader of its table that the view returns.
+- `string-vector-aa`: the code of `string-vector` again, an A/A pair, whose
+  times differ from it by the measurement's noise. JMH runs each variant in
+  forks of its own.
+
+Each list is serialized, deserialized into an array of its strings that
+`Arrays.asList()` wraps, and read for its last string, without reading the
+others: the benchmarks `serialize`, `deserialize` and `readLast`. Before
+timing, every variant must read back every string, and the last string,
+which the round-trip test checks too. JMH times the suite as it times the
+others, as Method describes.
+
+```sh
+uptime
+./gradlew :benchmarks:jmh --jmhArgs="StringLists"
+```
+
+The run of its 81 benchmarks takes about 30 minutes. `-pcount=10,100`
+selects counts, and `-pkind=16-ascii,8-3-byte` kinds, one or the other, since
+the JMH plugin keeps only the last `-p` of `--jmhArgs`.
+
+### Limitations
+
+- It doesn't compare the other libraries' lists, as the TypeScript suite
+  does; the strings suite compares how they write and read each string.
+- Java decodes each string with `new String(bytes, UTF_8)`, on its own, so
+  `TableReader.getStringVector()` reads every string as the view's iterator
+  does, and there's no counterpart of the TypeScript suite's
+  `tafla [string] each`. TypeScript's `getStringVector()` decodes runs of
+  ASCII at once, which saves calls of its `TextDecoder`.
+- JMH doesn't interleave the variants, as Method describes, so the A/A pair
+  shows how much load moved the times of forks run minutes apart.
+
+### Results
+
+One full run on 2026-11-27, on an Apple M2 Pro with 32 GB in macOS 27.0.1,
+with Oracle's JDK 25.0.1, through the machine's benchmark lock, of 3 forks
+of 5 warm-up and 2 measured iterations of 1 second each. It took 29
+minutes, after a 1-minute load average of 1.41 on the 10 cores when it
+started. JMH's mean was within 5% of the fastest iteration for 65 of the 81
+benchmarks; most of the others had a fork up to 42% slower than the rest,
+as forks compile the same code differently. The A/A pair's fastest
+iterations agreed within 5%, but for one read of the last of 10,000
+strings, at 1.07 times.
+
+Fastest iteration in µs per operation, and its ratio to the vector of
+strings':
+
+| Benchmark                                           |    string-vector |      name-vector | string-vector-aa |
+| --------------------------------------------------- | ---------------: | ---------------: | ---------------: |
+| StringLists: deserialize count=10 kind=16-ascii     |            0.117 |    0.125 (1.07×) |    0.117 (1.01×) |
+| StringLists: deserialize count=10 kind=256-ascii    |            0.196 |    0.213 (1.09×) |    0.195 (0.99×) |
+| StringLists: deserialize count=10 kind=8-3-byte     |            0.733 |    0.769 (1.05×) |    0.739 (1.01×) |
+| StringLists: deserialize count=100 kind=16-ascii    |            0.995 |    1.083 (1.09×) |    1.001 (1.01×) |
+| StringLists: deserialize count=100 kind=256-ascii   |            1.881 |    2.012 (1.07×) |    1.884 (1.00×) |
+| StringLists: deserialize count=100 kind=8-3-byte    |            4.027 |    4.230 (1.05×) |    3.844 (0.95×) |
+| StringLists: deserialize count=10000 kind=16-ascii  |            104.3 |    122.2 (1.17×) |    104.5 (1.00×) |
+| StringLists: deserialize count=10000 kind=256-ascii |            184.9 |    198.6 (1.07×) |    183.6 (0.99×) |
+| StringLists: deserialize count=10000 kind=8-3-byte  |            756.8 |    802.7 (1.06×) |    750.0 (0.99×) |
+| StringLists: readLast count=10 kind=16-ascii        |           0.0118 |   0.0124 (1.05×) |   0.0119 (1.01×) |
+| StringLists: readLast count=10 kind=256-ascii       |           0.0201 |   0.0210 (1.05×) |   0.0201 (1.00×) |
+| StringLists: readLast count=10 kind=8-3-byte        |           0.0801 |   0.0825 (1.03×) |   0.0832 (1.04×) |
+| StringLists: readLast count=100 kind=16-ascii       |           0.0117 |   0.0126 (1.08×) |   0.0119 (1.01×) |
+| StringLists: readLast count=100 kind=256-ascii      |           0.0203 |   0.0216 (1.07×) |   0.0205 (1.01×) |
+| StringLists: readLast count=100 kind=8-3-byte       |           0.0803 |   0.0830 (1.03×) |   0.0771 (0.96×) |
+| StringLists: readLast count=10000 kind=16-ascii     |           0.0118 |   0.0124 (1.05×) |   0.0118 (1.00×) |
+| StringLists: readLast count=10000 kind=256-ascii    |           0.0205 |   0.0216 (1.06×) |   0.0204 (1.00×) |
+| StringLists: readLast count=10000 kind=8-3-byte     |           0.0791 |   0.0825 (1.04×) |   0.0846 (1.07×) |
+| StringLists: serialize count=10 kind=16-ascii       |            0.384 |    0.463 (1.21×) |    0.390 (1.01×) |
+| StringLists: serialize count=10 kind=256-ascii      |            2.317 |    3.879 (1.67×) |    2.337 (1.01×) |
+| StringLists: serialize count=10 kind=8-3-byte       |            0.205 |    0.266 (1.30×) |    0.204 (1.00×) |
+| StringLists: serialize count=100 kind=16-ascii      |            3.688 |    4.033 (1.09×) |    3.638 (0.99×) |
+| StringLists: serialize count=100 kind=256-ascii     |             23.1 |     24.7 (1.07×) |     23.5 (1.02×) |
+| StringLists: serialize count=100 kind=8-3-byte      |            1.798 |    2.512 (1.40×) |    1.808 (1.01×) |
+| StringLists: serialize count=10000 kind=16-ascii    |            373.1 |    427.8 (1.15×) |    378.2 (1.01×) |
+| StringLists: serialize count=10000 kind=256-ascii   |           2343.0 |   2495.2 (1.06×) |   2417.3 (1.03×) |
+| StringLists: serialize count=10000 kind=8-3-byte    |            197.5 |    270.1 (1.37×) |    203.5 (1.03×) |
+
+Bytes allocated per operation, the mean of the measured iterations:
+
+| Benchmark                                           |    string-vector |      name-vector | string-vector-aa |
+| --------------------------------------------------- | ---------------: | ---------------: | ---------------: |
+| StringLists: deserialize count=10 kind=16-ascii     |              640 |              640 |              640 |
+| StringLists: deserialize count=10 kind=256-ascii    |            3,040 |            3,040 |            3,040 |
+| StringLists: deserialize count=10 kind=8-3-byte     |            1,680 |            1,680 |            1,699 |
+| StringLists: deserialize count=100 kind=16-ascii    |            6,040 |            6,040 |            6,040 |
+| StringLists: deserialize count=100 kind=256-ascii   |           30,040 |           30,040 |           30,040 |
+| StringLists: deserialize count=100 kind=8-3-byte    |           16,469 |           16,469 |           16,440 |
+| StringLists: deserialize count=10000 kind=16-ascii  |          600,129 |          600,129 |          600,129 |
+| StringLists: deserialize count=10000 kind=256-ascii |        3,000,129 |        3,000,129 |        3,000,129 |
+| StringLists: deserialize count=10000 kind=8-3-byte  |        1,640,133 |        1,640,134 |        1,640,133 |
+| StringLists: readLast count=10 kind=16-ascii        |               56 |               56 |               56 |
+| StringLists: readLast count=10 kind=256-ascii       |              296 |              296 |              296 |
+| StringLists: readLast count=10 kind=8-3-byte        |              160 |              160 |              160 |
+| StringLists: readLast count=100 kind=16-ascii       |               56 |               56 |               56 |
+| StringLists: readLast count=100 kind=256-ascii      |              296 |              296 |              296 |
+| StringLists: readLast count=100 kind=8-3-byte       |              160 |              160 |              160 |
+| StringLists: readLast count=10000 kind=16-ascii     |               56 |               56 |               56 |
+| StringLists: readLast count=10000 kind=256-ascii    |              296 |              296 |              296 |
+| StringLists: readLast count=10000 kind=8-3-byte     |              160 |              160 |              160 |
+| StringLists: serialize count=10 kind=16-ascii       |              224 |              544 |              224 |
+| StringLists: serialize count=10 kind=256-ascii      |            5,664 |            5,984 |            5,664 |
+| StringLists: serialize count=10 kind=8-3-byte       |              304 |              624 |              304 |
+| StringLists: serialize count=100 kind=16-ascii      |            2,024 |            4,864 |            2,024 |
+| StringLists: serialize count=100 kind=256-ascii     |           57,072 |           59,902 |           57,072 |
+| StringLists: serialize count=100 kind=8-3-byte      |            2,824 |            5,664 |            2,824 |
+| StringLists: serialize count=10000 kind=16-ascii    |          200,075 |          480,163 |          200,075 |
+| StringLists: serialize count=10000 kind=256-ascii   |        5,729,121 |        6,009,162 |        5,729,122 |
+| StringLists: serialize count=10000 kind=8-3-byte    |          280,073 |          560,162 |          280,074 |
+
+- The vector of strings is written in 0.60–0.94 times the time of the
+  vector of tables, allocating the table alone, where the vector of tables
+  allocates its fields too. Strings of 64 `char`s and more are encoded
+  once, before the table is written, which both layouts do, so lists of
+  256 characters allocate their strings' UTF-8 twice.
+- Every string is read in 0.85–0.95 times the time, each decoded on its own
+  in either layout, as the JDK decodes it.
+- The last string is found in 0.93–0.97 times the time.

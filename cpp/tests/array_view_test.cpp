@@ -23,6 +23,15 @@ static_assert(std::ranges::sized_range<ArrayView<std::uint64_t>>);
 static_assert(std::random_access_iterator<ArrayView<std::int16_t>::iterator>);
 static_assert(std::ranges::forward_range<Vector::Items>);
 
+/// Whether an `ArrayView` of `T` is a type, which it isn't of `bool`: a byte
+/// other than 0 or 1 is no `bool`, so an array of bools is never viewed as
+/// bools, but read into `Bools`
+template <class T>
+concept Viewed = requires { typename ArrayView<T>; };
+
+static_assert(Viewed<std::uint8_t>);
+static_assert(!Viewed<bool>);
+
 /// The little-endian bytes of `values`, at `byte_offset` from an aligned
 /// address
 template <class T>

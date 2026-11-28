@@ -142,8 +142,14 @@ public sealed class Suite
             case "bool":
                 return new Bool(field.GetProperty("value").GetBoolean());
 
+            case "bool[]":
+                return new BoolArray(new Seq<bool>(field.GetProperty("value").EnumerateArray().Select(value => value.GetBoolean())));
+
             case "string":
                 return new StringField(field.GetProperty("value").GetString()!);
+
+            case "string[]":
+                return new StringVectorField(new Seq<string>(field.GetProperty("value").EnumerateArray().Select(value => value.GetString()!)));
 
             case "struct":
                 return new StructField(new Seq<Scalar>(field.GetProperty("fields").EnumerateArray().Select(scalar => (Scalar)ParseField(scalar))));

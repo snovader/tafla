@@ -12,10 +12,10 @@ use super::writer::{
 };
 use super::{GeneratedFile, Options};
 use crate::model::{
-    Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema,
+    Definition, Enum, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema,
     strongly_connected_components,
 };
-use crate::naming::camel_case;
+use crate::naming::{camel_case, pascal_case};
 
 /// The runtime's module, unless [`Options::runtime`] names another
 const RUNTIME: &str = "tafla";
@@ -114,6 +114,11 @@ pub fn generate(
     writer.line(format!("// {header}"));
     writer.blank();
     generator.imports(&mut writer, runtime);
+
+    for enumeration in &schema.enums {
+        writer.blank();
+        generator.enumeration(&mut writer, enumeration);
+    }
 
     for class in class_order(schema) {
         writer.blank();
@@ -496,6 +501,9 @@ impl Generator<'_> {
         if versioned {
             classes.push(("DecodeError", false));
         }
+        if self.has_string_vectors() {
+            classes.push(("StringVector", false));
+        }
         if has_struct {
             classes.push(("StructWriter", false));
         }
@@ -546,6 +554,16 @@ impl Generator<'_> {
             }
             writer.close(format!("}} from '{runtime}';"));
         }
+    }
+
+    /// Whether a table of the schema holds a vector of strings, whose
+    /// getter returns the runtime's `StringVector`
+    fn has_string_vectors(&self) -> bool {
+        self.schema
+            .definitions
+            .iter()
+            .flat_map(|definition| &definition.fields)
+            .any(|field| field.field_type == FieldType::StringVector)
     }
 
     /// The functions that read the scalars of structs, such as
@@ -1108,6 +1126,13 @@ impl Generator<'_> {
                         format!("{reader}.get{}", scalar_method(scalar)),
                         vec![offset],
                     ),
+                    // A bool for each byte, true where it isn't 0
+                    FieldType::Array(Scalar::Bool) => {
+                        call(format!("{reader}.getBoolArray"), vec![offset])
+                    }
+                    FieldType::StringVector => {
+                        call(format!("{reader}.getStringVector"), vec![offset])
+                    }
                     FieldType::Array(scalar) => call(
                         format!("{reader}.get{}Array", scalar_method(scalar)),
                         vec![offset],
@@ -1124,7 +1149,7 @@ impl Generator<'_> {
                     // The view's fields(), which reads every item
                     FieldType::StructArray(_) | FieldType::Vector(_) => {
                         suffix = ".fields()";
-                        let view = value_type(field.field_type, self.schema);
+                        let view = value_type(field, self.schema);
                         call(format!("new {view}"), vec![text(reader), offset])
                     }
                 };
@@ -1537,7 +1562,7 @@ impl Generator<'_> {
             self.private_field(
                 writer,
                 &identifier(&field.name),
-                &value_type(field.field_type, self.schema),
+                &value_type(field, self.schema),
             );
         }
         writer.blank();
@@ -1752,11 +1777,11 @@ impl Generator<'_> {
             self.getter_doc(
                 writer,
                 &schema_docs(&field.docs),
-                &value_type(field.field_type, self.schema),
+                &value_type(field, self.schema),
             );
             writer.open(format!(
                 "{field_name}(){} {{",
-                self.annotation(&value_type(field.field_type, self.schema))
+                self.annotation(&value_type(field, self.schema))
             ));
             writer.line(format!("return this._{field_name};"));
             writer.close("}");
@@ -2039,7 +2064,7 @@ impl Generator<'_> {
             ..
         } in reads
         {
-            let return_type = value_type(field.field_type, self.schema);
+            let return_type = value_type(field, self.schema);
             writer.blank();
             self.struct_getter_doc(writer, field, &return_type);
             writer.open(format!(
@@ -2110,7 +2135,7 @@ impl Generator<'_> {
                 writer.line(format!(
                     "{}: {};",
                     identifier(&field.name),
-                    input_type(field.field_type, self.schema)
+                    input_type(field, self.schema)
                 ));
             }
             writer.close("}");
@@ -2124,12 +2149,50 @@ impl Generator<'_> {
                 let description = schema_docs(&field.docs).join(" ");
                 let property = format!(
                     "@property {{{}}} {} {description}",
-                    input_type(field.field_type, self.schema),
+                    input_type(field, self.schema),
                     identifier(&field.name)
                 );
                 lines.push(property.trim_end().to_owned());
             }
             writer.lines(&doc_comment(&lines));
+        }
+    }
+
+    /// An enum: an object of its values by their names in `PascalCase`, and
+    /// a type of the same name, an alias of its integer type, since a field
+    /// of the enum holds any integer of that type. The object is frozen, so
+    /// that its values are constants, of literal types.
+    fn enumeration(&self, writer: &mut CodeWriter, enumeration: &Enum) {
+        let name = &enumeration.name;
+        let underlying = enumeration.underlying;
+        let is_big = scalar_type(underlying) == "bigint";
+
+        writer.lines(&doc_comment(&schema_docs(&enumeration.docs)));
+        writer.open(format!("export const {name} = globalThis.Object.freeze({{"));
+        for (index, value) in enumeration.values.iter().enumerate() {
+            let last = index + 1 == enumeration.values.len();
+            writer.lines(&doc_comment(&schema_docs(&value.docs)));
+            writer.line(format!(
+                "{}: {}{}{}",
+                pascal_case(&value.name),
+                value.value,
+                if is_big { "n" } else { "" },
+                if last { "" } else { "," }
+            ));
+        }
+        writer.close("});");
+
+        let summary = format!(
+            "A value of {{@link {name}}}: one that it names, or any other `{}`",
+            underlying.name()
+        );
+        writer.blank();
+        if self.typed {
+            writer.lines(&doc_comment(&[summary]));
+            writer.line(format!("export type {name} = {};", scalar_type(underlying)));
+        } else {
+            let typedef = format!("@typedef {{{}}} {name}", scalar_type(underlying));
+            writer.lines(&doc_comment(&[summary, String::new(), typedef]));
         }
     }
 
@@ -2139,11 +2202,16 @@ impl Generator<'_> {
             let value = format!("fields.{}", identifier(&field.name));
             let (method, arguments) = match field.field_type {
                 FieldType::Scalar(scalar) => (format!("add{}", scalar_method(scalar)), vec![]),
+                FieldType::Array(Scalar::Bool) => (
+                    "addBoolArray".to_owned(),
+                    vec![text(format!("{value}.length"))],
+                ),
                 FieldType::Array(scalar) => (
                     format!("add{}Array", scalar_method(scalar)),
                     vec![text(format!("{value}.length"))],
                 ),
                 FieldType::String => ("addString".to_owned(), vec![text(value)]),
+                FieldType::StringVector => ("addStringVector".to_owned(), vec![text(value)]),
                 FieldType::Struct(index) => {
                     let structure = &self.schema.definition(index).name;
                     (
@@ -2205,11 +2273,17 @@ impl Generator<'_> {
                     format!("set{}", scalar_method(scalar)),
                     vec![position, stored_value(scalar, &value)],
                 ),
+                FieldType::Array(Scalar::Bool) => {
+                    ("setBoolArray".to_owned(), vec![position, text(value)])
+                }
                 FieldType::Array(scalar) => (
                     format!("set{}Array", scalar_method(scalar)),
                     vec![position, text(value)],
                 ),
                 FieldType::String => ("setString".to_owned(), vec![position, text(value)]),
+                FieldType::StringVector => {
+                    ("setStringVector".to_owned(), vec![position, text(value)])
+                }
                 FieldType::Struct(struct_index) => {
                     let structure = &self.schema.definition(struct_index).name;
                     (
@@ -2300,10 +2374,17 @@ impl Generator<'_> {
                     vec![text("this._position"), text(index.to_string())],
                 )
             };
-            let return_type = value_type(field.field_type, self.schema);
+            let return_type = value_type(field, self.schema);
+            let mut docs = schema_docs(&field.docs);
+            if field.field_type == FieldType::Array(Scalar::Bool) {
+                if !docs.is_empty() {
+                    docs.push(String::new());
+                }
+                docs.push("A byte for each bool, which is true where it isn't 0".to_owned());
+            }
 
             writer.blank();
-            self.getter_doc(writer, &schema_docs(&field.docs), &return_type);
+            self.getter_doc(writer, &docs, &return_type);
             writer.open(format!(
                 "{}(){} {{",
                 identifier(&field.name),
@@ -2336,6 +2417,11 @@ impl Generator<'_> {
                         &call("this._reader.getString", vec![offset]),
                         ";",
                     );
+                }
+                // A view, which reads each string when it's asked for
+                FieldType::StringVector => {
+                    let read = call("new StringVector", vec![text("this._reader"), offset]);
+                    writer.statement(&STYLE, "return ", &read, ";");
                 }
                 FieldType::Struct(index) => {
                     let structure = &self.schema.definition(index).name;
@@ -2746,12 +2832,16 @@ fn assign_bool(writer: &mut CodeWriter, target: &str, read: &Expr, suffix: &str)
     }
 }
 
-/// The type that a getter returns
-fn value_type(field_type: FieldType, schema: &Schema) -> String {
-    match field_type {
-        FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
+/// The type that a getter returns. An array of enums is the typed array of
+/// their integer type, which has no type of its elements to name the enum.
+fn value_type(field: &Field, schema: &Schema) -> String {
+    match field.field_type {
+        FieldType::Scalar(scalar) => element_type(field, scalar, schema).to_owned(),
+        // The bytes of an array of bools, read in place
         FieldType::Array(scalar) => typed_array(scalar).to_owned(),
         FieldType::String => "string".to_owned(),
+        // A view of the strings, which reads each one when it's asked for
+        FieldType::StringVector => "StringVector".to_owned(),
         FieldType::Struct(index) | FieldType::Table(index) => schema.definition(index).name.clone(),
         // A view of the items, which reads each one when it's asked for
         FieldType::Vector(index) => format!("{}Vector", schema.definition(index).name),
@@ -2760,13 +2850,17 @@ fn value_type(field_type: FieldType, schema: &Schema) -> String {
 }
 
 /// The type that a field's setter takes
-fn input_type(field_type: FieldType, schema: &Schema) -> String {
-    match field_type {
-        FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
+fn input_type(field: &Field, schema: &Schema) -> String {
+    match field.field_type {
+        FieldType::Scalar(scalar) => element_type(field, scalar, schema).to_owned(),
+        // Bools, which the writer writes as bytes of 1 and 0
+        FieldType::Array(Scalar::Bool) => "readonly boolean[]".to_owned(),
+        // An array rather than any array-like, which a string is too
+        FieldType::StringVector => "readonly string[]".to_owned(),
         FieldType::Array(scalar) => {
             format!(
                 "ArrayLike<{}> | {}",
-                scalar_type(scalar),
+                element_type(field, scalar, schema),
                 typed_array(scalar)
             )
         }
@@ -2780,6 +2874,15 @@ fn input_type(field_type: FieldType, schema: &Schema) -> String {
     }
 }
 
+/// The type of a scalar field or of an array's elements: the field's enum,
+/// which is an alias of its integer type, or the scalar's type
+fn element_type<'a>(field: &Field, scalar: Scalar, schema: &'a Schema) -> &'a str {
+    match field.enumeration {
+        Some(index) => &schema.enumeration(index).name,
+        None => scalar_type(scalar),
+    }
+}
+
 const fn scalar_type(scalar: Scalar) -> &'static str {
     match scalar {
         Scalar::Bool => "boolean",
@@ -2790,9 +2893,9 @@ const fn scalar_type(scalar: Scalar) -> &'static str {
 
 const fn typed_array(scalar: Scalar) -> &'static str {
     match scalar {
-        Scalar::Bool => panic!("the checker rejects arrays of bools"),
         Scalar::Int8 => "Int8Array",
-        Scalar::Uint8 => "Uint8Array",
+        // A byte for each bool
+        Scalar::Bool | Scalar::Uint8 => "Uint8Array",
         Scalar::Int16 => "Int16Array",
         Scalar::Uint16 => "Uint16Array",
         Scalar::Int32 => "Int32Array",

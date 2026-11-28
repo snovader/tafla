@@ -225,6 +225,7 @@ private func parseField(_ json: JSON, name: String) throws -> Field {
     case "uint64[]": return .uint64Array(try json["value"].array.map { try parseInteger($0) })
     case "float32[]": return .float32Array(bits: try json["value"].array.map { Float(try parseFloat($0)).bitPattern })
     case "float64[]": return .float64Array(bits: try json["value"].array.map { try parseFloat($0).bitPattern })
+    case "bool[]": return .boolArray(try json["value"].array.map { try $0.bool })
     case "string": return .string(try json["value"].string)
     case "struct":
         return .struct(try json["fields"].array.map { try parseField($0, name: name) })
@@ -244,6 +245,8 @@ private func parseField(_ json: JSON, name: String) throws -> Field {
         return .table(try parseNested(json, name: name), alignment: alignment)
     case "vector":
         return .vector(try json["items"].array.map { try parseNested($0, name: name) })
+    case "string[]":
+        return .stringVector(try json["value"].array.map { try $0.string })
     default:
         throw ParseError(description: "\(name): a field of type \(type)")
     }

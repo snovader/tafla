@@ -78,8 +78,16 @@ public static class Build
                 Scalars.SetArray(target, array);
                 break;
 
+            case BoolArray array:
+                target.SetBoolArray(array.Values.ToArray());
+                break;
+
             case StringField value:
                 target.SetString(value.Value);
+                break;
+
+            case StringVectorField value:
+                target.SetStringVector(value.Values.ToArray());
                 break;
 
             case StructField value:

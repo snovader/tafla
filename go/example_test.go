@@ -95,6 +95,29 @@ func ExampleDecodeError() {
 	// Output: OutOfRange tafla: read exceeds the supplied bytes: 8 bytes at 0 of 4
 }
 
+func ExampleTableReader_GetBoolArray() {
+	builder, err := tafla.NewTableBuilder(1, tafla.TableLayout{})
+	if err != nil {
+		panic(err)
+	}
+	_ = builder.SetBoolArray([]bool{true, false, true})
+	bytes, err := builder.Bytes()
+	if err != nil {
+		panic(err)
+	}
+
+	reader := tafla.NewTableReader(bytes, tafla.TableLayout{})
+	position, err := reader.RootOffset(0)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(reader.GetUint8Array(position)) // the bytes in place
+	fmt.Println(reader.GetBoolArray(position))  // new bools, true where a byte isn't 0
+	// Output:
+	// [1 0 1] <nil>
+	// [true false true] <nil>
+}
+
 func ExampleTableBuilder_SetVectorFunc() {
 	type point struct{ x, y float32 }
 	points := []point{{1.5, 2}, {3, 4.25}}

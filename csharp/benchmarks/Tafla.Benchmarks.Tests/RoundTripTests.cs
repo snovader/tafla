@@ -119,8 +119,8 @@ public class RoundTripTests
     public void EveryBenchmarkChecksWhatItsVariantsStore()
     {
         // Each variant's call once, and its check of what the call stored, as the program runs them
-        // before timing
-        foreach (var benchmark in Comparison.All())
+        // before timing, of the comparison and of the lists of strings
+        foreach (var benchmark in Comparison.All().Concat(StringLists.All()))
         {
             Comparison.Check(benchmark);
         }
@@ -135,6 +135,19 @@ public class RoundTripTests
         Sink.Clear();
         variant.Loop(1);
         Sink.Record = Sink.Record! with { X = -Sink.Record.X };
+
+        Assert.False(variant.Check());
+    }
+
+    [Fact]
+    public void ChecksOfListsOfStringsFailForWrongResults()
+    {
+        var benchmark = StringLists.All().First(benchmark => benchmark.Name == "10 × 16 chars of ASCII: deserialize");
+        var variant = benchmark.Variants[0];
+
+        Sink.Clear();
+        variant.Loop(1);
+        Sink.Strings![^1] = "";
 
         Assert.False(variant.Check());
     }

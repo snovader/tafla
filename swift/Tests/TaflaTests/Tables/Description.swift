@@ -44,6 +44,9 @@ enum Field: Hashable, Sendable {
     case uint64Array([UInt64])
     case float32Array(bits: [UInt32])
     case float64Array(bits: [UInt64])
+    /// An array of bools, which is written as the uint8 array of their bytes,
+    /// 1 and 0, and read as true where a byte isn't 0
+    case boolArray([Bool])
     case string(utf8: [UInt8])
     /// A struct of scalar fields, one after another
     case `struct`([Field])
@@ -54,12 +57,17 @@ enum Field: Hashable, Sendable {
     /// it's set with when the description gives one
     case table(Nested, alignment: Alignment?)
     case vector([Nested])
+    /// A vector of strings: a count, the end of each string, and the strings'
+    /// UTF-8, one after another
+    case stringVector(utf8: [[UInt8]])
 
     static func float32(_ value: Float) -> Field { .float32(bits: value.bitPattern) }
 
     static func float64(_ value: Double) -> Field { .float64(bits: value.bitPattern) }
 
     static func string(_ value: String) -> Field { .string(utf8: Array(value.utf8)) }
+
+    static func stringVector(_ values: [String]) -> Field { .stringVector(utf8: values.map { Array($0.utf8) }) }
 
     /// The type of a scalar field, or `nil` for a field of any other type
     var scalarType: ScalarType? {

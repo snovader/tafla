@@ -1,12 +1,13 @@
 // Reads mutated tables as every valid table of the conformance suite describes
-// them, following their offsets into nested tables, vectors, arrays, strings
-// and structs, as the conformance test reads them.
+// them, following their offsets into nested tables, vectors, arrays, strings,
+// vectors of strings and structs, as the conformance test reads them.
 //
 // Its seed corpus is the suite's tables, `conformance/valid/*.bin`,
 // `conformance/equivalent/*.bin` and `conformance/invalid/*.bin`, so that the
 // fuzzer mutates tables that the descriptions read deep into. Reads may fail,
 // but only with the decode error, and finding a vector's item by index must
-// find what iterating finds.
+// find what iterating finds, and a vector's strings what reading them all
+// finds.
 
 #include <cstddef>
 #include <cstdint>

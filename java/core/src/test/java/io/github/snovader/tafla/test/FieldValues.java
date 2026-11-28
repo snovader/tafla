@@ -99,6 +99,10 @@ final class FieldValues {
         return Descriptions.arrays(ScalarType.FLOAT64).map(ScalarType::toDoubles);
     }
 
+    static Arbitrary<boolean[]> boolArrays() {
+        return Descriptions.boolArrays();
+    }
+
     /** {@return the fields of the tables of vectors, empty too} */
     static <T> Arbitrary<List<T>> vectorsOf(Arbitrary<T> items) {
         return items.list().ofMaxSize(Descriptions.MAX_ITEMS);
