@@ -734,8 +734,8 @@ public:
     /// true value and 0 for each false one. A bool's byte is 0 or 1, as this
     /// header's `static_assert` checks, so the bools are copied as they lie
     /// in memory: in a Release build, a loop that wrote 1 or 0 for each took
-    /// 25 ns to write 1,000 bools with GCC 16, where the copy took 13 ns, and
-    /// 5.2 ns to write 100 with Apple Clang 21, where the copy took 2.1 ns.
+    /// 19 ns to write 1,000 bools with GCC 16, where the copy took 12 ns, and
+    /// 4.9 ns to write 100 with Apple Clang 21, where the copy took 2.3 ns.
     TAFLA_ALWAYS_INLINE void set_bool_array(std::size_t index, std::span<const bool> values) noexcept {
         start_array(index, values.size(), Alignment::one);
         push(values.data(), values.size());

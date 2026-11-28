@@ -124,9 +124,9 @@ type, offset size, vector, builder and decode error.
   bools into bits instead, which no span views, and filling one from 1,000
   bytes took 2.0 µs, where `Bools` took 38 ns. The writers copy a span of
   bools as its bytes, since a `bool` is the byte 0 or 1, as a `static_assert`
-  in `table_writer.hpp` checks: a loop that wrote 1 or 0 for each took 25 ns
-  for 1,000 bools with GCC 16, where the copy took 13 ns, and 5.2 ns for 100
-  with Apple Clang 21, where it took 2.1 ns.
+  in `table_writer.hpp` checks: a loop that wrote 1 or 0 for each took 19 ns
+  for 1,000 bools with GCC 16, where the copy took 12 ns, and 4.9 ns for 100
+  with Apple Clang 21, where it took 2.3 ns.
 - **`ArrayView::as_span()`** returns a `std::span<const T>` of the elements
   where they're aligned on a little-endian host, as `TableBuilder` aligns
   them within an aligned table. It deliberately reads the table's bytes as
