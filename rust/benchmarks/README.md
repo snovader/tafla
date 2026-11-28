@@ -100,17 +100,25 @@ the allocations and bytes of each benchmark's call.
 | `to_le_bytes` (the standard library's) | For the fixed-size record only: fields at fixed offsets, which tafla's README recommends writing and reading with the standard library. |
 
 Each crate is used as its documentation shows, and as the TypeScript
-comparison uses its counterpart:
+comparison uses its counterpart. Each call writes from nothing into new
+bytes. Where a crate's API takes a capacity, its codec gives it the shape's,
+an estimate from the counts and strings' lengths that a caller knows before
+writing, at as many bytes for each as the most that any of the formats
+writes, which the round-trip check checks that no codec passes: tafla's
+builder, FlatBuffers' builder, rmp-serde's `Vec` and rkyv's `AlignedVec`.
+prost's `encode_to_vec()` sizes its bytes exactly already, as tafla-gen's
+code does with a `TableSizer`.
 
 - **tafla** writes nested tables in place among their parent builder's
   fields, with `set_table_with()` and `set_vector_with()`. The builder
-  copies each array in bulk into its buffer when it's set, and hands the
-  buffer over as the table with `into_bytes()`. Readers check the document's version, and read columns as
-  `ArrayView`s, whose `to_cow()` borrows them. The array of structs is written with `to_le_bytes()` into a `Vec`, which the
-  builder takes with `set_struct_array()`, and read from
-  `get_struct_array()`'s bytes with `as_chunks()` and `from_le_bytes()`.
-  tafla-gen's code converts each struct in the same way, but writes them
-  straight into the table.
+  starts with `with_buffer()` in a `Vec` with the shape's capacity, copies
+  each array in bulk into it when it's set, and hands it over as the table
+  with `into_bytes()`. Readers check the document's version, and read
+  columns as `ArrayView`s, whose `to_cow()` borrows them. The array of
+  structs is written with `to_le_bytes()` into a `Vec`, which the builder
+  takes with `set_struct_array()`, and read from `get_struct_array()`'s
+  bytes with `as_chunks()` and `from_le_bytes()`. tafla-gen's code converts
+  each struct in the same way, but writes them straight into the table.
 - **tafla-gen** is the code that tafla-gen generates from `workloads.tafla`,
   in `src/codecs/tafla_gen/`. A message's `serialize()` counts the table's
   length with a `TableSizer`, and then writes every field, nested tables
@@ -126,8 +134,9 @@ comparison uses its counterpart:
   vector and of the array return views, whose `iter()` the codec reads into
   the workload's items. Every suite has a copy of the schema; after changing
   them, regenerate the code as `gen/README.md` describes.
-- **FlatBuffers** builds each message with a new `FlatBufferBuilder`, which
-  starts empty and doubles as it grows, and each table with flatc's
+- **FlatBuffers** builds each message with a new `FlatBufferBuilder`, from
+  `with_capacity()` with the shape's capacity, which doubles if it grows,
+  and each table with flatc's
   `create()` and its arguments. Columns are written from slices with
   `create_vector()`, which writes them element by element, and so is the
   vector of structs, from a `Vec` of flatc's structs, which took 16% less time
@@ -151,13 +160,16 @@ comparison uses its counterpart:
   `src/codecs/protobuf.rs` are derived with `#[derive(prost::Message)]` in the
   shape that prost-build generates, so no protoc is needed.
 - **rmp-serde** packs the workloads' own types through their serde derives,
-  with `to_vec_named()`, which packs a struct as a map with its field names,
-  as msgpackr packs an object, and reads them with `from_slice()`, which
-  borrows strings from the bytes. The array of structs packs with `to_vec()`,
-  which packs each struct, and the table that holds them, as an array of its
-  fields in order, without their names.
+  into a `Vec` with the shape's capacity, with `encode::write_named()`,
+  which packs as `to_vec_named()` does, a struct as a map with its field
+  names, as msgpackr packs an object, and reads them with `from_slice()`,
+  which borrows strings from the bytes. The array of structs packs with
+  `encode::write()`, as `to_vec()` does, which packs each struct, and the
+  table that holds them, as an array of its fields in order, without their
+  names.
 - **rkyv** archives the workloads' own types through their derives, with
-  `to_bytes()` into an `AlignedVec`, and reads them with `access()`, which
+  `to_bytes_in()` into an `AlignedVec` with the shape's capacity, as
+  `to_bytes()` archives into a new one, and reads them with `access()`, which
   validates the whole archive with bytecheck first, as untrusted bytes need.
   Numbers are read with `to_native()`, through which columns are copied into
   `Vec`s.
@@ -617,11 +629,12 @@ which [Lists of strings](#lists-of-strings) times:
   from a message that copies the input's strings, and reads it with
   `decode()`, which copies each string into a `String` that it allocates and
   checks it with `str::from_utf8()`.
-- **rmp-serde** packs an array of strings with `to_vec()`, and unpacks it
+- **rmp-serde** packs an array of strings with `encode::write()`, as
+  `to_vec()` packs it, and unpacks it
   with a visitor that borrows each string from the bytes once rmp-serde has
   checked it with `str::from_utf8()`, since serde's own array of `Cow`s would
   copy them.
-- **rkyv** archives an array of 16 strings with `to_bytes()`, and reads them
+- **rkyv** archives an array of 16 strings with `to_bytes_in()`, and reads them
   in place after `access()` validates the archive, where bytecheck checks
   every string with simdutf8.
 
@@ -672,11 +685,12 @@ encoded sizes.
   allocates, and its message's `Vec` of them grows by doubling. A write
   copies the input's strings into a message first, as a caller that keeps its
   values would.
-- flatbuffers' builder starts empty and doubles by copying, as in the
-  comparison, and so do rmp-serde's `Vec` and rkyv's `AlignedVec`.
-- tafla's builder records each field in a `Vec` that it allocates, and then
-  writes the table into one of its own. tafla-gen's code counts the table's
-  length first and allocates it alone.
+- flatbuffers' builder, rmp-serde's `Vec`, rkyv's `AlignedVec` and tafla's
+  builder start with the strings' capacity, as in the comparison, so none of
+  them grows. prost's `encode_to_vec()` and tafla-gen's code count the
+  bytes' length first and allocate it alone.
+- tafla's builder copies each string into its buffer when it's set, and
+  hands the buffer over as the table.
 - rkyv writes a string of up to 8 bytes within its 8-byte slot of the array,
   rather than after it.
 - Only aarch64 was timed, where `is_ascii()` and simdutf8 use NEON, which

@@ -1,16 +1,21 @@
 use std::borrow::Cow;
 use std::fmt;
 
+use serde::Serialize;
 use serde::de::{self, Deserializer, SeqAccess, Visitor};
 
 use crate::codec::{Codec, DocumentWorkload, Error, Workload};
 use crate::string_workloads::{COUNT, Strings, StringsShape};
 use crate::workloads::{
-    Document, DocumentShape, List, ListShape, Record, RecordShape, Sample, SampleShape,
+    Document, DocumentShape, List, ListShape, Record, RecordShape, Sample, SampleShape, Shape,
     StructsShape, sum_column,
 };
 
 /// rmp-serde, which packs the workloads' own types through their serde derives.
+///
+/// Each value packs into a `Vec` with the shape's capacity, with
+/// `encode::write_named()` or `write()`, which pack as `to_vec_named()` and
+/// `to_vec()` pack into a new `Vec`.
 ///
 /// The msgpack format is schemaless: a struct packs as a map with its field
 /// names, as `to_vec_named()` writes it and msgpackr packs an object, and a
@@ -36,7 +41,7 @@ impl Workload<RecordShape> for RmpSerde {
     type Bytes = Vec<u8>;
 
     fn serialize(self, input: &Record<'_>) -> Result<Vec<u8>, Error> {
-        Ok(rmp_serde::to_vec_named(input)?)
+        named(input, RecordShape::capacity(input))
     }
 
     fn deserialize(self, bytes: &[u8]) -> Result<Record<'_>, Error> {
@@ -48,7 +53,7 @@ impl Workload<DocumentShape> for RmpSerde {
     type Bytes = Vec<u8>;
 
     fn serialize(self, input: &Document<'_>) -> Result<Vec<u8>, Error> {
-        Ok(rmp_serde::to_vec_named(input)?)
+        named(input, DocumentShape::capacity(input))
     }
 
     fn deserialize(self, bytes: &[u8]) -> Result<Document<'_>, Error> {
@@ -67,7 +72,7 @@ impl Workload<ListShape> for RmpSerde {
     type Bytes = Vec<u8>;
 
     fn serialize(self, input: &List) -> Result<Vec<u8>, Error> {
-        Ok(rmp_serde::to_vec_named(input)?)
+        named(input, ListShape::capacity(input))
     }
 
     fn deserialize(self, bytes: &[u8]) -> Result<List, Error> {
@@ -79,7 +84,7 @@ impl Workload<StructsShape> for RmpSerde {
     type Bytes = Vec<u8>;
 
     fn serialize(self, input: &List) -> Result<Vec<u8>, Error> {
-        Ok(rmp_serde::to_vec(input)?)
+        compact(input, StructsShape::capacity(input))
     }
 
     fn deserialize(self, bytes: &[u8]) -> Result<List, Error> {
@@ -91,7 +96,7 @@ impl Workload<SampleShape> for RmpSerde {
     type Bytes = Vec<u8>;
 
     fn serialize(self, input: &Sample) -> Result<Vec<u8>, Error> {
-        Ok(rmp_serde::to_vec_named(input)?)
+        named(input, SampleShape::capacity(input))
     }
 
     fn deserialize(self, bytes: &[u8]) -> Result<Sample, Error> {
@@ -103,7 +108,7 @@ impl Workload<StringsShape> for RmpSerde {
     type Bytes = Vec<u8>;
 
     fn serialize(self, input: &Strings<'_>) -> Result<Vec<u8>, Error> {
-        Ok(rmp_serde::to_vec(&input.items)?)
+        compact(&input.items, StringsShape::capacity(input))
     }
 
     fn deserialize(self, bytes: &[u8]) -> Result<Strings<'_>, Error> {
@@ -112,6 +117,24 @@ impl Workload<StringsShape> for RmpSerde {
 
         Ok(Strings { items })
     }
+}
+
+/// Packs `value` as `to_vec_named()` does, into a `Vec` with `capacity`,
+/// with `encode::write_named()`, which writes into any `Write`
+fn named<T: Serialize + ?Sized>(value: &T, capacity: usize) -> Result<Vec<u8>, Error> {
+    let mut bytes = Vec::with_capacity(capacity);
+    rmp_serde::encode::write_named(&mut bytes, value)?;
+
+    Ok(bytes)
+}
+
+/// Packs `value` as `to_vec()` does, into a `Vec` with `capacity`, with
+/// `encode::write()`
+fn compact<T: Serialize + ?Sized>(value: &T, capacity: usize) -> Result<Vec<u8>, Error> {
+    let mut bytes = Vec::with_capacity(capacity);
+    rmp_serde::encode::write(&mut bytes, value)?;
+
+    Ok(bytes)
 }
 
 /// Reads an array of strings borrowed from the bytes. serde's array of

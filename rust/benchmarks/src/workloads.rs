@@ -101,7 +101,31 @@ pub trait Shape {
     /// Whether the values are the same, with floats compared by their bits.
     /// Their lifetimes differ, which generic code can't compare with `==`.
     fn same(left: &Self::Value<'_>, right: &Self::Value<'_>) -> bool;
+
+    /// The room that a codec whose API takes a capacity is given to write
+    /// the value into: an estimate from what a caller knows before writing
+    /// it, its counts of rows or items and its strings' lengths, at as many
+    /// bytes for each as the most that any of the comparison's formats
+    /// writes for it, after [`CAPACITY_OVERHEAD`] for headers, offsets and
+    /// names, so that no codec grows its bytes. `check::round_trip()`
+    /// checks that each codec writes no more.
+    fn capacity(value: &Self::Value<'_>) -> usize;
 }
+
+/// The bytes of a value's capacity beyond those of its counts and strings
+pub const CAPACITY_OVERHEAD: usize = 128;
+
+/// The bytes of a capacity for each row of a document, three values of up
+/// to 5 bytes each in msgpack
+const ROW_CAPACITY: usize = 16;
+
+/// The bytes of a capacity for each item of the vector of nested tables,
+/// whose field names msgpack writes for each
+const ITEM_CAPACITY: usize = 48;
+
+/// The bytes of a capacity for each struct of the array of structs, three
+/// float32s, which msgpack writes as an array of 16 bytes
+const STRUCT_CAPACITY: usize = 16;
 
 /// The shape of [`Record`]
 pub struct RecordShape;
@@ -125,6 +149,10 @@ impl Shape for RecordShape {
     fn same(left: &Record<'_>, right: &Record<'_>) -> bool {
         left == right
     }
+
+    fn capacity(value: &Record<'_>) -> usize {
+        CAPACITY_OVERHEAD + value.name.len()
+    }
 }
 
 impl Shape for DocumentShape {
@@ -133,6 +161,10 @@ impl Shape for DocumentShape {
 
     fn same(left: &Document<'_>, right: &Document<'_>) -> bool {
         left == right
+    }
+
+    fn capacity(value: &Document<'_>) -> usize {
+        CAPACITY_OVERHEAD + value.name.len() + value.keys.len() * ROW_CAPACITY
     }
 }
 
@@ -143,6 +175,10 @@ impl Shape for ListShape {
     fn same(left: &List, right: &List) -> bool {
         left == right
     }
+
+    fn capacity(value: &List) -> usize {
+        CAPACITY_OVERHEAD + value.items.len() * ITEM_CAPACITY
+    }
 }
 
 impl Shape for StructsShape {
@@ -152,6 +188,10 @@ impl Shape for StructsShape {
     fn same(left: &List, right: &List) -> bool {
         left == right
     }
+
+    fn capacity(value: &List) -> usize {
+        CAPACITY_OVERHEAD + value.items.len() * STRUCT_CAPACITY
+    }
 }
 
 impl Shape for SampleShape {
@@ -160,6 +200,10 @@ impl Shape for SampleShape {
 
     fn same(left: &Sample, right: &Sample) -> bool {
         left == right
+    }
+
+    fn capacity(_: &Sample) -> usize {
+        CAPACITY_OVERHEAD
     }
 }
 

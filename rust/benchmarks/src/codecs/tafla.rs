@@ -9,7 +9,7 @@ use crate::item_access::{ItemAccess, no_items, sum_item};
 use crate::string_workloads::{COUNT, Strings, StringsShape};
 use crate::workloads::{
     Document, DocumentShape, Item, List, ListShape, Record, RecordShape, Sample, SampleShape,
-    StructsShape, sum_column,
+    Shape, StructsShape, sum_column,
 };
 
 const DOCUMENT_VERSION: u32 = 1;
@@ -27,7 +27,9 @@ const ITEM_ALIGNMENT: Alignment = Alignment::Four;
 /// Tables are nested in place, the columns are copied into the builder's
 /// buffer, which `into_bytes()` returns as the table, and arrays are read
 /// in place as `ArrayView`s, whose `to_cow()` borrows them when they're
-/// aligned on a little-endian host.
+/// aligned on a little-endian host. The buffer is a `Vec` with the shape's
+/// capacity, which `with_buffer()` takes, as the other codecs whose API
+/// takes a capacity are given it.
 ///
 /// The runtime writes tables, and leaves fixed-size records to the standard
 /// library, as its README says. The fixed-size record is written with
@@ -49,7 +51,8 @@ impl Workload<RecordShape> for Tafla {
     type Bytes = Vec<u8>;
 
     fn serialize(self, input: &Record<'_>) -> Result<Vec<u8>, Error> {
-        let mut builder = TableBuilder::new(4, TableLayout::DEFAULT)?;
+        let buffer = Vec::with_capacity(RecordShape::capacity(input));
+        let mut builder = TableBuilder::with_buffer(buffer, 4, TableLayout::DEFAULT)?;
         builder.set_f64(input.x)?;
         builder.set_f64(input.y)?;
         builder.set_i64(input.id)?;
@@ -74,7 +77,8 @@ impl Workload<DocumentShape> for Tafla {
     type Bytes = Vec<u8>;
 
     fn serialize(self, input: &Document<'_>) -> Result<Vec<u8>, Error> {
-        let mut document = TableBuilder::new(4, DOCUMENT_LAYOUT)?;
+        let buffer = Vec::with_capacity(DocumentShape::capacity(input));
+        let mut document = TableBuilder::with_buffer(buffer, 4, DOCUMENT_LAYOUT)?;
         document.set_f64(input.x)?;
         document.set_f64(input.y)?;
         document.set_str(input.name.as_ref())?;
@@ -125,7 +129,8 @@ impl Workload<ListShape> for Tafla {
     fn serialize(self, input: &List) -> Result<Vec<u8>, Error> {
         let items = &input.items;
 
-        let mut builder = TableBuilder::new(1, TableLayout::DEFAULT)?;
+        let buffer = Vec::with_capacity(ListShape::capacity(input));
+        let mut builder = TableBuilder::with_buffer(buffer, 1, TableLayout::DEFAULT)?;
         builder.set_vector_with(items.len(), 2, |index, item| set_item(item, &items[index]))?;
 
         Ok(builder.into_bytes()?)
@@ -156,7 +161,8 @@ impl Workload<StructsShape> for Tafla {
             structs.extend_from_slice(&item_struct(item));
         }
 
-        let mut builder = TableBuilder::new(1, TableLayout::DEFAULT)?;
+        let buffer = Vec::with_capacity(StructsShape::capacity(input));
+        let mut builder = TableBuilder::with_buffer(buffer, 1, TableLayout::DEFAULT)?;
         builder.set_struct_array(structs, ITEM_SIZE, ITEM_ALIGNMENT)?;
 
         Ok(builder.into_bytes()?)
@@ -200,7 +206,8 @@ impl Workload<StringsShape> for Tafla {
     type Bytes = Vec<u8>;
 
     fn serialize(self, input: &Strings<'_>) -> Result<Vec<u8>, Error> {
-        let mut builder = TableBuilder::new(COUNT, TableLayout::DEFAULT)?;
+        let buffer = Vec::with_capacity(StringsShape::capacity(input));
+        let mut builder = TableBuilder::with_buffer(buffer, COUNT, TableLayout::DEFAULT)?;
         for string in &input.items {
             builder.set_str(string.as_ref())?;
         }
