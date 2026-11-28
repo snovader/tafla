@@ -93,14 +93,15 @@ first commits, for code built from its source before the release.
   copied into its parent when it's set, with the long values that it kept,
   unless they'd take 128 bytes or more to copy: then its parent keeps a copy
   of the builder, and writes its table in `Bytes()`, so that nesting
-  builders copies little however deep they're nested. A builder that its caller doesn't keep, and calls neither
-  `SetTableFunc()` nor `SetVectorFunc()` on, stays on the caller's stack. The
-  benchmarks' record takes about 40 ns rather than 87, in 1 allocation
-  rather than 2, the document of 100 rows 204 ns rather than 284, and the
-  vector of 100 nested tables 3.15 µs rather than 5.45, in 4 allocations of
-  7.7 KB rather than 6 of 18 KB. The document of 100,000 rows and the array
-  of structs take about as long, in an allocation fewer. A vector of 100
-  nested builders, which the comparison doesn't time, takes 4-9% less time.
+  builders copies little however deep they're nested. A builder that its
+  caller doesn't keep, and calls neither `SetTableFunc()` nor
+  `SetVectorFunc()` on, stays on the caller's stack. The benchmarks' record
+  takes about 40 ns rather than 87, in 1 allocation rather than 2, the
+  document of 100 rows 204 ns rather than 284, and the vector of 100 nested
+  tables 3.15 µs rather than 5.45, in 4 allocations of 7.7 KB rather than 6
+  of 18 KB. The document of 100,000 rows and the array of structs take about
+  as long, in an allocation fewer. A vector of 100 nested builders, which the
+  comparison doesn't time, takes 4-9% less time.
 - `TableBuilder` takes longer than it did on some shapes, which the
   benchmarks in `tests/table_builder_bench_test.go` time, since copying
   values into a buffer that doubles, and keeping nested builders, cost more
