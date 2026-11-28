@@ -1,7 +1,8 @@
 //! Prints the allocations, and the bytes that they ask for, of each builder
 //! that `builder_comparison` times, per call of each row, counted by a global
 //! allocator that wraps the system's, as the `allocation` binary counts the
-//! codecs', and the most bytes that it held at once in a call. A
+//! codecs', and the most bytes that it held at once in a call, beyond what
+//! it held before, which for the reused builder is its buffer. A
 //! reallocation counts as an allocation of its new size, and freeing isn't
 //! counted. Then it prints the most bytes that each builder held at once
 //! while it wrote an uneven vector in place, whose first item is long and
@@ -12,10 +13,10 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::hint::black_box;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use tafla::{NestedTable, TableBuilder, main_builder};
+use tafla::{NestedTable, TableBuilder, main_builder, rewrite_builder};
 use tafla_benchmarks::builders::{
-    Builder, Inputs, Rows, TOO_LONG_ITEMS, UNEVEN_ITEMS, UNEVEN_NAME, Visit, for_each_builder,
-    for_each_row,
+    Builder, Inputs, Out, Rows, TOO_LONG_ITEMS, UNEVEN_ITEMS, UNEVEN_NAME, Visit,
+    for_each_builder, for_each_row,
 };
 use tafla_benchmarks::codec::Error;
 
@@ -122,10 +123,11 @@ impl Rows for Counter<'_> {
     fn row<I, F>(&mut self, name: &'static str, input: &'static I, write: F)
     where
         I: 'static,
-        F: Fn(&I) -> Result<Vec<u8>, Error> + Copy + 'static,
+        F: Fn(&I, &mut Out) -> Result<(), Error> + Copy + 'static,
     {
-        let (bytes, allocations) = counts(|| write(input));
-        let held = peak(|| write(input));
+        let mut out = Out::timing();
+        let (bytes, allocations) = counts(|| write(input, &mut out));
+        let held = peak(|| write(input, &mut out));
         let line = format!(
             "  {:22} {bytes:>12} B {allocations:>7} allocations, held {held:>12} B",
             self.builder
@@ -142,7 +144,7 @@ impl Rows for Counter<'_> {
 
 /// The bytes and allocations per call of `call`, after a call that
 /// initializes whatever is initialized once
-fn counts(call: impl Fn() -> Result<Vec<u8>, Error>) -> (usize, usize) {
+fn counts(mut call: impl FnMut() -> Result<(), Error>) -> (usize, usize) {
     black_box(call().ok());
 
     let allocations = ALLOCATIONS.load(Ordering::Relaxed);
@@ -191,6 +193,8 @@ fn print_sizes() {
     println!("Sizes in bytes");
     println!("  main TableBuilder         {:>4}", size_of::<main_builder::TableBuilder<'_>>());
     println!("  main NestedTable          {:>4}", size_of::<main_builder::NestedTable<'_>>());
-    println!("  rewrite TableBuilder      {:>4}", size_of::<TableBuilder<'_>>());
-    println!("  rewrite NestedTable       {:>4}", size_of::<NestedTable<'_>>());
+    println!("  #217 TableBuilder         {:>4}", size_of::<rewrite_builder::TableBuilder<'_>>());
+    println!("  #217 NestedTable          {:>4}", size_of::<rewrite_builder::NestedTable<'_>>());
+    println!("  buffer TableBuilder       {:>4}", size_of::<TableBuilder>());
+    println!("  buffer NestedTable        {:>4}", size_of::<NestedTable<'_>>());
 }

@@ -131,39 +131,43 @@ first commits, for code built from its source before the release.
   through tafla-gen's getters, whose read grew by 16 inlined checks, and 16
   empty strings 1.06 times as long by hand. Their values and errors are
   unchanged.
-- `TableBuilder` writes each field's bytes, and its offset, when it's set,
-  rather than recording the field and writing every field through a
-  `TableWriter` in `to_bytes()`, which now copies the bytes into the
-  table's own, of its exact length. A run of 256 bytes or more, an array's
-  elements, a string, a struct, an array of structs or a table nested as
-  bytes, is kept, borrowed or owned as it was given, and copied into the
-  table once by `to_bytes()`. A nested builder is copied in as its bytes,
-  whatever its layout, with the runs that it keeps. Its API, bytes and
-  errors are unchanged, and a setter that fails still leaves the builder as
-  it was. The constructor allocates the builder's bytes, with room for 64
-  bytes a field beyond the header, up to 64 KiB more and at least 256
-  bytes, and writes the header into them, where it allocated room to record
-  at least 8 fields, of 48 bytes each. The bytes grow fourfold below 64 KiB
-  and twofold above. On an Apple M2 Pro, against the builder that recorded
-  its fields with their recording inlined, the benchmarks' vector of 100
-  nested tables, written in place, took 1.34 µs rather than 3.85 µs, in
-  7,696 bytes rather than 32,536; the record 53 ns rather than 68 ns; the
-  document of 100 rows 120 ns rather than 139 ns; a table of 32 strings and
-  arrays of 64 and 96 bytes 336 ns rather than 422 ns; and the vector from
-  a builder per table 7.2 µs rather than 7.4 µs, in 205 allocations rather
-  than 203. A table of 32 strings and arrays of 128 and 192 bytes, which are
-  copied when they're set and again by `to_bytes()`, took 425 ns rather
-  than 439 ns, in 16,256 bytes from 3 allocations rather than 6,912 from 2.
-  The document of 100,000 rows and the array of 100 structs took as long as
-  before. Some tables take longer: a table of 4 strings or arrays of 255
-  bytes, which grow the bytes, took 143 ns rather than 95 ns, and of
-  100,000 of them 3.3 ms rather than 1.6 ms, holding 56 MB at once rather
-  than 31 MB; a table of 9 arrays of 256 bytes, of which the builder keeps
-  4 within itself, 210 ns rather than 160 ns; tables of 5 to 33 columns of
-  100 `float64` 1.03 to 1.14 times as long; and a vector of 100,000
-  builders of 4 `uint32` fields, which hold their room while they're
-  nested by reference, 14.5 ms rather than 9.5 ms, holding 90 MB at once
-  rather than 52 MB. A builder is 264 bytes rather than 48.
+- `TableBuilder` copies each field into one buffer when it's set, with its
+  offset, rather than recording the field and writing every field through
+  a `TableWriter` in `to_bytes()`. The buffer then holds the table:
+  `finish()` lends it, `into_bytes()` returns the buffer itself, and
+  `to_bytes()` still returns a copy of its exact length. `with_buffer()`
+  starts a builder in the caller's `Vec`, keeping the room that it has,
+  and `reset()` starts the next table in the same buffer, so a loop that
+  writes many tables allocates once. `set_table_with_alignment()` writes a
+  table in place padded before its fields are set, for the alignment that
+  they need, rather than moving it once they're set, as
+  `set_table_with()` does. Since the builder borrows nothing, `TableBuilder` has no lifetime
+  parameter, and `InPlaceTable` has only its builder's; the setters take
+  the same values as before, and a value can change once it's set. The
+  bytes and errors are unchanged, and a setter that fails still leaves the
+  builder as it was. The buffer starts with room for 64 bytes a field
+  beyond the header, up to 64 KiB more and at least 256 bytes, and grows
+  fourfold below 64 KiB and twofold above. A builder is 64 bytes rather
+  than 48. On an Apple M2 Pro, against the builder that recorded its fields
+  with their recording inlined, with each table taken with `into_bytes()`,
+  the benchmarks' record took 36 ns rather than 68 ns, in one allocation
+  rather than two; the vector of 100 nested tables, written in place,
+  1.22 µs rather than 3.83 µs; tables of 16 strings of up to 256 bytes 0.29
+  to 0.69 times as long; tables of 32 strings and arrays of 64 to 192 bytes
+  0.63 and 0.68 times; and the vector from a builder per table 6.3 µs
+  rather than 7.3 µs. Into the buffer of a builder reused with `reset()`,
+  and lent with `finish()`, every table but those nested in place many
+  deep took 0.24 to 0.82 times as long. Some tables take longer from a new
+  builder, whose buffer grows for them: the document of 100 rows took
+  179 ns rather than 130 ns, an array of 100 structs 1.10 times as long,
+  tables of 5 to 33 columns of 100 `float64` 1.09 to 1.24 times, and 16
+  strings of 1,024 bytes 1.12 times; and the document of 100,000 rows took
+  1.04 times as long in the fastest of its rounds and 1.40 times in the
+  median one, but as long into a buffer with room for it. A table nested in
+  place that's padded is moved by its padding once its fields are set, and
+  again with each padded table in place that holds it: tables nested in
+  place 10, 100 and 1,000 deep, each padded, took 2.1, 11 and 30 times as
+  long, and a document of 100,000 rows whose columns are padded 2.6 times.
 
 ### Fixed
 

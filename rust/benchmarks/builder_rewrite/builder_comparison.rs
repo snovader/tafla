@@ -1,14 +1,18 @@
-//! Times main's `TableBuilder` against the rewrite on the rows of
-//! `builders::for_each_row()`: the comparison's rows that build tables,
-//! the vector of 100 nested tables from builders, tables of 32 medium and
-//! 32 short values, and the shapes of the second review.
+//! Times main's `TableBuilder`, #217's rewrite, and the runtime's builder,
+//! which writes into one buffer, taken three ways, on the rows of
+//! `builders::for_each_row()`: the comparison's rows that build tables, the
+//! vector of 100 nested tables from builders, tables of 32 medium and 32
+//! short values, the strings comparison's tables, the document of 100,000
+//! rows into a buffer with room for it, and the shapes of #217's second
+//! review.
 //!
 //! Every builder writes each row in a loop of its own, after a check that it
-//! writes main's builder's bytes, and of the comparison's rows, the tafla
-//! codec's bytes, which the codec reads back. Rounds run the builders of
-//! each row in rotating order, reversed every other round, after warm-up
-//! rounds, and the fastest round's time per call is reported, with the
-//! median. Main's builder and the rewrite run twice, as A/A pairs.
+//! writes main's builder's bytes, twice with the same output, and of the
+//! comparison's rows, the tafla codec's bytes, which the codec reads back.
+//! Rounds run the builders of each row in rotating order, reversed every
+//! other round, after warm-up rounds, and the fastest round's time per call
+//! is reported, with the median. Main's builder and the runtime's, with its
+//! buffer taken as an owned `Vec`, run twice, as A/A pairs.
 //!
 //! Options: `--rounds <n>` (30), `--warm-up <n>` (5) and `--sample-ms <n>`
 //! (10), the time that each builder's loop takes in each round.
@@ -17,7 +21,9 @@ use std::hint::black_box;
 use std::process::Command;
 use std::time::{Duration, Instant};
 
-use tafla_benchmarks::builders::{Builder, Inputs, Rows, Visit, for_each_builder, for_each_row};
+use tafla_benchmarks::builders::{
+    Builder, Inputs, Out, Rows, Visit, for_each_builder, for_each_row,
+};
 use tafla_benchmarks::codec::{Error, Workload};
 use tafla_benchmarks::codecs::Tafla;
 use tafla_benchmarks::workloads::{DocumentShape, ListShape, RecordShape, Shape, StructsShape};
@@ -133,10 +139,10 @@ impl Rows for Adder<'_> {
     fn row<I, F>(&mut self, name: &'static str, input: &'static I, write: F)
     where
         I: 'static,
-        F: Fn(&I) -> Result<Vec<u8>, Error> + Copy + 'static,
+        F: Fn(&I, &mut Out) -> Result<(), Error> + Copy + 'static,
     {
         let timers = &mut *self.timers;
-        match write(input) {
+        match written_twice(input, write) {
             Ok(bytes) if self.row == timers.expected.len() => {
                 timers.rows.push(name);
                 timers.expected.push(bytes);
@@ -163,36 +169,57 @@ impl Rows for Adder<'_> {
     }
 }
 
-/// A loop of calls of `serialize`, compiled for it alone, which keeps each
-/// result until it's dropped
+/// A loop of calls of `serialize`, compiled for it alone, which writes to
+/// an output that keeps each table from being optimized away, and holds the
+/// builder that the reusing functions reuse
 fn timing_loop<I: 'static, F>(input: &'static I, serialize: F) -> Loop
 where
-    F: Fn(&I) -> Result<Vec<u8>, Error> + 'static,
+    F: Fn(&I, &mut Out) -> Result<(), Error> + 'static,
 {
+    let mut out = Out::timing();
     Box::new(move |iterations| {
         let start = Instant::now();
         for _ in 0..iterations {
-            black_box(serialize(black_box(input)).ok());
+            black_box(serialize(black_box(input), &mut out).ok());
         }
         start.elapsed()
     })
+}
+
+/// The bytes that `write` writes of `input`, which it writes twice to the
+/// same output, so that a reused builder writes them again, and the same
+/// both times
+fn written_twice<I, F>(input: &I, write: F) -> Result<Vec<u8>, Error>
+where
+    F: Fn(&I, &mut Out) -> Result<(), Error>,
+{
+    let mut out = Out::checking();
+    write(input, &mut out)?;
+    let first = out.take_kept();
+    write(input, &mut out)?;
+    let second = out.take_kept();
+    if first != second {
+        return Err("wrote other bytes the second time".into());
+    }
+
+    Ok(second)
 }
 
 /// Checks that the builder writes the tafla codec's bytes of the
 /// comparison's rows, and that the codec reads them back
 fn check<T: Builder>(inputs: &Inputs) -> Result<(), Error> {
     let record: Vec<u8> = Workload::<RecordShape>::serialize(Tafla, &inputs.record)?;
-    same::<RecordShape>(&T::record(&inputs.record)?, &record)?;
+    same::<RecordShape>(&written_twice(&inputs.record, T::record)?, &record)?;
     for document in [&inputs.small, &inputs.large] {
-        let bytes = T::document(document)?;
+        let bytes = written_twice(document, T::document)?;
         let expected: Vec<u8> = Workload::<DocumentShape>::serialize(Tafla, document)?;
         same::<DocumentShape>(&bytes, &expected)?;
     }
     let list: Vec<u8> = Workload::<ListShape>::serialize(Tafla, &inputs.list)?;
-    same::<ListShape>(&T::list(&inputs.list)?, &list)?;
-    same::<ListShape>(&T::builders(&inputs.list)?, &list)?;
+    same::<ListShape>(&written_twice(&inputs.list, T::list)?, &list)?;
+    same::<ListShape>(&written_twice(&inputs.list, T::builders)?, &list)?;
     same::<StructsShape>(
-        &T::structs(&inputs.list)?,
+        &written_twice(&inputs.list, T::structs)?,
         &Workload::<StructsShape>::serialize(Tafla, &inputs.list)?,
     )
 }

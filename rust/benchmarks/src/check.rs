@@ -7,14 +7,22 @@
 use crate::codec::{DocumentWorkload, Error, Workload};
 use crate::workloads::{Document, Shape, sum_column};
 
-/// Checks that `codec` reads `input` back from the bytes it wrote
+/// Checks that `codec` reads `input` back from the bytes it wrote, and wrote
+/// no more than the shape's capacity, which codecs whose API takes one are
+/// given
 ///
 /// # Errors
 ///
 /// The codec's error, or an error that names the codec and the workload when
-/// it reads back other values.
+/// it reads back other values or writes more than the capacity.
 pub fn round_trip<S: Shape, C: Workload<S>>(codec: C, input: &S::Value<'_>) -> Result<(), Error> {
     let bytes = codec.serialize(input)?;
+    let length = bytes.as_ref().len();
+    let capacity = S::capacity(input);
+    if length > capacity {
+        let (codec, shape) = (C::NAME, S::NAME);
+        return Err(format!("{codec} wrote {length} bytes of the {shape}, past {capacity}").into());
+    }
     let output = codec.deserialize(bytes.as_ref())?;
 
     if S::same(&output, input) {

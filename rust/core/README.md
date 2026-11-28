@@ -1,8 +1,9 @@
 # tafla
 
 Binary tables of scalars, strings, arrays and structs, in tafla's format.
-`TableBuilder` writes a table at its exact size, copying arrays in bulk,
-and `TableReader` reads fields back by offset, borrowing arrays, strings and
+`TableBuilder` writes a table into one buffer, copying each value in bulk
+when it's set, and lends the table or hands the buffer over, and
+`TableReader` reads fields back by offset, borrowing arrays, strings and
 structs from the bytes. Every read checks that it stays within the bytes it was
 given.
 
@@ -16,17 +17,16 @@ const LAYOUT: TableLayout<true> = TableLayout::DEFAULT.sized().with_version(FORM
 let timestamps = vec![0_u32, 86_400];
 let values = vec![21.75_f32, 18.5];
 
-let mut series = TableBuilder::new(2, TableLayout::DEFAULT)?;
-series.set_u32_array(&timestamps)?; // borrowed until the table is written
-series.set_f32_array(values.clone())?; // or owned
-
 let mut builder = TableBuilder::new(3, LAYOUT)?;
 builder.set_f64(59.3293)?;
 builder.set_str("Europe/Stockholm")?;
-builder.set_table(series)?; // copied into the table
-let bytes = builder.to_bytes()?;
+builder.set_table_with(2, |series| {
+    series.set_u32_array(&timestamps)?; // copied when it's set
+    series.set_f32_array(&values)
+})?;
+let bytes: &[u8] = builder.finish()?; // lent by the builder
 
-let reader = TableReader::new(&bytes, LAYOUT);
+let reader = TableReader::new(bytes, LAYOUT);
 let version = reader.version()?;
 if version != FORMAT_VERSION {
     let supported = FORMAT_VERSION;
@@ -51,9 +51,9 @@ are better written and read with the standard library's `to_le_bytes()` and
 it's written, as the code that tafla-gen generates writes its tables. The
 sizer counts the table's length from its fields, and its writer writes the
 same fields, in the same order, into bytes of that length, where
-`TableBuilder` writes each field as it's set, into bytes that grow, and
-copies them into the table's own in `to_bytes()`. The two write the same
-bytes, and the sizer's `writer()` returns `TableBuilder`'s errors.
+`TableBuilder` writes each field as it's set, into a buffer that grows,
+which then holds the table. The two write the same bytes, and the sizer's
+`writer()` returns `TableBuilder`'s errors.
 
 `TableWriter` is the target of the generated code, whose calls follow from
 the schema, so it doesn't check them again. Its contract:
@@ -127,23 +127,45 @@ npm, for the same fields, and reads its tables; `tests/compatibility.rs` checks
 tables that it wrote, and `tests/conformance.rs` reads and rebuilds the
 repository's conformance suite, which covers the whole format.
 
-## Borrowing and copying
+## Copying and buffers
 
-- **Builders borrow or own their values.** Array setters take anything that
-  converts into a `Cow` of the element type: a slice or `&Vec` is borrowed
-  until the table is written, and a `Vec` is owned. `set_str()` takes a
-  `&str` or a `String` the same way. The borrow checker keeps borrowed values
-  from changing before the table is written.
-- **Long values are copied once.** A builder copies each field into its
-  bytes when it's set, but for a run of 256 bytes or more: an array's
-  elements, a string, a struct, an array of structs or a table nested as
-  bytes. It keeps that, borrowed or owned, and `to_bytes()` copies it into
-  the table, so a large column is copied once.
-- **Nest builders rather than bytes.** `set_table()` and `set_vector()` take
-  a `TableBuilder`, owned or borrowed, and copy its bytes into its parent,
-  whatever its layout, with the long values that it keeps, which the parent
-  keeps rather than copies. A table nested as bytes was written into an
-  allocation of its own, by its builder's `to_bytes()`, before it's copied.
+- **Builders copy their values when they're set.** Array setters take
+  anything that converts into a `Cow` of the element type, a slice or a
+  `Vec`, borrowed or owned, and `set_str()` a `&str` or a `String`, and
+  copy it into the builder's buffer, so a builder borrows nothing: a value
+  can change, or be dropped, once it's set. Each value is copied once, but
+  for the bytes written before it that the buffer copies when it grows.
+- **The table is the buffer.** `finish()` writes a sized header's length
+  and lends the table's bytes, and `into_bytes()` hands over the buffer as
+  a `Vec`, with the room that it had beyond the table, so neither copies
+  the table. `to_bytes()` is the copying convenience: a `Vec` of the
+  table's exact length, which leaves the builder as it was. The buffer starts with
+  room for 64 bytes a field beyond the header, up to 64 KiB, and grows
+  fourfold while it's under 64 KiB and twofold after.
+- **Reuse the buffer.** `with_buffer()` starts a builder in the caller's
+  `Vec`, keeping its capacity, and `reset()` starts the next table in the
+  builder's own, so a loop that writes many tables allocates once. A
+  buffer from `Vec::with_capacity()` gives a table the room that the
+  caller expects it to need, more or less than a new builder's. Their
+  errors come from the field count and layout alone, and `with_buffer()`'s
+  drop the buffer.
+
+  ```rust
+  # use tafla::{BuildError, TableBuilder, TableLayout};
+  let names = ["first", "second", "third"];
+
+  let mut builder = TableBuilder::new(1, TableLayout::DEFAULT)?;
+  let mut stream = Vec::new();
+  for name in names {
+      builder.reset(1, TableLayout::DEFAULT)?;
+      builder.set_str(name)?;
+      stream.extend_from_slice(builder.finish()?);
+  }
+  # Ok::<(), BuildError>(())
+  ```
+- **Nest builders or bytes.** `set_table()` and `set_vector()` take a
+  `TableBuilder`, owned or borrowed, or a table's bytes, and copy it into
+  their parent, whatever its layout, with its length in a sized header.
 - **Write nested tables in place.** `set_table_with()` and
   `set_vector_with()` write a nested table, or each item of a vector of
   them, straight among the builder's own fields, rather than from a builder
@@ -151,7 +173,15 @@ repository's conformance suite, which covers the whole format.
   given, whose setters are the builder's. The builder is borrowed meanwhile,
   so only the `InPlaceTable` sets fields. They write the bytes that nested
   builders write, and leave the builder as it was if the closure returns an
-  error, leaves fields unset or panics. A table nested from a builder or
+  error, leaves fields unset or panics: the buffer is cut back to where it
+  was. A table written in place is moved forward by the padding that its
+  arrays need once its fields are set, and again with each table in place
+  that holds it, as each is padded, so a table many levels deep, under
+  tables that each need padding, is copied once for each of them.
+  `set_table_with_alignment()` takes the alignment that the table's fields
+  need, which its type fixes, and pads it before they're set, so that
+  nothing is moved: a smaller one costs the move, and a larger one pads it
+  more, as `set_table_aligned()` would. A table nested from a builder or
   bytes, with `set_table()` and `set_vector()`, is still what a table built
   elsewhere, or reused, needs.
 
@@ -169,7 +199,7 @@ repository's conformance suite, which covers the whole format.
           nested.set_f32(pair[1])
       })
   })?;
-  let bytes = builder.to_bytes()?;
+  let bytes = builder.finish()?;
   # Ok::<(), BuildError>(())
   ```
 - **Arrays are read in place.** `TableReader`'s array getters return an
@@ -196,7 +226,7 @@ repository's conformance suite, which covers the whole format.
   let tags = ["small", "größer", "最大"];
 
   let mut builder = TableBuilder::new(1, TableLayout::DEFAULT)?;
-  builder.set_str_vector(tags.as_slice())?; // borrowed, or a Vec<&str> owned
+  builder.set_str_vector(tags.as_slice())?; // or a Vec<&str>
   let bytes = builder.to_bytes()?;
 
   let reader = TableReader::new(&bytes, TableLayout::DEFAULT);
@@ -285,10 +315,14 @@ than panicking, since WebAssembly builds abort on panic:
 - A setter returns an error for a field beyond the number the table was
   created with, or one that would make the table too long for its offset
   type, and leaves the builder as it was, as `set_struct_array()`
-  does for bytes that aren't a whole number of structs. `to_bytes()`, and
-  nesting a builder, return an error while fields are left to set. A version
-  that doesn't fit, or a header too long for its offset type, is an error
-  from the constructor.
+  does for bytes that aren't a whole number of structs. `finish()`,
+  `into_bytes()` and `to_bytes()`, and nesting a builder, return an error
+  while fields are left to set. A version that doesn't fit, or a header too
+  long for its offset type, is an error from the constructor, and from
+  `reset()`, which leaves the builder as it was.
+- The buffer grows as a `Vec` does, so a table longer than the memory that
+  can be allocated panics or aborts as a `Vec` does, as one between 2 and
+  4 GiB does on a 32-bit target.
 - The compiler offers a layout's `version()` and `TableReader::version()`
   only for a layout with a version, through `TableLayout`'s `VERSIONED`
   parameter.

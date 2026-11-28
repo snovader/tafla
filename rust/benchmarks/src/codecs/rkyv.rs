@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 
+use rkyv::api::high::to_bytes_in;
 use rkyv::rancor;
 use rkyv::util::AlignedVec;
 
@@ -7,14 +8,15 @@ use crate::codec::{Codec, DocumentWorkload, Error, Workload};
 use crate::string_workloads::{ArchivedStrings, Strings, StringsShape};
 use crate::workloads::{
     ArchivedDocument, ArchivedList, ArchivedRecord, ArchivedSample, Document, DocumentShape, Item,
-    List, ListShape, Record, RecordShape, Sample, SampleShape, StructsShape, sum_column,
+    List, ListShape, Record, RecordShape, Sample, SampleShape, Shape, StructsShape, sum_column,
 };
 
 /// rkyv, which archives the workloads' own types through their derives.
 ///
-/// As its documentation shows, an archive is written with `to_bytes()` into an
-/// `AlignedVec`, and read in place with `access()`, which validates all of it
-/// with bytecheck first, as untrusted bytes need.
+/// As its documentation shows, an archive is written into an `AlignedVec`,
+/// with `to_bytes_in()`, which takes one, here with the shape's capacity, as
+/// `to_bytes()` writes into a new one, and read in place with `access()`,
+/// which validates all of it with bytecheck first, as untrusted bytes need.
 ///
 /// Archived numbers are little-endian wrappers, whose `to_native()` reads
 /// them. Strings are read in place, and columns are copied into `Vec`s
@@ -36,7 +38,8 @@ impl Workload<RecordShape> for Rkyv {
     type Bytes = AlignedVec;
 
     fn serialize(self, input: &Record<'_>) -> Result<AlignedVec, Error> {
-        Ok(rkyv::to_bytes::<rancor::Error>(input)?)
+        let bytes = AlignedVec::with_capacity(RecordShape::capacity(input));
+        Ok(to_bytes_in::<_, rancor::Error>(input, bytes)?)
     }
 
     fn deserialize(self, bytes: &[u8]) -> Result<Record<'_>, Error> {
@@ -55,7 +58,8 @@ impl Workload<DocumentShape> for Rkyv {
     type Bytes = AlignedVec;
 
     fn serialize(self, input: &Document<'_>) -> Result<AlignedVec, Error> {
-        Ok(rkyv::to_bytes::<rancor::Error>(input)?)
+        let bytes = AlignedVec::with_capacity(DocumentShape::capacity(input));
+        Ok(to_bytes_in::<_, rancor::Error>(input, bytes)?)
     }
 
     fn deserialize(self, bytes: &[u8]) -> Result<Document<'_>, Error> {
@@ -84,7 +88,8 @@ impl Workload<ListShape> for Rkyv {
     type Bytes = AlignedVec;
 
     fn serialize(self, input: &List) -> Result<AlignedVec, Error> {
-        Ok(rkyv::to_bytes::<rancor::Error>(input)?)
+        let bytes = AlignedVec::with_capacity(ListShape::capacity(input));
+        Ok(to_bytes_in::<_, rancor::Error>(input, bytes)?)
     }
 
     fn deserialize(self, bytes: &[u8]) -> Result<List, Error> {
@@ -96,7 +101,8 @@ impl Workload<StructsShape> for Rkyv {
     type Bytes = AlignedVec;
 
     fn serialize(self, input: &List) -> Result<AlignedVec, Error> {
-        Ok(rkyv::to_bytes::<rancor::Error>(input)?)
+        let bytes = AlignedVec::with_capacity(StructsShape::capacity(input));
+        Ok(to_bytes_in::<_, rancor::Error>(input, bytes)?)
     }
 
     fn deserialize(self, bytes: &[u8]) -> Result<List, Error> {
@@ -108,7 +114,8 @@ impl Workload<SampleShape> for Rkyv {
     type Bytes = AlignedVec;
 
     fn serialize(self, input: &Sample) -> Result<AlignedVec, Error> {
-        Ok(rkyv::to_bytes::<rancor::Error>(input)?)
+        let bytes = AlignedVec::with_capacity(SampleShape::capacity(input));
+        Ok(to_bytes_in::<_, rancor::Error>(input, bytes)?)
     }
 
     fn deserialize(self, bytes: &[u8]) -> Result<Sample, Error> {
@@ -126,7 +133,8 @@ impl Workload<StringsShape> for Rkyv {
     type Bytes = AlignedVec;
 
     fn serialize(self, input: &Strings<'_>) -> Result<AlignedVec, Error> {
-        Ok(rkyv::to_bytes::<rancor::Error>(input)?)
+        let bytes = AlignedVec::with_capacity(StringsShape::capacity(input));
+        Ok(to_bytes_in::<_, rancor::Error>(input, bytes)?)
     }
 
     fn deserialize(self, bytes: &[u8]) -> Result<Strings<'_>, Error> {

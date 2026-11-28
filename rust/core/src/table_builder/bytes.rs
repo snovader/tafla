@@ -1,4 +1,4 @@
-//! The bytes that a `TableBuilder` writes its table into, as its fields are
+//! The buffer that a `TableBuilder` writes its table into, as its fields are
 //! set
 
 // What a setter writes is inlined into it, and growing is out of line, so
@@ -18,21 +18,8 @@ const FIRST_CAPACITY: usize = 256;
 
 /// The bytes that a builder's bytes start with room for, for each field of
 /// its table, beyond its header, up to [`MOST_ROOM_FOR_FIELDS`]. A table of
-/// 32 fields of 128 and 192 bytes, each copied into the bytes when it's set
-/// and again by `to_bytes()`, took 1.36 times as long to write as with the
-/// builder that recorded its fields, in 21.5 KB from 7 allocations, as its
-/// bytes grew from 256 five times, and with this room and growing fourfold,
-/// 0.86 times as long, in 16.3 KB from 3. A table of 4 fields still starts
-/// with 256 bytes or about, so the record took as long.
-///
-/// A builder of scalars holds that room too, while it's kept: 100,000
-/// builders of 32 `uint32` fields, nested by reference, held 347 MB at once
-/// rather than 189 MB, and took 1.13 times as long to write. With room for
-/// 16 bytes a field, they held 194 MB and took 0.66 times as long, but the
-/// table of 32 fields of 128 and 192 bytes took 0.98 times as long rather
-/// than 0.88, of 64 and 96 bytes 0.86 rather than 0.72, and of 4 fields of
-/// 255 bytes, whose bytes grew twice rather than once, 1.89 rather than
-/// 1.35.
+/// 32 fields of 128 and 192 bytes grew from 256 bytes five times, and with
+/// this room and growing fourfold, once.
 const ROOM_FOR_A_FIELD: usize = 64;
 
 /// The most room that a builder's bytes start with beyond its header
@@ -52,17 +39,31 @@ pub struct Bytes {
 }
 
 impl Bytes {
-    /// Bytes with room for a table of `fields` fields after a header of
-    /// `header` bytes
+    /// The bytes of `vec`, which `start_table()` clears
     #[inline(always)]
-    pub fn for_table(header: usize, fields: usize) -> Self {
-        let room = fields
-            .saturating_mul(ROOM_FOR_A_FIELD)
-            .min(MOST_ROOM_FOR_FIELDS);
+    pub const fn new(vec: Vec<u8>) -> Self {
+        Self { vec }
+    }
 
-        Self {
-            vec: Vec::with_capacity(FIRST_CAPACITY.max(header.saturating_add(room))),
+    /// Clears the bytes, and makes room for a table of `fields` fields after
+    /// a header of `header` bytes when they have none. Bytes with room keep
+    /// it, whether it's a reused buffer's or room that the caller chose.
+    #[inline(always)]
+    pub fn start_table(&mut self, header: usize, fields: usize) {
+        self.vec.clear();
+
+        if self.vec.capacity() == 0 {
+            let room = fields
+                .saturating_mul(ROOM_FOR_A_FIELD)
+                .min(MOST_ROOM_FOR_FIELDS);
+            self.vec
+                .reserve_exact(FIRST_CAPACITY.max(header.saturating_add(room)));
         }
+    }
+
+    #[inline(always)]
+    pub fn into_vec(self) -> Vec<u8> {
+        self.vec
     }
 
     #[inline(always)]

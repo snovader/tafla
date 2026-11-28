@@ -14,7 +14,7 @@ use std::borrow::Cow;
 
 use rkyv::with::{AsOwned, Map};
 
-use crate::workloads::{Shape, Xorshift};
+use crate::workloads::{CAPACITY_OVERHEAD, Shape, Xorshift};
 
 /// The strings of each table
 pub const COUNT: usize = 16;
@@ -47,6 +47,13 @@ impl Shape for StringsShape {
 
     fn same(left: &Strings<'_>, right: &Strings<'_>) -> bool {
         left.items == right.items
+    }
+
+    /// The strings' bytes, and room for the length, offset, terminator and
+    /// padding of each, of up to 12 bytes in flatbuffers
+    fn capacity(value: &Strings<'_>) -> usize {
+        let bytes: usize = value.items.iter().map(|string| string.len()).sum();
+        CAPACITY_OVERHEAD + bytes + COUNT * 16
     }
 }
 

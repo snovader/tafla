@@ -34,7 +34,7 @@ pub fn write(list: &List) -> Result<Vec<u8>, Error> {
     let mut builder = TableBuilder::new(1, TableLayout::DEFAULT)?;
     builder.set_vector(items)?;
 
-    Ok(builder.to_bytes()?)
+    Ok(builder.into_bytes()?)
 }
 
 /// Sums the last item, from the bytes that `Vector::get()` returns of it
@@ -91,7 +91,7 @@ pub fn check(list: &List, bytes: &[u8]) -> Result<(), Error> {
     Ok(())
 }
 
-fn item_table(item: &Item) -> Result<TableBuilder<'static>, BuildError> {
+fn item_table(item: &Item) -> Result<TableBuilder, BuildError> {
     let mut table = TableBuilder::new(2, ITEM_LAYOUT)?;
     table.set_f32(item.value)?;
     table.set_table_with(2, |pair| {

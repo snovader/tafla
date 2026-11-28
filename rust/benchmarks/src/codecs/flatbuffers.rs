@@ -25,12 +25,13 @@ use crate::codec::{Codec, DocumentWorkload, Error, Workload};
 use crate::string_workloads::{COUNT, Strings, StringsShape};
 use crate::workloads::{
     Document, DocumentShape, Item, List, ListShape, Record, RecordShape, Sample, SampleShape,
-    StructsShape, sum_column,
+    Shape, StructsShape, sum_column,
 };
 
 /// flatc's generated code, used as its documentation shows.
 ///
-/// Messages are written with a builder of the default size and `create()`
+/// Messages are written with a builder of the shape's capacity, from
+/// `with_capacity()`, and `create()`
 /// with each table's arguments, and read with `flatbuffers::root()`, which
 /// verifies them, as `root_as_*()` does. Vectors are written
 /// from slices with `create_vector()`, which writes them element by element,
@@ -72,7 +73,7 @@ impl Workload<RecordShape> for FlatBuffers {
     type Bytes = Finished;
 
     fn serialize(self, input: &Record<'_>) -> Result<Finished, Error> {
-        let mut builder = FlatBufferBuilder::new();
+        let mut builder = FlatBufferBuilder::with_capacity(RecordShape::capacity(input));
         let name = builder.create_string(&input.name);
 
         let args = generated::RecordArgs {
@@ -103,7 +104,7 @@ impl Workload<DocumentShape> for FlatBuffers {
     type Bytes = Finished;
 
     fn serialize(self, input: &Document<'_>) -> Result<Finished, Error> {
-        let mut builder = FlatBufferBuilder::new();
+        let mut builder = FlatBufferBuilder::with_capacity(DocumentShape::capacity(input));
         let keys = builder.create_vector(&input.keys);
         let a = builder.create_vector(&input.a);
         let b = builder.create_vector(&input.b);
@@ -159,7 +160,7 @@ impl Workload<ListShape> for FlatBuffers {
     type Bytes = Finished;
 
     fn serialize(self, input: &List) -> Result<Finished, Error> {
-        let mut builder = FlatBufferBuilder::new();
+        let mut builder = FlatBufferBuilder::with_capacity(ListShape::capacity(input));
 
         let offsets: Vec<_> = input
             .items
@@ -198,7 +199,7 @@ impl Workload<StructsShape> for FlatBuffers {
     type Bytes = Finished;
 
     fn serialize(self, input: &List) -> Result<Finished, Error> {
-        let mut builder = FlatBufferBuilder::new();
+        let mut builder = FlatBufferBuilder::with_capacity(StructsShape::capacity(input));
         let structs: Vec<_> = input.items.iter().map(triple).collect();
         let items = builder.create_vector(&structs);
 
@@ -230,7 +231,7 @@ impl Workload<SampleShape> for FlatBuffers {
     type Bytes = Finished;
 
     fn serialize(self, input: &Sample) -> Result<Finished, Error> {
-        let mut builder = FlatBufferBuilder::new();
+        let mut builder = FlatBufferBuilder::with_capacity(SampleShape::capacity(input));
 
         let args = generated::SampleArgs {
             key: input.key,
@@ -258,7 +259,7 @@ impl Workload<StringsShape> for FlatBuffers {
     type Bytes = Finished;
 
     fn serialize(self, input: &Strings<'_>) -> Result<Finished, Error> {
-        let mut builder = FlatBufferBuilder::new();
+        let mut builder = FlatBufferBuilder::with_capacity(StringsShape::capacity(input));
         let strings = input
             .items
             .each_ref()

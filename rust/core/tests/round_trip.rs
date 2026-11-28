@@ -233,10 +233,9 @@ fn test_builder_nested_several_times() {
 }
 
 /// Values of 256 bytes or more, arrays of every element type and of bools,
-/// strings and the strings of a vector of them, which the builder keeps
-/// rather than copying them when they're set, and copies into the table
-/// when it's written, read back, in tables nested from builders, in place
-/// and as bytes, and on a big-endian host, little-endian
+/// strings and the strings of a vector of them, read back, in tables nested
+/// from builders, in place and as bytes, and on a big-endian host,
+/// little-endian
 #[test]
 fn test_long_values_read_back() {
     let layout = Layout::headerless(OffsetType::Uint32);
