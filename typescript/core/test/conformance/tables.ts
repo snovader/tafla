@@ -101,15 +101,26 @@ export function buildTable(
 }
 
 /**
+ * How a table written in place is padded: `'moved'` once its fields are set,
+ * as it is by default, or `'declared'`, for the alignment that the caller
+ * gives `setTableInPlace()`, which is the one that `setTable()` pads its
+ * builder to
+ */
+export type InPlacePadding = 'moved' | 'declared';
+
+/**
  * Builds a table as {@link buildTable} does, but writes each table nested
  * from a builder that it can write in place with `setTableInPlace()`, and
  * each vector of them whose items hold as many fields with
  * `setVectorInPlace()`, rather than from their builders
  */
-export function buildTableInPlace(table: TableDescription): TableBuilder {
+export function buildTableInPlace(
+    table: TableDescription,
+    padding: InPlacePadding = 'moved'
+): TableBuilder {
     const builder = createBuilder(table);
     for (const field of table.fields) {
-        setFieldInPlace(builder, field, table.layout.offsetType);
+        setFieldInPlace(builder, field, table.layout.offsetType, padding);
     }
 
     return builder;
@@ -123,19 +134,28 @@ export function buildTableInPlace(table: TableDescription): TableBuilder {
 export function setFieldInPlace(
     target: TableItem,
     field: FieldDescription,
-    offsetType: OffsetType
+    offsetType: OffsetType,
+    padding: InPlacePadding = 'moved'
 ): void {
+    const alignment =
+        field.type === 'table' ? declaredAlignment(field, padding) : null;
     if (
         field.type === 'table' &&
-        field.alignment == null &&
+        alignment !== null &&
         writtenInPlace(field, offsetType)
     ) {
         const { fields } = field.table;
-        target.setTableInPlace(fields.length, table => {
+        const fill = (table: TableItem): void => {
             for (const nested of fields) {
-                setFieldInPlace(table, nested, offsetType);
+                setFieldInPlace(table, nested, offsetType, padding);
             }
-        });
+        };
+
+        if (alignment === undefined) {
+            target.setTableInPlace(fields.length, fill);
+        } else {
+            target.setTableInPlace(fields.length, fill, alignment);
+        }
     } else if (
         field.type === 'vector' &&
         itemsInPlace(field.items, offsetType)
@@ -144,12 +164,38 @@ export function setFieldInPlace(
         const fields = items.length === 0 ? 0 : items[0].table.fields.length;
         target.setVectorInPlace(items.length, fields, (item, index) => {
             for (const nested of items[index].table.fields) {
-                setFieldInPlace(item, nested, offsetType);
+                setFieldInPlace(item, nested, offsetType, padding);
             }
         });
     } else {
         setField(target, field);
     }
+}
+
+/**
+ * The alignment to give `setTableInPlace()` for a nested table, so that it
+ * writes what `setTable()` writes: none when it's moved, the alignment that
+ * `setTable()` pads to when it's declared, and `null` for a table that's
+ * written from its builder, since it's given an alignment that its fields
+ * need more than, which `setTable()` pads to and `setTableInPlace()` moves
+ * past.
+ */
+function declaredAlignment(
+    field: TableField,
+    padding: InPlacePadding
+): Alignment | undefined | null {
+    const { alignment, ...unaligned } = field;
+    const needed = alignmentOf(unaligned);
+    if (alignment != null && alignment < needed) {
+        return null;
+    }
+
+    if (padding === 'moved') {
+        // A table given its own alignment is padded for it only if declared
+        return alignment == null ? undefined : null;
+    }
+
+    return alignment ?? needed;
 }
 
 /**
