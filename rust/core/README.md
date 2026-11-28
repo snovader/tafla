@@ -17,7 +17,7 @@ let timestamps = vec![0_u32, 86_400];
 let values = vec![21.75_f32, 18.5];
 
 let mut series = TableBuilder::new(2, TableLayout::DEFAULT)?;
-series.set_u32_array(&timestamps)?; // borrowed until the table is written
+series.set_u32_array(&timestamps)?; // borrowed while the builder lives
 series.set_f32_array(values.clone())?; // or owned
 
 let mut builder = TableBuilder::new(3, LAYOUT)?;
@@ -131,9 +131,11 @@ repository's conformance suite, which covers the whole format.
 
 - **Builders borrow or own their values.** Array setters take anything that
   converts into a `Cow` of the element type: a slice or `&Vec` is borrowed
-  until the table is written, and a `Vec` is owned. `set_str()` takes a
-  `&str` or a `String` the same way. The borrow checker keeps borrowed values
-  from changing before the table is written.
+  while the builder lives, and a `Vec` is owned. `set_str()` takes a `&str`
+  or a `String` the same way. The borrow checker keeps borrowed values from
+  changing meanwhile, and requires them to outlive the builder, which frees
+  its records when it's dropped: declare them before it, as the builders
+  that it nests by reference.
 - **Nest builders rather than bytes.** `set_table()` and `set_vector()` take
   a `TableBuilder`, owned or borrowed, and write it straight into its parent,
   so the outermost table allocates and writes all the bytes once. A table
