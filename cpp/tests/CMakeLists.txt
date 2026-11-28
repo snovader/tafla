@@ -53,6 +53,7 @@ set(TAFLA_TESTS
     macros_test
     nesting_test
     round_trip_test
+    string_vector_test
     table_builder_test
     table_reader_test
     table_writer_test

@@ -4,7 +4,8 @@ use std::mem::MaybeUninit;
 use std::ptr::{self, NonNull};
 
 use pyo3::exceptions::{
-    PyBufferError, PyIndexError, PyMemoryError, PyStopIteration, PyUnicodeEncodeError, PyValueError,
+    PyBufferError, PyIndexError, PyMemoryError, PyStopIteration, PyTypeError, PyUnicodeEncodeError,
+    PyValueError,
 };
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PySlice, PyString, PyTuple, PyType};
@@ -831,6 +832,59 @@ impl TableWriter {
         self.data.extend_from_slice(encoded)
     }
 
+    /// Writes a vector of the strings whose UTF-8 is `strings`, of
+    /// `byte_length` bytes in all, as the pure-Python runtime writes it: its
+    /// count and ends, which raise before anything is written for an end
+    /// that the offset type can't hold, then its offset, and then the count,
+    /// the ends and the strings, appended at once
+    fn set_strings_at(
+        &mut self,
+        py: Python<'_>,
+        index: &Int<'_>,
+        strings: &[&[u8]],
+        byte_length: usize,
+    ) -> PyResult<()> {
+        let size = self.size();
+        let count = strings.len();
+        // The count, then the end of each string. Saturating, since only a
+        // vector longer than memory overflows, which doesn't fit either.
+        let head = count.saturating_add(1).saturating_mul(size);
+        let length = head.saturating_add(byte_length);
+
+        // The ends grow to the last, which is the vector's length, and the
+        // count is less than the first, so the last fits if any end does
+        if count > 0 && length > self.shape.max_length() {
+            let error = self.too_long(Int::from(self.len()).add(length)?.display()?);
+            error.set_cause(py, Some(self.count_error(py, &Int::from(length))));
+            return Err(error);
+        }
+
+        self.set_offset(py, index)?;
+
+        let start = self.len();
+        let Some(spare) = self.data.spare(start, length) else {
+            return Err(if self.data.exports > 0 {
+                frozen()
+            } else {
+                memory_error()
+            });
+        };
+        write_into(spare, 0, &slot(count)[..size]);
+        let mut end = head;
+        let mut at = size;
+        for string in strings {
+            end += string.len();
+            write_into(spare, at, &slot(end)[..size]);
+            at += size;
+        }
+        for string in strings {
+            write_into(spare, at, string);
+            at += string.len();
+        }
+        // SAFETY: the count, the ends and the strings fill the capacity
+        unsafe { self.data.extend_written(length) }
+    }
+
     fn set_struct_at(
         &mut self,
         py: Python<'_>,
@@ -1110,6 +1164,37 @@ const fn slot(value: usize) -> [u8; 4] {
     debug_assert!(value <= u32::MAX as usize);
     #[allow(clippy::cast_possible_truncation)]
     (value as u32).to_le_bytes()
+}
+
+/// The error of a `str` given as a vector of strings, as the pure-Python
+/// runtime words it
+const STR_VECTOR_MESSAGE: &str =
+    "Can't write a str as a vector of strings, which would be a string of each of its characters";
+
+/// Raises the pure-Python runtime's `ValueError` for items whose `len()` is
+/// `length`, but which iterating gave `count` of
+fn check_items(length: usize, count: usize) -> PyResult<()> {
+    if length != count {
+        return Err(PyValueError::new_err(format!(
+            "The items' len() is {length}, but iterating them gave {count}"
+        )));
+    }
+    Ok(())
+}
+
+/// Writes `bytes` into the capacity `spare` at `at`, where they fit
+#[inline]
+fn write_into(spare: &mut [MaybeUninit<u8>], at: usize, bytes: &[u8]) {
+    let destination = &mut spare[at..at + bytes.len()];
+    // SAFETY: the destination is as long as the bytes, and u8 has no
+    // invalid values
+    unsafe {
+        ptr::copy_nonoverlapping(
+            bytes.as_ptr(),
+            destination.as_mut_ptr().cast::<u8>(),
+            bytes.len(),
+        );
+    }
 }
 
 /// The order of a C-contiguous buffer, as `PyBuffer_IsContiguous()` takes it
@@ -1509,6 +1594,69 @@ impl TableWriter {
     ) -> PyResult<()> {
         let index = Int::new(index)?;
         with_bytes(encoded, |bytes| self.set_string_at(py, &index, bytes))
+    }
+
+    /// Writes a vector of strings: its count, the end of each string from
+    /// the vector's position, and then each string as UTF-8, one after
+    /// another, which lets readers find any string without reading the
+    /// others.
+    ///
+    /// Raises ``UnicodeEncodeError``, a ``ValueError``, if a string has a
+    /// lone surrogate, which UTF-8 can't encode, ``TypeError`` for a
+    /// ``str``, which is a sequence of its characters, and ``ValueError`` if
+    /// iterating ``strings`` gives more or fewer than their ``len()``, each
+    /// having written nothing.
+    fn set_string_vector(
+        &mut self,
+        py: Python<'_>,
+        index: &Bound<'_, PyAny>,
+        strings: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
+        if strings.is_instance_of::<PyString>() {
+            return Err(PyTypeError::new_err(STR_VECTOR_MESSAGE));
+        }
+        let index = Int::new(index)?;
+
+        // Each string is checked and encoded in order, which raises the
+        // error of the first that can't be, as the pure-Python runtime's
+        // encoding does. CPython keeps the UTF-8 of a string outside ASCII
+        // with it, so that it's encoded once.
+        let mut items = Vec::new();
+        let mut byte_length = 0_usize;
+        for item in strings.try_iter()? {
+            let string = item?.cast_into::<PyString>()?;
+            byte_length = byte_length.saturating_add(utf8(&string)?.len());
+            items.push(string);
+        }
+        check_items(strings.len()?, items.len())?;
+
+        let encoded = items.iter().map(utf8).collect::<PyResult<Vec<_>>>()?;
+        self.set_strings_at(py, &index, &encoded, byte_length)
+    }
+
+    /// Writes a vector of strings that are encoded as UTF-8 already, as
+    /// ``set_string_vector()`` writes it. ``TableBuilder`` encodes strings
+    /// outside ASCII when they're set, to count their bytes, and writes them
+    /// with it, as ``_set_encoded_string()`` writes a string.
+    fn _set_encoded_string_vector(
+        &mut self,
+        py: Python<'_>,
+        index: &Bound<'_, PyAny>,
+        strings: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
+        let index = Int::new(index)?;
+
+        let mut items = Vec::new();
+        let mut byte_length = 0_usize;
+        for item in strings.try_iter()? {
+            let bytes = item?.cast_into::<PyBytes>()?;
+            byte_length = byte_length.saturating_add(bytes.as_bytes().len());
+            items.push(bytes);
+        }
+        check_items(strings.len()?, items.len())?;
+
+        let encoded: Vec<&[u8]> = items.iter().map(PyBytesMethods::as_bytes).collect();
+        self.set_strings_at(py, &index, &encoded, byte_length)
     }
 
     /// Writes a struct field from its bytes: its scalars, little-endian, one

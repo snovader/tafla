@@ -463,11 +463,13 @@ enum LongField: CaseIterable, Sendable {
     case string
     case `struct`
     case structs
+    /// A vector of a string, and an empty string
+    case strings
 
     /// The bytes that each unit adds
     var unit: Int {
         switch self {
-        case .bytes, .bools, .string, .struct: 1
+        case .bytes, .bools, .string, .struct, .strings: 1
         case .uint16s: 2
         case .uint64s: 8
         case .structs: 3
@@ -484,6 +486,7 @@ enum LongField: CaseIterable, Sendable {
         case .struct: .struct(Array(repeating: .uint8(1), count: units))
         case .structs:
             .structArray(types: [.uint16, .int8], items: Array(repeating: [.uint16(1), .int8(-1)], count: units))
+        case .strings: .stringVector(utf8: [Array(repeating: 0x61, count: units), []])
         }
     }
 }

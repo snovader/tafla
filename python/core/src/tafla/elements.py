@@ -1,6 +1,7 @@
 """Conversions between the array-likes that callers pass and the little-endian
 elements that tables store, and the checks of the buffers that they pass as
-bytes and structs."""
+bytes and structs, and of the strings that they pass as a vector of
+strings."""
 
 from array import array
 from collections.abc import Buffer, Iterable
@@ -155,6 +156,15 @@ def not_contiguous() -> TypeError:
     return TypeError(
         "Can't view the bytes of a buffer that isn't C-contiguous, such as a "
         "slice with a step"
+    )
+
+
+def str_vector_error() -> TypeError:
+    """The error of a ``str`` given as a vector of strings, which the writers
+    reject, since it's a sequence of strings too: its characters"""
+    return TypeError(
+        "Can't write a str as a vector of strings, which would be a string of "
+        "each of its characters"
     )
 
 

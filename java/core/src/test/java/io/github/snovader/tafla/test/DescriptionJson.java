@@ -65,6 +65,9 @@ final class DescriptionJson {
             case "vector" -> new VectorField(
                 field.getJsonArray("items").stream().map(item -> readNestedTable(item.asJsonObject())).toList()
             );
+            case "string[]" -> new StringVectorField(
+                field.getJsonArray("value").stream().map(string -> ((JsonString) string).getString()).toList()
+            );
             default -> type.endsWith("[]")
                 ? readArray(scalarType(type.substring(0, type.length() - "[]".length())), field.getJsonArray("value"))
                 : readScalar(field);
@@ -225,6 +228,7 @@ final class DescriptionJson {
             case StructArrayField array -> writeStructArray(array);
             case TableField table -> writeTableField(table);
             case VectorField vector -> writeVector(vector);
+            case StringVectorField vector -> writeStringVector(vector);
         };
     }
 
@@ -284,6 +288,15 @@ final class DescriptionJson {
         }
 
         return Json.createObjectBuilder().add("type", "vector").add("items", items).build();
+    }
+
+    private static JsonObject writeStringVector(StringVectorField vector) {
+        var strings = Json.createArrayBuilder();
+        for (var string : vector.values()) {
+            strings.add(string);
+        }
+
+        return Json.createObjectBuilder().add("type", "string[]").add("value", strings).build();
     }
 
     private static JsonArray writeValues(ScalarType type, long[] values) {

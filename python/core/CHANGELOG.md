@@ -52,6 +52,13 @@ repository's first commits, for code built from its source before the release.
   each value's truth, as `bool()` takes it, and `TableReader.get_bool_array()`
   reads a list of bools, true wherever a byte isn't 0. The native writer
   converts an exact `list` or `tuple` of bools itself.
+- A vector of strings, which `SPEC.md` adds to the format:
+  `TableBuilder.set_string_vector()` and `TableWriter.set_string_vector()`
+  write one from a sequence of strings, rejecting a lone surrogate as
+  `set_string()` does, `TableReader.get_string_vector()` reads every string
+  into a list, `TableReader.get_string_vector_item()` reads one from its ends,
+  and `StringVector`, which the code that tafla-gen generates returns for a
+  `[string]` field, views one: `len()`, a string by index, and `tolist()`.
 
 ### Changed
 

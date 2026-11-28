@@ -1042,6 +1042,329 @@ public struct ReservedFields: Hashable, Sendable {
     }
 }
 
+/// Vectors of strings beside other fields, in a nested table and in the
+/// items of a vector
+@frozen
+public struct StringVectors: ~Escapable {
+    /// The layout that a `StringVectors` is written and read in
+    @inlinable
+    public static var layout: TableLayout { TableLayout.default }
+
+    @usableFromInline
+    let _reader: TableReader
+
+    /// Reads a `StringVectors` from `bytes`, which it can't outlive
+    @inlinable
+    @_lifetime(copy bytes)
+    public init(_ bytes: RawSpan) {
+        _reader = TableReader(bytes, layout: Self.layout)
+    }
+
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var id: UInt32 {
+        get throws(DecodeError) { try _reader.uint32(at: _reader.rootOffset(0)) }
+    }
+
+    /// A vector of strings, whose getter reads each string when it's asked
+    /// for
+    ///
+    /// A view of the strings, which reads each string when it's asked for, and throws then if
+    /// its bytes are corrupt or aren't valid UTF-8; `Array(_:)` reads every string.
+    ///
+    /// Throws a `DecodeError` if the field, or the vector's count or the ends of its strings,
+    /// lie outside the bytes.
+    @inlinable
+    public var tags: StringVector {
+        @_lifetime(copy self)
+        get throws(DecodeError) { try _reader.stringVector(at: _reader.rootOffset(1)) }
+    }
+
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var labels: Labels {
+        @_lifetime(copy self)
+        get throws(DecodeError) {
+            let field = try _reader.rootOffset(2)
+            return Labels(reader: _reader, position: field)
+        }
+    }
+
+    /// A view of the items, which reads each `Entry` when it's asked for, and throws then if
+    /// its bytes are corrupt.
+    ///
+    /// Throws a `DecodeError` if the field, or the vector's count or the ends of its items, lie
+    /// outside the bytes.
+    @inlinable
+    public var entries: EntryVector {
+        @_lifetime(copy self)
+        get throws(DecodeError) {
+            let field = try _reader.rootOffset(3)
+            return try EntryVector(_reader.vector(at: field))
+        }
+    }
+}
+
+/// The fields of a `StringVectors`, to write
+public struct StringVectorsFields: Hashable, Sendable {
+    public var id: UInt32
+    /// A vector of strings, whose getter reads each string when it's asked
+    /// for
+    public var tags: [String]
+    public var labels: LabelsFields
+    public var entries: [EntryFields]
+
+    public init(id: UInt32, tags: [String], labels: LabelsFields, entries: [EntryFields]) {
+        self.id = id
+        self.tags = tags
+        self.labels = labels
+        self.entries = entries
+    }
+
+    /// Writes a `StringVectors` with every field.
+    ///
+    /// Throws a `BuildError` if it's longer than its offset type, `uint32`, addresses.
+    public func serialize() throws(BuildError) -> [UInt8] {
+        var sizer = try TableSizer(fields: 4, layout: StringVectors.layout)
+        sizer.addUInt32()
+        sizer.addStringVector(self.tags)
+        sizer.addTable(alignment: LabelsFields.alignment)
+        self.labels.add(to: &sizer)
+        sizer.addVector(count: self.entries.count)
+        for item in self.entries {
+            item.add(to: &sizer)
+        }
+
+        return try sizer.bytes { writer in
+            writer.setUInt32(0, self.id)
+            writer.setStringVector(1, self.tags)
+            writer.setTable(2, alignment: LabelsFields.alignment)
+            self.labels.write(to: &writer)
+            let vector3 = writer.setVector(3, count: self.entries.count)
+            for (index, item) in self.entries.enumerated() {
+                item.write(to: &writer)
+                writer.setItemEnd(vector3, item: index)
+            }
+        }
+    }
+}
+
+/// A nested table whose only field is a vector of strings
+@frozen
+public struct Labels: ~Escapable {
+    @usableFromInline
+    let _reader: TableReader
+    @usableFromInline
+    let _position: Int
+
+    /// Reads the table at `position` in the bytes that `reader` reads, as its parent's getter finds it
+    @inlinable
+    @_lifetime(copy reader)
+    init(reader: TableReader, position: Int) {
+        _reader = reader
+        _position = position
+    }
+
+    /// A view of the strings, which reads each string when it's asked for, and throws then if
+    /// its bytes are corrupt or aren't valid UTF-8; `Array(_:)` reads every string.
+    ///
+    /// Throws a `DecodeError` if the field, or the vector's count or the ends of its strings,
+    /// lie outside the bytes.
+    @inlinable
+    public var values: StringVector {
+        @_lifetime(copy self)
+        get throws(DecodeError) { try _reader.stringVector(at: _reader.fieldOffset(0, inTableAt: _position)) }
+    }
+}
+
+/// The fields of a `Labels`, to write
+public struct LabelsFields: Hashable, Sendable {
+    /// The alignment that a parent pads a `Labels` to: the largest alignment of its arrays
+    /// and nested tables, or 1
+    public static let alignment: Alignment = .one
+
+    public var values: [String]
+
+    public init(values: [String]) {
+        self.values = values
+    }
+
+    /// Adds a `Labels` to its parent's sizer, after the field or vector that holds it
+    public func add(to sizer: inout TableSizer) {
+        let parent = sizer.startTable(fields: 1)
+        sizer.addStringVector(self.values)
+        sizer.endTable(parent)
+    }
+
+    /// Writes a `Labels` where its parent's writer is, after the field or vector that holds it
+    public func write(to writer: inout TableWriter) {
+        let parent = writer.startTable(fields: 1)
+        writer.setStringVector(0, self.values)
+        writer.endTable(parent)
+    }
+}
+
+/// An item of a vector, which holds a string and a vector of strings
+@frozen
+public struct Entry: ~Escapable {
+    @usableFromInline
+    let _reader: TableReader
+    @usableFromInline
+    let _position: Int
+
+    /// Reads the table at `position` in the bytes that `reader` reads, as its parent's getter finds it
+    @inlinable
+    @_lifetime(copy reader)
+    init(reader: TableReader, position: Int) {
+        _reader = reader
+        _position = position
+    }
+
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var key: String {
+        get throws(DecodeError) { try _reader.string(at: _reader.fieldOffset(0, inTableAt: _position)) }
+    }
+
+    /// A view of the strings, which reads each string when it's asked for, and throws then if
+    /// its bytes are corrupt or aren't valid UTF-8; `Array(_:)` reads every string.
+    ///
+    /// Throws a `DecodeError` if the field, or the vector's count or the ends of its strings,
+    /// lie outside the bytes.
+    @inlinable
+    public var aliases: StringVector {
+        @_lifetime(copy self)
+        get throws(DecodeError) { try _reader.stringVector(at: _reader.fieldOffset(1, inTableAt: _position)) }
+    }
+}
+
+/// The fields of an `Entry`, to write
+public struct EntryFields: Hashable, Sendable {
+    /// The alignment that a parent pads an `Entry` to: the largest alignment of its arrays
+    /// and nested tables, or 1
+    public static let alignment: Alignment = .one
+
+    public var key: String
+    public var aliases: [String]
+
+    public init(key: String, aliases: [String]) {
+        self.key = key
+        self.aliases = aliases
+    }
+
+    /// Adds an `Entry` to its parent's sizer, after the field or vector that holds it
+    public func add(to sizer: inout TableSizer) {
+        let parent = sizer.startTable(fields: 2)
+        sizer.addString(self.key)
+        sizer.addStringVector(self.aliases)
+        sizer.endTable(parent)
+    }
+
+    /// Writes an `Entry` where its parent's writer is, after the field or vector that holds it
+    public func write(to writer: inout TableWriter) {
+        let parent = writer.startTable(fields: 2)
+        writer.setString(0, self.key)
+        writer.setStringVector(1, self.aliases)
+        writer.endTable(parent)
+    }
+}
+
+/// A vector of `Entry`s, which reads each item when it's asked for
+@frozen
+public struct EntryVector: ~Escapable {
+    @usableFromInline
+    let vector: Vector
+
+    @inlinable
+    @_lifetime(copy vector)
+    init(_ vector: Vector) {
+        self.vector = vector
+    }
+
+    /// The number of items
+    @inlinable
+    public var count: Int { vector.count }
+
+    @inlinable
+    public var isEmpty: Bool { vector.isEmpty }
+
+    /// The indices of the items, from 0 to `count`
+    @inlinable
+    public var indices: Swift.Range<Int> { vector.indices }
+
+    /// Reads item `index`, without reading the others. `index` must be one of `indices`: an index
+    /// outside them is a programming error, which stops the program, as `Array`'s subscript does.
+    ///
+    /// Throws a `DecodeError` if the item lies outside the bytes.
+    @inlinable
+    public subscript(index: Int) -> Entry {
+        @_lifetime(copy self)
+        get throws(DecodeError) {
+            try Entry(reader: TableReader(vector.itemInPlace(at: index)), position: 0)
+        }
+    }
+}
+
+/// A vector of strings in a message of `uint16` offsets, before a scalar
+@frozen
+public struct NarrowStringVectors: ~Escapable {
+    /// The layout that a `NarrowStringVectors` is written and read in
+    @inlinable
+    public static var layout: TableLayout { TableLayout(offsetType: .uint16) }
+
+    @usableFromInline
+    let _reader: TableReader
+
+    /// Reads a `NarrowStringVectors` from `bytes`, which it can't outlive
+    @inlinable
+    @_lifetime(copy bytes)
+    public init(_ bytes: RawSpan) {
+        _reader = TableReader(bytes, layout: Self.layout)
+    }
+
+    /// A view of the strings, which reads each string when it's asked for, and throws then if
+    /// its bytes are corrupt or aren't valid UTF-8; `Array(_:)` reads every string.
+    ///
+    /// Throws a `DecodeError` if the field, or the vector's count or the ends of its strings,
+    /// lie outside the bytes.
+    @inlinable
+    public var names: StringVector {
+        @_lifetime(copy self)
+        get throws(DecodeError) { try _reader.stringVector(at: _reader.rootOffset(0)) }
+    }
+
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var count: UInt8 {
+        get throws(DecodeError) { try _reader.uint8(at: _reader.rootOffset(1)) }
+    }
+}
+
+/// The fields of a `NarrowStringVectors`, to write
+public struct NarrowStringVectorsFields: Hashable, Sendable {
+    public var names: [String]
+    public var count: UInt8
+
+    public init(names: [String], count: UInt8) {
+        self.names = names
+        self.count = count
+    }
+
+    /// Writes a `NarrowStringVectors` with every field.
+    ///
+    /// Throws a `BuildError` if it's longer than its offset type, `uint16`, addresses.
+    public func serialize() throws(BuildError) -> [UInt8] {
+        var sizer = try TableSizer(fields: 2, layout: NarrowStringVectors.layout)
+        sizer.addStringVector(self.names)
+        sizer.addUInt8()
+
+        return try sizer.bytes { writer in
+            writer.setStringVector(0, self.names)
+            writer.setUInt8(1, self.count)
+        }
+    }
+}
+
 /// Structs as fields, in place like scalars, and in arrays, which are aligned
 /// to their structs' largest scalar
 @frozen

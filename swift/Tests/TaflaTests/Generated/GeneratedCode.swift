@@ -8,10 +8,10 @@ import Testing
 // TableBuilder writes each message from its fields' struct, as the tests'
 // `build()` walks it with `Mirror`: each field by its Swift type, an enum as
 // its integer, an array of bools with `setBoolArray(_:)`, a struct from its
-// scalars' bytes, a nested table from its fields' struct and a vector from an
-// array of them. Values read back compare
-// with those written by their bits, so that -0 and NaN count, and strings by
-// their UTF-8.
+// scalars' bytes, a nested table from its fields' struct, a vector from an
+// array of them and a vector of strings from an array of strings. Values read
+// back compare with those written by their bits, so that -0 and NaN count,
+// and strings by their UTF-8.
 
 /// A message of an example schema, with its generated code
 struct Message: Sendable, CustomTestStringConvertible {
@@ -99,6 +99,17 @@ extension Array: BoolArray where Element == Bool {
     }
 }
 
+/// An array of strings, which a fields' struct holds for a vector of strings
+protocol StringArray {
+    func set(on builder: inout TableBuilder) throws(BuildError)
+}
+
+extension Array: StringArray where Element == String {
+    func set(on builder: inout TableBuilder) throws(BuildError) {
+        try builder.setStringVector(self)
+    }
+}
+
 /// An array of a generated struct, which a fields' struct holds for an array
 /// of structs
 protocol GeneratedStructArray {
@@ -181,6 +192,7 @@ extension TableBuilder {
         case let values as any ScalarArray: try values.set(on: &self)
         case let values as any BoolArray: try values.set(on: &self)
         case let value as String: try setString(value)
+        case let values as any StringArray: try values.set(on: &self)
         case let value as any GeneratedStruct: try setStruct(scalarBytes(of: value))
         case let values as any GeneratedStructArray:
             try setStructArray(values.structBytes, size: values.structSize, alignment: values.structAlignment)

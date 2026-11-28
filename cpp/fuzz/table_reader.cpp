@@ -1,6 +1,6 @@
 // Reads arbitrary bytes with every getter of `TableReader` at a position, in an
-// offset type and header, and reads the arrays, struct arrays and vector that
-// it finds there.
+// offset type and header, and reads the arrays, struct arrays, vector and
+// vector of strings that it finds there.
 //
 // A crash, a sanitizer's report or a failed check is a finding: each read
 // returns the bytes or value that lie where the format puts them, viewed in
@@ -21,7 +21,9 @@
 #include <cstring>
 #include <optional>
 #include <span>
+#include <stdexcept>
 #include <string_view>
+#include <vector>
 
 #include <tafla/tafla.hpp>
 
@@ -324,6 +326,102 @@ void check_vector(const TableReader<false>& reader, std::size_t position) {
     }
 }
 
+/// Reads the first `kChecked` strings of the vector of strings at `position`,
+/// by iterating and by index, and the last by index, each of which must view
+/// the bytes between its ends exactly when they lie within the input and are
+/// valid UTF-8, and then every string, which must read what reading each in
+/// turn reads, or fail with the error of the first that fails
+void check_string_vector(const TableReader<false>& reader, std::size_t position) {
+    const auto bytes = reader.bytes();
+    const auto offset_type = reader.layout().offset_type();
+    const std::uint64_t width = tafla::offset_size(offset_type);
+
+    // A count, and an end for each string after it, within the bytes, as a
+    // vector of tables has
+    const auto count = slot(bytes, position, offset_type);
+    std::optional<std::uint64_t> ends;
+    if (count && range(bytes, plus(position, width), times(*count, width))) {
+        ends = count;
+    }
+
+    std::optional<tafla::StringVector> read;
+    try {
+        read = reader.get_string_vector(position);
+    } catch (const DecodeError& error) {
+        check_error(bytes, error, !ends.has_value());
+        return;
+    }
+    CHECK(ends.has_value() && read->size() == *ends);
+
+    const auto& strings = *read;
+    const auto end_of = [&](std::size_t index) { return *slot(bytes, position + (index + 1) * width, offset_type); };
+    const auto expected_of = [&](std::size_t index) -> std::optional<Bytes> {
+        const auto start = index == 0 ? (*count + 1) * width : end_of(index - 1);
+        const auto end = end_of(index);
+        if (start > end) {
+            return std::nullopt;
+        }
+
+        const auto found = range(bytes.subspan(position), start, end - start);
+        if (!found || !tafla::detail::valid_utf8(found->data(), found->size())) {
+            return std::nullopt;
+        }
+        return found;
+    };
+    const auto check_string = [&](std::size_t index, auto get) {
+        const auto expected = expected_of(index);
+        try {
+            const std::string_view string = get();
+            CHECK(expected.has_value());
+            CHECK(static_cast<const void*>(string.data()) == static_cast<const void*>(expected->data()));
+            CHECK(string.size() == expected->size());
+        } catch (const DecodeError& error) {
+            check_error(bytes, error, !expected.has_value());
+        }
+    };
+
+    std::size_t index = 0;
+    for (auto it = strings.begin(); it != strings.end() && index < kChecked; ++it) {
+        check_string(index, [&] { return *it; });
+        check_string(index, [&] { return strings.get(index); });
+        ++index;
+    }
+    if (!strings.empty()) {
+        const auto last = strings.size() - 1;
+        check_string(last, [&] { return strings.get(last); });
+    }
+
+    std::vector<std::string_view> each;
+    std::optional<DecodeError> first;
+    for (std::size_t at = 0; at < strings.size(); ++at) {
+        try {
+            each.push_back(strings.get(at));
+        } catch (const DecodeError& error) {
+            first = error;
+            break;
+        }
+    }
+    try {
+        const auto all = strings.to_vector();
+        CHECK(!first.has_value() && all.size() == each.size());
+        for (std::size_t at = 0; at < all.size(); ++at) {
+            CHECK(all[at].data() == each[at].data() && all[at].size() == each[at].size());
+        }
+    } catch (const DecodeError& error) {
+        CHECK(first.has_value() && error.kind() == first->kind() && error.position() == first->position());
+    }
+
+    for (const auto past : {strings.size(), SIZE_MAX}) {
+        bool thrown = false;
+        try {
+            static_cast<void>(strings.get(past));
+        } catch (const std::out_of_range&) {
+            thrown = true;
+        }
+        CHECK(thrown);
+    }
+}
+
 /// Reads every type at `position`, a field of a table there at `index`, and
 /// structs of `struct_size` bytes and others
 void check_position(const TableReader<false>& reader, std::size_t position, std::size_t index,
@@ -396,6 +494,7 @@ void check_position(const TableReader<false>& reader, std::size_t position, std:
     }
 
     check_vector(reader, position);
+    check_string_vector(reader, position);
 }
 
 }  // namespace

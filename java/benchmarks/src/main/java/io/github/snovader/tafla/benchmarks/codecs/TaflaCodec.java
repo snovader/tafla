@@ -241,7 +241,7 @@ public final class TaflaCodec {
         }
     }
 
-    /** A table of 16 string fields, since tafla has no vector of strings */
+    /** A table of 16 string fields, which the strings suite times, rather than a vector of strings */
     private static final class StringTables implements Workload<List<String>> {
         @Override
         public byte[] serialize(List<String> strings) {

@@ -271,6 +271,16 @@ func (s *TableSizer) AddString(value string) {
 	s.add(min(s.width()+uint64(len(value)), past))
 }
 
+// AddStringVector adds a vector of strings: its count, the end of each
+// string, and the strings' bytes, which are UTF-8 if they are.
+func (s *TableSizer) AddStringVector(values []string) {
+	length := (elements(len(values)) + 1) * s.width()
+	for _, value := range values {
+		length = min(length+uint64(len(value)), past)
+	}
+	s.add(length)
+}
+
 // AddStruct adds a struct field of size bytes.
 func (s *TableSizer) AddStruct(size int) {
 	s.add(min(uint64(size), past))
@@ -688,6 +698,23 @@ func (w *TableWriter) SetString(index int, value string) {
 	w.putSlot(w.position, uint32(len(value)))
 	w.position += w.width
 	w.position += copy(w.bytes[w.position:w.position+len(value)], value)
+}
+
+// SetStringVector writes field index, a vector of strings: its count, the
+// end of each string from the vector's position, and then the strings'
+// bytes, which are UTF-8 if they are, one after another.
+func (w *TableWriter) SetStringVector(index int, values []string) {
+	w.setOffset(index)
+
+	// The count, and then the end of each string, which is written after
+	// the string
+	vector := w.position
+	w.putSlot(vector, uint32(len(values)))
+	w.position += (len(values) + 1) * w.width
+	for item, value := range values {
+		w.position += copy(w.bytes[w.position:w.position+len(value)], value)
+		w.putSlot(vector+(item+1)*w.width, uint32(w.position-vector))
+	}
 }
 
 // SetStruct writes struct field index from its bytes: its scalars,

@@ -154,6 +154,12 @@ extension TableBuilder {
             try builder.pointee.setString(value)
         }
 
+        /// Sets a vector of strings, as ``TableBuilder/setStringVector(_:)``
+        /// does.
+        public mutating func setStringVector(_ strings: [String]) throws(BuildError) {
+            try builder.pointee.setStringVector(strings)
+        }
+
         /// Sets a struct field from its bytes, as
         /// ``TableBuilder/setStruct(_:)`` does.
         public mutating func setStruct(_ bytes: [UInt8]) throws(BuildError) {

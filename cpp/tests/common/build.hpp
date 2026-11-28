@@ -26,7 +26,7 @@ TableBuilder build(const Table& table);
 Bytes to_bytes(const Table& table);
 
 /// Sets the field on `builder`, which borrows its value, or owns the bytes of
-/// structs
+/// structs and a copy of the strings of a vector of strings
 void set_field(const Field& field, TableBuilder& builder);
 
 /// Builds the table to nest, as its builder or its bytes
@@ -104,6 +104,8 @@ void set_field_on(const Field& field, Target& target, std::optional<OffsetType> 
                 target.set_bool_array(value.span());
             } else if constexpr (std::is_same_v<T, std::string>) {
                 target.set_string(std::string_view(value));
+            } else if constexpr (std::is_same_v<T, StringVectorField>) {
+                target.set_string_vector(std::vector<std::string>(value.strings));
             } else if constexpr (std::is_same_v<T, Struct>) {
                 target.set_struct(struct_bytes(value.scalars));
             } else if constexpr (std::is_same_v<T, StructArray>) {

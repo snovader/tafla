@@ -1,6 +1,6 @@
 use std::str;
 
-use crate::{ArrayView, DecodeError, Element, OffsetType, TableLayout, Vector};
+use crate::{ArrayView, DecodeError, Element, OffsetType, StringVector, TableLayout, Vector};
 
 /// Reads a table from the supplied bytes, in the layout it was written with.
 ///
@@ -102,6 +102,17 @@ impl<'a, const VERSIONED: bool> TableReader<'a, VERSIONED> {
     ///
     /// [`DecodeError::OutOfRange`] if the field's offset doesn't lie within
     /// the bytes.
+    // Inlined into its callers, as are `field_offset()` and the reads of
+    // lengths and offsets that it and the getters share, so that a constant
+    // layout's offset type and header fold into each read. With several
+    // callers, LLVM called them out of line, which `#[inline]` didn't
+    // change, and each read the layout from memory and branched on its
+    // offset size: a versioned document of 100 rows read by hand took
+    // 27.1 ns rather than 12.7 ns. Inlining only this, `field_offset()` and
+    // `array_bytes()` called `get_slot()` out of line instead, and took as
+    // long.
+    #[allow(clippy::inline_always)]
+    #[inline(always)]
     pub fn root_offset(&self, index: usize) -> Result<usize, DecodeError> {
         let slot = index
             .saturating_mul(self.offset_type().size())
@@ -120,6 +131,9 @@ impl<'a, const VERSIONED: bool> TableReader<'a, VERSIONED> {
     ///
     /// [`DecodeError::OutOfRange`] if the field's offset doesn't lie within
     /// the bytes.
+    // Inlined, as `root_offset()` is
+    #[allow(clippy::inline_always)]
+    #[inline(always)]
     pub fn field_offset(&self, table_position: usize, index: usize) -> Result<usize, DecodeError> {
         let slot = index
             .saturating_mul(self.offset_type().size())
@@ -190,17 +204,7 @@ impl<'a, const VERSIONED: bool> TableReader<'a, VERSIONED> {
     pub fn get_str(&self, position: usize) -> Result<&'a str, DecodeError> {
         let bytes = self.array_bytes(position, 1)?;
 
-        // ASCII first, which `is_ascii()` checks a word at a time at any
-        // address, where `str::from_utf8()` checks a string's bytes one at a
-        // time but for whole pairs of aligned words in it: the benchmarks'
-        // record, whose 16-byte name isn't aligned, read in 6.3 ns rather
-        // than 11.8 ns
-        if bytes.is_ascii() {
-            // SAFETY: ASCII is valid UTF-8
-            return Ok(unsafe { str::from_utf8_unchecked(bytes) });
-        }
-
-        str::from_utf8(bytes).map_err(|source| DecodeError::InvalidUtf8 { position, source })
+        decode_str(bytes, position)
     }
 
     /// Reads the `size` bytes of the struct at `position`, whose scalars lie
@@ -250,6 +254,62 @@ impl<'a, const VERSIONED: bool> TableReader<'a, VERSIONED> {
         ))
     }
 
+    /// Reads the vector of strings at `position`, checking that its count
+    /// and the ends of its strings lie within the bytes, as
+    /// [`TableReader::get_vector()`] checks a vector's. Each string is
+    /// checked when it's read, as UTF-8 on its own.
+    ///
+    /// # Errors
+    ///
+    /// [`DecodeError::OutOfRange`] if the count or the ends don't lie within
+    /// the bytes.
+    pub fn get_str_vector(&self, position: usize) -> Result<StringVector<'a>, DecodeError> {
+        self.get_vector(position).map(StringVector::new)
+    }
+
+    /// Reads string `index` of the vector of `count` strings at `position`,
+    /// from its end and the end of the string before it, without reading
+    /// the count or any other string, or returns `None` if `index` isn't
+    /// below `count`. It reads what [`StringVector::get()`] reads of the
+    /// view that [`TableReader::get_str_vector()`] returns, for a caller
+    /// that keeps the count rather than the view, such as a binding to
+    /// another language, which reads the count once with
+    /// `get_str_vector()` and passes it for each string.
+    ///
+    /// The count isn't read, but it's checked to leave its ends within the
+    /// bytes, as `get_str_vector()` checks the count that it reads, so that
+    /// any count reads within them. String 0 starts after the ends of
+    /// `count` strings, so another count than the vector's reads other
+    /// bytes as its strings.
+    ///
+    /// # Errors
+    ///
+    /// `Some(Err(_))` with [`DecodeError::OutOfRange`] if `count` strings'
+    /// ends don't lie within the bytes, or the error that
+    /// [`StringVector::get()`] returns for the string.
+    pub fn get_str_vector_item(
+        &self,
+        position: usize,
+        count: usize,
+        index: usize,
+    ) -> Option<Result<&'a str, DecodeError>> {
+        if index >= count {
+            return None;
+        }
+
+        // The count, and then the end of each string. Saturating, past any
+        // bytes, since only a count or position past them overflows.
+        let width = self.offset_type().size();
+        let slots = (count as u64).saturating_add(1);
+        if let Err(error) = self.range(position, slots.saturating_mul(width as u64)) {
+            return Some(Err(error));
+        }
+
+        // The count and the ends lie within the bytes
+        let vector = Vector::new(&self.bytes[position..], position, count, self.offset_type());
+        StringVector::new(vector).get(index)
+    }
+
     #[inline]
     fn get<T: Element>(&self, position: usize) -> Result<T, DecodeError> {
         self.bytes
@@ -268,13 +328,17 @@ impl<'a, const VERSIONED: bool> TableReader<'a, VERSIONED> {
     }
 
     /// Reads a length or offset at `position`
-    #[inline]
+    // Inlined, as `root_offset()` is
+    #[allow(clippy::inline_always)]
+    #[inline(always)]
     fn get_size(&self, position: usize) -> Result<usize, DecodeError> {
         self.get_slot(position).map(|size| size as usize)
     }
 
     /// Reads a length, offset or header slot at `position`
-    #[inline]
+    // Inlined, as `root_offset()` is
+    #[allow(clippy::inline_always)]
+    #[inline(always)]
     fn get_slot(&self, position: usize) -> Result<u32, DecodeError> {
         let offset_type = self.offset_type();
 
@@ -288,7 +352,9 @@ impl<'a, const VERSIONED: bool> TableReader<'a, VERSIONED> {
 
     /// Returns the bytes of the elements after the length prefix at
     /// `position`
-    #[inline]
+    // Inlined, as `root_offset()` is
+    #[allow(clippy::inline_always)]
+    #[inline(always)]
     fn array_bytes(&self, position: usize, element_size: usize) -> Result<&'a [u8], DecodeError> {
         let length = self.get_size(position)?;
 
@@ -325,6 +391,62 @@ impl TableReader<'_, true> {
 
         self.get_slot(position)
     }
+}
+
+/// Reads the bytes of the string at `position` as UTF-8: a string field's
+/// after its length, or a string of a vector of strings, at its first byte
+///
+/// # Errors
+///
+/// [`DecodeError::InvalidUtf8`] at `position` if they aren't valid UTF-8.
+// Inlined into its callers, as `TableReader::get_str()` is
+#[allow(clippy::inline_always)]
+#[inline(always)]
+pub fn decode_str(bytes: &[u8], position: usize) -> Result<&str, DecodeError> {
+    // ASCII first, which `is_ascii()` checks a word at a time at any address,
+    // where `str::from_utf8()` checks a string's bytes one at a time but for
+    // whole pairs of aligned words in it: the benchmarks' record, whose
+    // 16-byte name isn't aligned, read in 6.3 ns rather than 11.8 ns
+    if is_ascii(bytes) {
+        // SAFETY: ASCII is valid UTF-8
+        return Ok(unsafe { str::from_utf8_unchecked(bytes) });
+    }
+
+    str::from_utf8(bytes).map_err(|source| DecodeError::InvalidUtf8 { position, source })
+}
+
+/// The length from which [`is_ascii()`] calls the standard library's
+/// `is_ascii()`, which checks such bytes with SIMD on aarch64 and x86-64
+const SHORT_ASCII: usize = 64;
+
+/// Whether `bytes` are ASCII, checking those shorter than [`SHORT_ASCII`] a
+/// word at a time, as the standard library's `is_ascii()` does
+// Inlined into `decode_str()`'s callers. The standard library's
+// `is_ascii()` is a function of its own, which LLVM inlined into a getter
+// that it called out of line, but called out of line from larger callers,
+// such as a read of a record's fields, by hand or through tafla-gen's
+// getters: inlined, the benchmarks' record read in 5.0 ns rather than
+// 5.6 ns. A table of 16 strings of 64 bytes or more, through tafla-gen's
+// getters, took 1.05 to 1.10 times as long, its read grown by 16 inlined
+// checks, and calling `is_ascii()` through a function that's never inlined
+// made it slower still, and strings read by hand too.
+#[allow(clippy::inline_always)]
+#[inline(always)]
+fn is_ascii(bytes: &[u8]) -> bool {
+    const NON_ASCII: u64 = u64::from_ne_bytes([0x80; 8]);
+
+    if bytes.len() >= SHORT_ASCII {
+        return bytes.is_ascii();
+    }
+
+    let (words, rest) = bytes.as_chunks::<8>();
+    for word in words {
+        if u64::from_ne_bytes(*word) & NON_ASCII != 0 {
+            return false;
+        }
+    }
+
+    rest.iter().all(u8::is_ascii)
 }
 
 /// Reads a length, offset or header slot as wide as `offset_type` from the

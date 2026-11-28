@@ -147,6 +147,29 @@ public class TableWriterTest {
         assertArrayEquals(expected, Tables.build(table).bytes(), string::toString);
     }
 
+    @Property
+    void the_strings_of_a_vector_are_written_as_the_JDKs_encoder_encodes_them_with_each_lone_surrogate_as_U_FFFD(
+        @ForAll @Size(max = 4) List<@From("utf16Strings") String> strings
+    ) throws CharacterCodingException {
+        var table = new TableDescription(
+            LayoutDescription.headerless(OffsetType.UINT32),
+            OptionalLong.empty(),
+            List.of(new StringVectorField(strings))
+        );
+
+        // A vector whose items are the strings' bytes
+        var items = new byte[strings.size()][];
+        for (int i = 0; i < items.length; i++) {
+            items[i] = utf8(strings.get(i));
+        }
+        var builder = new TableBuilder(1);
+        builder.setVector(items);
+        var expected = builder.bytes();
+
+        assertArrayEquals(expected, Tables.write(table), strings::toString);
+        assertArrayEquals(expected, Tables.build(table).bytes(), strings::toString);
+    }
+
     /**
      * {@return the string's UTF-8 bytes from the JDK's encoder}, which replaces each lone surrogate
      * with U+FFFD, as TypeScript's {@code TextEncoder} does, rather than with {@code '?'}, as

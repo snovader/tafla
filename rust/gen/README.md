@@ -62,6 +62,7 @@ Each field is `name: type;`, of one of these types:
 | `[int8]` … `[float64]`                                                   | An array of a scalar type |
 | `[bool]`                                                                 | An array of bools         |
 | `string`                                                                 | A UTF-8 string            |
+| `[string]`                                                               | A vector of strings       |
 | A struct's name                                                          | A struct, in place        |
 | `[` a struct's name `]`                                                  | An array of structs       |
 | A table's name                                                           | A nested table            |
@@ -85,6 +86,32 @@ its getters copy arrays, and `<field>View()` views the bytes. The fields that
 a message is written from, and that `fields()` reads, hold the language's
 bools, which the runtime's `setBoolArray()` writes and `getBoolArray()`
 reads, under each language's names.
+
+A `[string]` is a vector of strings: a count, the end of each string and
+the strings' UTF-8, one after another, as `SPEC.md` lays it out. Its
+getter returns the runtime's view of the strings, which reads one string
+from its ends, without reading the others, or every string, and the
+generated code writes it from a list of strings:
+
+| Target                 | Getter                                                                                    | Every string                                     | Written from                         |
+| ---------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------ | ------------------------------------ |
+| TypeScript, JavaScript | `StringVector`, with `length()` and `get(i)`                                              | `toArray()`, and a `string[]` in `fields()`      | `readonly string[]`                  |
+| Python                 | `StringVector`, with `len()` and `view[i]`                                                | `tolist()`, and a `list[str]` in `fields()`      | `Sequence[str]`                      |
+| Java                   | `StringVector`, a random-access, unmodifiable `List<String>`                              | Its iterator, which reads each string's end once | `List<String>`                       |
+| Rust                   | `Result<StringVector<'a>, DecodeError>`, with `len()`, `get(i)` and `iter()`              | `to_vec()`, a `Vec<&'a str>`                     | `&'a [&'a str]`                      |
+| Go                     | `(tafla.StringVector, error)`, with `Len()` and `Get(i)`                                  | `Strings()`, and a `[]string` in `Fields()`      | `[]string`                           |
+| C++                    | `::tafla::StringVector`, with `size()`, `get(i)` and iteration                            | `to_vector()`, a `std::vector<std::string_view>` | `std::span<const std::string_view>`  |
+| Swift                  | `StringVector`, a nonescapable view that throws, with `count` and a throwing subscript    | `Array(view)`, a `[String]`                      | `[String]`                           |
+| C#                     | `global::Tafla.StringVector`, a `ref struct` with `Count`, an indexer and an enumerator    | `ToArray()`, a `string[]`                        | `ReadOnlyMemory<string>`             |
+
+Reading every string returns what reading each string returns, and fails
+where any of them fails. Rust, Go and C++ check the strings' run of bytes
+as UTF-8 once and then that each end falls between characters, TypeScript
+and Python decode runs of ASCII at once, and the others decode each string
+on its own. The strings borrow the bytes in Rust, Go and C++, and are
+copies elsewhere. As with strings and arrays, `fields()` doesn't read a
+table whole when its vector's items hold a `[string]`, since corrupted ends
+could point every item at the same vector.
 
 An enum gives its integer type after its name, and an integer to each of
 its values:
@@ -201,7 +228,7 @@ or read its tables, or a target couldn't generate its code:
   readers read a nested table's offsets as of its message's offset type, and
   tables have `uint32` offsets.
 - Structs hold scalars and structs only, and a struct can't contain itself,
-  even within another struct. Arrays of strings aren't supported.
+  even within another struct.
 - A definition's fields fit in a Java constructor, which takes at most 254
   slots of parameters, since the generated Java reads a struct into a record
   of its fields and writes a message or table from a record of them. A
@@ -625,6 +652,13 @@ byte[] bytes = new DocumentFields
 var document = new Document(bytes); // checks the version
 ReadOnlySpan<float> a = document.Columns.A; // in place, on a little-endian host
 ```
+
+Rust's getters are `#[inline(always)]`, as the runtime's reads that they
+call are, so that a release build reads each field where its getter is
+called, as `TableReader`'s getters do by hand, rather than calling the getter
+and returning its `Result` through memory, as LLVM did with `#[inline]` where
+a function called several. Their `impl` blocks allow clippy's pedantic
+`inline_always`.
 
 C++'s namespace is the schema's file name, or `--package`'s, each of whose
 names takes a `_` for a run of other characters than ASCII letters and
@@ -1106,7 +1140,8 @@ Run the commands of `rust/README.md` from `rust/`. The tests are:
 - `tests/benchmarks.rs`: the code generated from each language's comparison
   suite's `workloads.tafla` matches the files in the suite, and the suites'
   copies of the schema are the same. So do the code generated from each
-  strings suite's `strings.tafla` and the copies of that schema.
+  strings suite's `strings.tafla` and the copies of that schema, and from
+  each lists suite's `lists.tafla`.
 - `tests/diagnostics.rs`: each invalid schema in `tests/diagnostics/` fails
   with the errors in the `.stderr` file beside it, chains of 10,000 tables or
   structs fail with an error on the WebAssembly module's stack, structs whose
@@ -1179,6 +1214,23 @@ and `STRINGS_SCHEMAS` lists where:
 | ---------- | ------------------------------------------------------------------------------------------------------------------------ |
 | TypeScript | `typescript/benchmarks/strings/strings.tafla`, `typescript/benchmarks/strings/generated/tafla/`                          |
 | Java       | `java/benchmarks/src/main/tafla/strings.tafla`, `…/src/main/java/io/github/snovader/tafla/benchmarks/generated/strings/` |
+| Rust       | `rust/benchmarks/strings.tafla`, `rust/benchmarks/src/codecs/tafla_gen_strings/`                                         |
+| C++        | `cpp/benchmarks/strings.tafla`, `cpp/benchmarks/generated/strings/`                                                      |
+
+The suites of lists of strings, which compare vectors of strings with
+vectors of tables of one string each, have a schema of their own too, and
+`LISTS_SCHEMAS` lists where:
+
+| Target     | Schema and generated code, from the root of the repository                                                           |
+| ---------- | -------------------------------------------------------------------------------------------------------------------- |
+| TypeScript | `typescript/benchmarks/strings/lists/lists.tafla`, `typescript/benchmarks/strings/lists/generated/`                  |
+| Python     | `python/benchmarks/src/tafla_benchmarks/generated/lists.tafla`, `python/benchmarks/src/tafla_benchmarks/generated/lists/` |
+| Java       | `java/benchmarks/src/main/tafla/lists.tafla`, `…/src/main/java/io/github/snovader/tafla/benchmarks/generated/lists/` |
+| Rust       | `rust/benchmarks/lists.tafla`, `rust/benchmarks/src/lists/generated/`                                                |
+| Go         | `go/benchmarks/lists.tafla`, `go/benchmarks/generated/lists/`                                                        |
+| C++        | `cpp/benchmarks/lists.tafla`, `cpp/benchmarks/generated/lists/`                                                      |
+| Swift      | `swift/benchmarks/lists.tafla`, `swift/benchmarks/Sources/GeneratedLists/`, a module                                 |
+| C#         | `csharp/benchmarks/lists.tafla`, `csharp/benchmarks/Tafla.Benchmarks/Generated/Lists/`                               |
 
 After a change to the generator or the schemas, rewrite the golden files,
 the suites' generated code and the expected errors, review their diff, and

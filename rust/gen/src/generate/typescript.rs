@@ -501,6 +501,9 @@ impl Generator<'_> {
         if versioned {
             classes.push(("DecodeError", false));
         }
+        if self.has_string_vectors() {
+            classes.push(("StringVector", false));
+        }
         if has_struct {
             classes.push(("StructWriter", false));
         }
@@ -551,6 +554,16 @@ impl Generator<'_> {
             }
             writer.close(format!("}} from '{runtime}';"));
         }
+    }
+
+    /// Whether a table of the schema holds a vector of strings, whose
+    /// getter returns the runtime's `StringVector`
+    fn has_string_vectors(&self) -> bool {
+        self.schema
+            .definitions
+            .iter()
+            .flat_map(|definition| &definition.fields)
+            .any(|field| field.field_type == FieldType::StringVector)
     }
 
     /// The functions that read the scalars of structs, such as
@@ -1116,6 +1129,9 @@ impl Generator<'_> {
                     // A bool for each byte, true where it isn't 0
                     FieldType::Array(Scalar::Bool) => {
                         call(format!("{reader}.getBoolArray"), vec![offset])
+                    }
+                    FieldType::StringVector => {
+                        call(format!("{reader}.getStringVector"), vec![offset])
                     }
                     FieldType::Array(scalar) => call(
                         format!("{reader}.get{}Array", scalar_method(scalar)),
@@ -2195,6 +2211,7 @@ impl Generator<'_> {
                     vec![text(format!("{value}.length"))],
                 ),
                 FieldType::String => ("addString".to_owned(), vec![text(value)]),
+                FieldType::StringVector => ("addStringVector".to_owned(), vec![text(value)]),
                 FieldType::Struct(index) => {
                     let structure = &self.schema.definition(index).name;
                     (
@@ -2264,6 +2281,9 @@ impl Generator<'_> {
                     vec![position, text(value)],
                 ),
                 FieldType::String => ("setString".to_owned(), vec![position, text(value)]),
+                FieldType::StringVector => {
+                    ("setStringVector".to_owned(), vec![position, text(value)])
+                }
                 FieldType::Struct(struct_index) => {
                     let structure = &self.schema.definition(struct_index).name;
                     (
@@ -2397,6 +2417,11 @@ impl Generator<'_> {
                         &call("this._reader.getString", vec![offset]),
                         ";",
                     );
+                }
+                // A view, which reads each string when it's asked for
+                FieldType::StringVector => {
+                    let read = call("new StringVector", vec![text("this._reader"), offset]);
+                    writer.statement(&STYLE, "return ", &read, ";");
                 }
                 FieldType::Struct(index) => {
                     let structure = &self.schema.definition(index).name;
@@ -2815,6 +2840,8 @@ fn value_type(field: &Field, schema: &Schema) -> String {
         // The bytes of an array of bools, read in place
         FieldType::Array(scalar) => typed_array(scalar).to_owned(),
         FieldType::String => "string".to_owned(),
+        // A view of the strings, which reads each one when it's asked for
+        FieldType::StringVector => "StringVector".to_owned(),
         FieldType::Struct(index) | FieldType::Table(index) => schema.definition(index).name.clone(),
         // A view of the items, which reads each one when it's asked for
         FieldType::Vector(index) => format!("{}Vector", schema.definition(index).name),
@@ -2828,6 +2855,8 @@ fn input_type(field: &Field, schema: &Schema) -> String {
         FieldType::Scalar(scalar) => element_type(field, scalar, schema).to_owned(),
         // Bools, which the writer writes as bytes of 1 and 0
         FieldType::Array(Scalar::Bool) => "readonly boolean[]".to_owned(),
+        // An array rather than any array-like, which a string is too
+        FieldType::StringVector => "readonly string[]".to_owned(),
         FieldType::Array(scalar) => {
             format!(
                 "ArrayLike<{}> | {}",

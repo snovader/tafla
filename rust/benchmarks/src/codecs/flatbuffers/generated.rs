@@ -16,6 +16,8 @@
 //
 //     table Sample { key: uint; a: float; b: float; }
 //
+//     table Strings { items: [string]; }
+//
 // flatc writes a table's fields from the largest to the smallest, and those
 // of one size in reverse order. Its `root_as_*()` functions, which it
 // generates for a schema's `root_type`, are `flatbuffers::root()`.
@@ -1029,6 +1031,95 @@ impl<'a: 'b, 'b, A: Allocator + 'a> SampleBuilder<'a, 'b, A> {
     }
     #[inline]
     pub fn finish(self) -> WIPOffset<Sample<'a>> {
+        let o = self.fbb_.end_table(self.start_);
+        WIPOffset::new(o.value())
+    }
+}
+
+#[derive(Copy, Clone, PartialEq)]
+pub struct Strings<'a> {
+    pub _tab: Table<'a>,
+}
+
+impl<'a> Follow<'a> for Strings<'a> {
+    type Inner = Strings<'a>;
+    #[inline]
+    unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+        Self {
+            _tab: unsafe { Table::new(buf, loc) },
+        }
+    }
+}
+
+impl<'a> Strings<'a> {
+    pub const VT_ITEMS: VOffsetT = 4;
+
+    #[allow(unused_mut)]
+    pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: Allocator + 'bldr>(
+        _fbb: &'mut_bldr mut FlatBufferBuilder<'bldr, A>,
+        args: &'args StringsArgs<'args>,
+    ) -> WIPOffset<Strings<'bldr>> {
+        let mut builder = StringsBuilder::new(_fbb);
+        if let Some(x) = args.items {
+            builder.add_items(x);
+        }
+        builder.finish()
+    }
+
+    #[inline]
+    pub fn items(&self) -> Option<Vector<'a, ForwardsUOffset<&'a str>>> {
+        // Safety:
+        // Created from valid Table for this object
+        // which contains a valid value in this slot
+        unsafe {
+            self._tab
+                .get::<ForwardsUOffset<Vector<'a, ForwardsUOffset<&'a str>>>>(
+                    Strings::VT_ITEMS,
+                    None,
+                )
+        }
+    }
+}
+
+impl Verifiable for Strings<'_> {
+    #[inline]
+    fn run_verifier(v: &mut Verifier, pos: usize) -> Result<(), InvalidFlatbuffer> {
+        v.visit_table(pos)?
+            .visit_field::<ForwardsUOffset<Vector<'_, ForwardsUOffset<&'_ str>>>>(
+                "items",
+                Self::VT_ITEMS,
+                false,
+            )?
+            .finish();
+        Ok(())
+    }
+}
+
+pub struct StringsArgs<'a> {
+    pub items: Option<WIPOffset<Vector<'a, ForwardsUOffset<&'a str>>>>,
+}
+
+pub struct StringsBuilder<'a: 'b, 'b, A: Allocator + 'a> {
+    fbb_: &'b mut FlatBufferBuilder<'a, A>,
+    start_: WIPOffset<TableUnfinishedWIPOffset>,
+}
+
+impl<'a: 'b, 'b, A: Allocator + 'a> StringsBuilder<'a, 'b, A> {
+    #[inline]
+    pub fn add_items(&mut self, items: WIPOffset<Vector<'b, ForwardsUOffset<&'b str>>>) {
+        self.fbb_
+            .push_slot_always::<WIPOffset<_>>(Strings::VT_ITEMS, items);
+    }
+    #[inline]
+    pub fn new(_fbb: &'b mut FlatBufferBuilder<'a, A>) -> StringsBuilder<'a, 'b, A> {
+        let start = _fbb.start_table();
+        StringsBuilder {
+            fbb_: _fbb,
+            start_: start,
+        }
+    }
+    #[inline]
+    pub fn finish(self) -> WIPOffset<Strings<'a>> {
         let o = self.fbb_.end_table(self.start_);
         WIPOffset::new(o.value())
     }

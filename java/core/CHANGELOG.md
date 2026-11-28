@@ -55,9 +55,39 @@ repository's first commits, for code built from its source before the release.
   `TableWriter.setBoolArray()` and `TableReader.getBoolArray()`, which reads
   a `boolean[]`, true where a byte isn't 0. `getUint8Array()` and
   `getUint8ArrayView()` read the same bytes.
+- Vectors of strings, which the format now has: a count, the end of each
+  string and the strings' UTF-8, one after another.
+  `TableReader.getStringVector()` reads every string into a `String[]`, and
+  `getStringVectorItem()` reads one from its ends and the count that
+  `getVectorLength()` read, without reading the others. `StringVector`
+  views the strings as a random-access, unmodifiable `List`, whose `get()`
+  reads a string from its ends and whose iterator reads each string's end
+  once. Each string is decoded and checked as UTF-8 on its own, so an end
+  that splits a character fails the strings on both sides of it.
+  `TableSizer.addStringVector()`, `TableWriter.setStringVector()` and
+  `TableBuilder.setStringVector()` write them from a `List<String>`, with
+  lone surrogates replaced by U+FFFD, and encode the strings of 64 `char`s
+  or more once, as they do a string field. tafla-gen's `[string]` fields
+  read and write them.
 
 ### Changed
 
+- `TableBuilder` and `TableSizer` encode a string of 32 `char`s or more with
+  `String.getBytes` and copy it, rather than from 64, and write a shorter one
+  a `char` at a time, in place. In the benchmarks' strings suite on JDK 25, a
+  table of 16 strings of 63 ASCII `char`s took 0.27 µs to write with
+  `TableBuilder` rather than 0.65, and of 32 ASCII `char`s 0.23 rather than
+  0.42; strings of 63 `char`s whose last took 3 bytes took 0.81 µs rather than
+  1.15.
+- `TableSizer` and `TableBuilder` check a string of 32 `char`s or more for lone
+  surrogates in a loop that calls only `charAt()`. The code that tafla-gen
+  generates inlines the sizer once for each string field, and C2 stops
+  inlining once a method's graph is large, which could leave one field's loop
+  calling `length()` and `isSurrogate()` for every `char`. In the strings
+  suite on JDK 27, tafla-gen wrote 16 strings of 32 ASCII `char`s in 0.30 µs
+  rather than 0.42, of 63 in 0.33 rather than 0.56, and of 1,024 in 1.5 rather
+  than 5.3; such slow JVMs were 58 of 72 across its long rows, and none with
+  the change.
 - A layout holds its table's version, `TableLayout.builder().version(1)`,
   rather than only whether the header has a slot for one, and the builder's
   `versioned()` is gone. `TableBuilder` and `TableSizer` take the version

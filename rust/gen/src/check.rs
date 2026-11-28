@@ -956,14 +956,11 @@ fn resolve_definition(
     }
 
     if name.text == "string" {
-        if field.is_array {
-            errors.push(Diagnostic::new(
-                "arrays of strings aren't supported",
-                name.span,
-            ));
-            return None;
-        }
-        return Some(FieldType::String);
+        return Some(if field.is_array {
+            FieldType::StringVector
+        } else {
+            FieldType::String
+        });
     }
 
     let Some(&index) = names.definitions.get(name.text.as_str()) else {

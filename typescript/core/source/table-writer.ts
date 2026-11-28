@@ -284,6 +284,21 @@ export class TableSizer {
     }
 
     /**
+     * Adds a vector of strings: its count, the end of each string, and each
+     * string as UTF-8, with lone surrogates replaced by U+FFFD
+     */
+    addStringVector(strings: readonly string[]): void {
+        const count = strings.length;
+
+        let length = (count + 1) * this._size;
+        for (let i = 0; i < count; i++) {
+            length += utf8Length(strings[i]);
+        }
+
+        this._position += length;
+    }
+
+    /**
      * Adds `count` nested tables of `byteLength` bytes each, whose fields'
      * sizes the schema fixes, which the writer's caller writes whole: a
      * field's table, after `addTable()`, or a vector's items, after
@@ -806,6 +821,33 @@ export class TableWriter {
             vector + (item + 1) * this._size,
             this._position - vector
         );
+    }
+
+    /**
+     * Writes a vector of strings: its count, the end of each string from the
+     * vector's position, and then each string as UTF-8, one after another,
+     * with lone surrogates replaced by U+FFFD.
+     *
+     * A string's UTF-8 length is known once it's written, so a vector that
+     * doesn't fit throws before its offset and count are written, and has
+     * then written the strings that fit, and their ends, after the position.
+     */
+    setStringVector(index: number, strings: readonly string[]): void {
+        const count = strings.length;
+        const size = this._size;
+        const bytes = this._bytes;
+        const vector = this._position;
+        let position = vector + (count + 1) * size;
+        assertFits(bytes, position);
+
+        for (let i = 0; i < count; i++) {
+            position += encodeInto(strings[i], bytes, position);
+            setSlot(bytes, vector + (i + 1) * size, size, position - vector);
+        }
+
+        this.#setOffset(index);
+        this.#setLength(vector, count);
+        this._position = position;
     }
 
     // The writer's caller writes the fields that the next three reserve,

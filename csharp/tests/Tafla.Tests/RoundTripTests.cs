@@ -271,6 +271,63 @@ public class RoundTripTests
         Assert.Equal(Value, new TableReader(bytes).GetString(4));
     }
 
+    /// <summary>
+    /// A string of any length, short or long, and of characters of any width in UTF-8, is written as
+    /// its UTF-8 and reads back as it was
+    /// </summary>
+    [Fact]
+    public void RoundTripsStringsOfAnyLength() => Strategy.String(300).Check(AssertRoundTrips);
+
+    /// <summary>
+    /// ASCII, of any of its 128 characters, reads back at any length, and so does ASCII with one
+    /// character of two, three or four bytes anywhere in it
+    /// </summary>
+    [Fact]
+    public void RoundTripsAsciiStringsOfAnyLength() =>
+        Gen.Select(Gen.Int[0, 0x7f].Array[0, 1100], Gen.OneOf("", "é", "€", "😀"), Gen.Int[0, 1100], AsciiWith)
+            .Check(AssertRoundTrips);
+
+    /// <summary>
+    /// Strings of exactly as many bytes as the reader decodes in each of its ways, 128 and 1,024, and
+    /// of one byte more, read back: of characters of each width in UTF-8, with ASCII before or after
+    /// them where their width doesn't divide the length
+    /// </summary>
+    [Fact]
+    public void RoundTripsStringsAtTheLimitsOfEachDecode()
+    {
+        foreach (var byteLength in (int[])[128, 129, 1024, 1025])
+        {
+            foreach (var character in (string[])["a", "é", "€", "😀"])
+            {
+                var width = Encoding.UTF8.GetByteCount(character);
+                var characters = string.Concat(Enumerable.Repeat(character, byteLength / width));
+                var ascii = new string('a', byteLength % width);
+
+                AssertRoundTrips(characters + ascii);
+                AssertRoundTrips(ascii + characters);
+            }
+        }
+    }
+
+    /// <summary>The ASCII of <paramref name="codes"/>, with <paramref name="other"/> inserted at <paramref name="index"/> or its end</summary>
+    private static string AsciiWith(int[] codes, string other, int index)
+    {
+        var ascii = string.Concat(codes.Select(code => (char)code));
+
+        return ascii.Insert(Math.Min(index, ascii.Length), other);
+    }
+
+    /// <summary>Writes <paramref name="value"/> as a table's string, which it reads back</summary>
+    private static void AssertRoundTrips(string value)
+    {
+        var builder = new TableBuilder(1);
+        builder.SetString(value);
+        var bytes = builder.ToArray();
+
+        Assert.Equal(Encoding.UTF8.GetBytes(value), bytes[8..]);
+        Assert.Equal(value, new TableReader(bytes).GetString(4));
+    }
+
     /// <summary>UTF-8 can't encode a lone surrogate, which the builder writes as U+FFFD, as Encoding.UTF8 does</summary>
     [Fact]
     public void WritesALoneSurrogateAsTheReplacementCharacter()

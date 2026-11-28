@@ -328,6 +328,51 @@ public struct TableWriter
     }
 
     /// <summary>
+    /// Writes field <paramref name="index"/>, a vector of strings: its count, the end of each string,
+    /// counted from the vector's position, and then each string's UTF-8, encoded straight into the
+    /// table, one after another, with each lone surrogate as U+FFFD, as
+    /// <see cref="TableBuilder.SetStringVector"/> writes it.
+    /// </summary>
+    /// <remarks>
+    /// A string's UTF-8 length is known once it's written, so strings longer than those sized throw
+    /// once the first that doesn't fit is reached, having written those before it, and their ends,
+    /// after the writer's position, but not the field's offset.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException">A string is null.</exception>
+    /// <exception cref="BuildException">The field ends past the table.</exception>
+    public void SetStringVector(int index, ReadOnlySpan<string> values)
+    {
+        var width = Width;
+        var vector = _position;
+
+        // The strings are encoded into the rest of the table, after the count and the ends
+        var table = _bytes.AsSpan(0, _length);
+        long stringsStart = vector + (values.Length + 1L) * width;
+        if (stringsStart > table.Length)
+        {
+            ThrowNotAsSized(vector, _length);
+        }
+
+        var end = (int)stringsStart;
+        for (var item = 0; item < values.Length; item++)
+        {
+            var value = values[item];
+            ArgumentNullException.ThrowIfNull(value, nameof(values));
+            if (!Encoding.UTF8.TryGetBytes(value, table[end..], out var count))
+            {
+                ThrowNotAsSized(vector, _length);
+            }
+
+            end += count;
+            WriteSlot(vector + (item + 1) * width, (uint)(end - vector));
+        }
+
+        WriteOffset(index, vector);
+        WriteSlot(vector, (uint)values.Length);
+        _position = end;
+    }
+
+    /// <summary>
     /// Writes field <paramref name="index"/>, a struct, from its bytes: its scalars, little-endian, one
     /// after another, which are written as they are, without padding.
     /// </summary>

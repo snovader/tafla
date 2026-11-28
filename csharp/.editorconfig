@@ -84,9 +84,9 @@ generated_code = false
 # Visual Basic
 dotnet_diagnostic.CA1716.severity = none
 
-[benchmarks/Tafla.Benchmarks/Generated/TaflaGen/**.cs]
-# The benchmarks' copy of tafla-gen's code, of their workloads.tafla, which the build's analyzers and
-# CI's whitespace check check as they check the tests' copies
+[benchmarks/Tafla.Benchmarks/Generated/{TaflaGen,Lists}/**.cs]
+# The benchmarks' copies of tafla-gen's code, of their workloads.tafla and lists.tafla, which the
+# build's analyzers and CI's whitespace check check as they check the tests' copies
 generated_code = false
 
 [tests/names/**.cs]

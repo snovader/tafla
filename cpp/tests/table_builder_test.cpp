@@ -77,12 +77,16 @@ enum class LongField : std::uint8_t {
     nested_bytes,
     /// A table of bytes, nested from its builder
     nested_builder,
+    /// A vector of one string
+    string_vector,
+    /// A vector of empty strings, each an end of its own
+    empty_strings,
 };
 
 rc::Gen<LongField> long_field() {
     return rc::gen::element(LongField::bytes, LongField::floats, LongField::string, LongField::structs,
-                            LongField::empty_items, LongField::item, LongField::nested_bytes,
-                            LongField::nested_builder);
+                            LongField::empty_items, LongField::item, LongField::nested_bytes, LongField::nested_builder,
+                            LongField::string_vector, LongField::empty_strings);
 }
 
 Field long_field_of(LongField kind, std::size_t units) {
@@ -106,6 +110,10 @@ Field long_field_of(LongField kind, std::size_t units) {
             return {TableField{nested(Source::bytes, bytes()), std::nullopt}};
         case LongField::nested_builder:
             break;
+        case LongField::string_vector:
+            return {StringVectorField{{std::string(units, 'a')}}};
+        case LongField::empty_strings:
+            return {StringVectorField{std::vector<std::string>(units)}};
     }
     return {TableField{nested(Source::builder, bytes()), std::nullopt}};
 }
@@ -118,6 +126,7 @@ std::size_t unit_of(LongField kind, std::size_t width) {
         case LongField::structs:
             return 3;
         case LongField::empty_items:
+        case LongField::empty_strings:
             return width;
         default:
             return 1;
@@ -703,6 +712,10 @@ TEST(TableBuilder, LeavesAnRvalueItRejectsWithTheCaller) {
     EXPECT_EQ(values.size(), 300U);  // NOLINT(bugprone-use-after-move): rejected, so not moved
     EXPECT_THROW(builder.set_bool_array(std::move(bools)), BuildError);
     EXPECT_EQ(bools.size(), 300U);  // NOLINT(bugprone-use-after-move): rejected, so not moved
+
+    std::vector<std::string> strings(300);
+    EXPECT_THROW(builder.set_string_vector(std::move(strings)), BuildError);
+    EXPECT_EQ(strings.size(), 300U);  // NOLINT(bugprone-use-after-move): rejected, so not moved
 }
 
 /// A byte of 1 or 0 for each bool, as a `uint8` array of those bytes, from

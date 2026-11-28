@@ -82,6 +82,9 @@ fn field_of(field: &Value) -> Field {
                 .map(nested_of)
                 .collect(),
         ),
+        "string[]" => Field::StringVector(elements(value, |string| {
+            string.as_str().unwrap().to_owned()
+        })),
         other => panic!("Unknown type {other}"),
     }
 }

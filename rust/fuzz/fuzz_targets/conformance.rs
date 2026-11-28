@@ -5,8 +5,9 @@
 //! Its seed corpus is the suite's tables, `conformance/valid/*.bin`,
 //! `conformance/equivalent/*.bin` and `conformance/invalid/*.bin`, so that
 //! the fuzzer mutates tables that the descriptions read deep into. Reads may
-//! fail, but only with the decode error, and finding a vector's item by
-//! index must find what iterating finds.
+//! fail, but only with the decode error, finding a vector's item by index
+//! must find what iterating finds, and reading every string of a vector of
+//! strings must read what reading each string reads.
 
 #![no_main]
 
@@ -56,6 +57,9 @@ fuzz_target!(|bytes: &[u8]| {
             Err(ReadError::Size { .. } | ReadError::Items { .. }) => {}
             Err(ReadError::Get { index }) => {
                 panic!("A vector's item {index} read differently by index than by iterating")
+            }
+            Err(ReadError::Strings) => {
+                panic!("A vector of strings read differently whole than a string at a time")
             }
         }
     }

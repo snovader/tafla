@@ -3,8 +3,10 @@
 `python -m tafla_benchmarks` compares `tafla` with other Python libraries
 that encode small tables and numeric columns, in pyperf benchmarks. It runs the
 workloads of the TypeScript comparison in `typescript/benchmarks/`, with the
-same values, so that the languages' numbers compare. Run the commands below
-from `python/`.
+same values, so that the languages' numbers compare.
+`python -m tafla_benchmarks.lists` times how tafla-gen's code writes and reads
+lists of strings, as [Lists of strings](#lists-of-strings) describes. Run the
+commands below from `python/`.
 
 ## Workloads
 
@@ -553,3 +555,110 @@ The most bytes that a call held at once, as tracemalloc traces them:
   save the list of them, so a call holds 1.7 KB at most against 6.6 KB for
   the vector, and 0.7 KB against 11.9 KB for the array. Reading the floats by
   hand takes 83.5 µs and 8.6 µs.
+
+## Lists of strings
+
+`python -m tafla_benchmarks.lists` times how the code that tafla-gen generates
+from `generated/lists.tafla`, a copy of the TypeScript suite's
+`strings/lists/lists.tafla`, into `generated/lists/` writes and reads lists of
+10, 100 and 10,000 distinct strings, of 16 and 256 characters of ASCII and of 8
+characters of 3 bytes. They're the TypeScript suite's strings of those kinds,
+from its seeded generator, which `tests/test_lists.py` checks, and
+`list_shapes.py` makes them. Each list is serialized, deserialized into a list
+of its strings, and read for its last string, by three variants:
+
+- **tafla-gen [string]**: `StringList`, a vector of strings. It's written from
+  the list as it is with `serialize_values()`, and read through the getter's
+  `StringVector`: every string with `tolist()`, in one call, and the last
+  string with `[-1]`, from its two ends. The native classes decode each
+  string with CPython, and the pure-Python ones decode a list of ASCII as one
+  run and slice it at each end.
+- **tafla-gen [Name]**: `NameList`, a vector of tables of one string each,
+  which is how a schema holds a list of strings without a vector of strings.
+  It's written with `serialize_values()` from a tuple of each table's string,
+  which each call makes, and read with the view's `field_values()`, which
+  reads every table's string in one call, or `item_field_values(-1)` the last
+  one's.
+- **tafla-gen [string] A/A**: the vector of strings again, in functions of
+  their own, an A/A pair that shows the harness's noise.
+
+Before timing, each variant checks that it reads back every string and the
+last string, and `tests/test_lists.py` checks every variant on every list,
+and that `StringList` writes the bytes that `TableBuilder.set_string_vector()`
+writes. The suite runs as the comparison does, as [Method](#method)
+describes, and its options are the comparison's, with `--codec` choosing the
+variants. It times the native classes, as the comparison does, and with
+`TAFLA_PUREPYTHON` set, which it passes on to its workers, the pure-Python
+ones.
+
+```sh
+uptime
+for order in "" --reverse; do
+    uv run --python 3.14+gil python -m tafla_benchmarks.lists --processes 5 --append lists.json $order
+done
+uv run --python 3.14+gil python -m tafla_benchmarks.report --lists lists.json
+```
+
+The full run takes about 15 to 20 minutes, which the workers of the lists of
+10,000 strings of 256 characters lengthen, since each makes its strings first,
+in about 2 seconds. A quick run of one worker per benchmark checks that every
+benchmark works in about 20 seconds, which CI runs too:
+
+```sh
+uv run python -m tafla_benchmarks.lists --debug-single-value --quiet
+```
+
+### Results
+
+One full run on 2026-11-27, on an Apple M2 Pro with 32 GB in macOS 27.0.1,
+with Homebrew's CPython 3.14.10, built with the GIL, and the native classes,
+through the machine's benchmark lock. Its 972 worker runs took 13 minutes,
+while other processes kept the 1-minute load average between 1.2 and 2.5 on
+the 10 cores, with a median of 1.6. pyperf's mean was within 5% of the
+fastest value for 79 of the 81 benchmarks, and at most 8% above it. The A/A
+pair agreed within 2%, but for reading every string of 10,000 of 256
+characters, at 1.05 times.
+
+Fastest value in µs per call, and its ratio to the vector of strings':
+
+| Benchmark | tafla-gen [string] | tafla-gen [Name] | tafla-gen [string] A/A |
+| --- | ---: | ---: | ---: |
+| 10 × 16 chars of ASCII: serialize | 0.610 | 0.804 (1.32×) | 0.614 (1.01×) |
+| 10 × 16 chars of ASCII: deserialize | 0.463 | 0.914 (1.97×) | 0.463 (1.00×) |
+| 10 × 16 chars of ASCII: read the last string | 0.346 | 0.475 (1.37×) | 0.346 (1.00×) |
+| 10 × 256 chars of ASCII: serialize | 0.653 | 1.082 (1.66×) | 0.653 (1.00×) |
+| 10 × 256 chars of ASCII: deserialize | 0.574 | 1.026 (1.79×) | 0.573 (1.00×) |
+| 10 × 256 chars of ASCII: read the last string | 0.368 | 0.494 (1.34×) | 0.371 (1.01×) |
+| 10 × 8 chars of 3 bytes: serialize | 0.626 | 0.813 (1.30×) | 0.625 (1.00×) |
+| 10 × 8 chars of 3 bytes: deserialize | 0.875 | 1.357 (1.55×) | 0.880 (1.00×) |
+| 10 × 8 chars of 3 bytes: read the last string | 0.403 | 0.523 (1.30×) | 0.399 (0.99×) |
+| 100 × 16 chars of ASCII: serialize | 2.407 | 4.655 (1.93×) | 2.397 (1.00×) |
+| 100 × 16 chars of ASCII: deserialize | 1.722 | 4.634 (2.69×) | 1.683 (0.98×) |
+| 100 × 16 chars of ASCII: read the last string | 0.347 | 0.481 (1.39×) | 0.350 (1.01×) |
+| 100 × 256 chars of ASCII: serialize | 2.553 | 7.035 (2.76×) | 2.556 (1.00×) |
+| 100 × 256 chars of ASCII: deserialize | 2.715 | 5.863 (2.16×) | 2.712 (1.00×) |
+| 100 × 256 chars of ASCII: read the last string | 0.368 | 0.494 (1.34×) | 0.373 (1.01×) |
+| 100 × 8 chars of 3 bytes: serialize | 2.484 | 4.913 (1.98×) | 2.490 (1.00×) |
+| 100 × 8 chars of 3 bytes: deserialize | 5.646 | 8.880 (1.57×) | 5.643 (1.00×) |
+| 100 × 8 chars of 3 bytes: read the last string | 0.404 | 0.525 (1.30×) | 0.408 (1.01×) |
+| 10,000 × 16 chars of ASCII: serialize | 168.0 | 460.0 (2.74×) | 168.7 (1.00×) |
+| 10,000 × 16 chars of ASCII: deserialize | 151.2 | 663.1 (4.39×) | 151.0 (1.00×) |
+| 10,000 × 16 chars of ASCII: read the last string | 0.353 | 0.487 (1.38×) | 0.352 (1.00×) |
+| 10,000 × 256 chars of ASCII: serialize | 210.8 | 543.8 (2.58×) | 213.1 (1.01×) |
+| 10,000 × 256 chars of ASCII: deserialize | 365.9 | 840.2 (2.30×) | 384.8 (1.05×) |
+| 10,000 × 256 chars of ASCII: read the last string | 0.369 | 0.506 (1.37×) | 0.370 (1.00×) |
+| 10,000 × 8 chars of 3 bytes: serialize | 176.6 | 483.7 (2.74×) | 174.8 (0.99×) |
+| 10,000 × 8 chars of 3 bytes: deserialize | 534.7 | 1029.8 (1.93×) | 532.4 (1.00×) |
+| 10,000 × 8 chars of 3 bytes: read the last string | 0.403 | 0.533 (1.32×) | 0.405 (1.00×) |
+
+- The vector of strings is written in 0.36–0.77 times the time of the
+  vector of tables, whose tables `serialize_values()` writes one by one.
+- Every string is read in 0.23–0.65 times the time: 0.23–0.56 for lists of
+  ASCII and 0.52–0.65 for strings of 3 bytes, decoded by CPython from the
+  native reader's bytes, a string at a time.
+- The last string is found in 0.72–0.77 times the time.
+
+The pure-Python classes weren't timed in a full run: in shorter runs, their
+`get_string_vector()`, which decodes a list of ASCII as one run, read the
+lists in 0.45–0.73 times the time of reading each string for ASCII, and in
+0.63–0.82 times for strings of 3 bytes.

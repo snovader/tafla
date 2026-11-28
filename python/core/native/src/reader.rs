@@ -73,14 +73,14 @@ impl TableReader {
     }
 
     #[inline]
-    const fn size(&self) -> usize {
+    pub(crate) const fn size(&self) -> usize {
         self.shape.size()
     }
 
     /// The position of a read of `length` bytes, which must be non-negative,
     /// as `struct` reads the scalars
     #[inline]
-    fn position(&self, position: &Bound<'_, PyAny>, length: usize) -> PyResult<usize> {
+    pub(crate) fn position(&self, position: &Bound<'_, PyAny>, length: usize) -> PyResult<usize> {
         if let Some(position) = small(position)?
             && let Ok(position) = usize::try_from(position)
         {
@@ -192,6 +192,21 @@ impl TableReader {
         count: &Int<'py>,
         index: &Int<'py>,
     ) -> PyResult<Int<'py>> {
+        let (start, _) = self.item_bounds(py, position, count, index)?;
+        Ok(start)
+    }
+
+    /// Where item `index` of the vector of `count` items at `position`
+    /// starts and ends, as `item_offset()` finds it: within the bytes, but
+    /// before them for a negative position, which a caller may pass, as the
+    /// pure-Python runtime finds it
+    pub(crate) fn item_bounds<'py>(
+        &self,
+        py: Python<'py>,
+        position: &Int<'py>,
+        count: &Int<'py>,
+        index: &Int<'py>,
+    ) -> PyResult<(Int<'py>, Int<'py>)> {
         if index.is_negative()? || !index.lt(count.clone())? {
             return Err(PyIndexError::new_err(format!(
                 "Item {} is outside the vector of {} at {}",
@@ -212,8 +227,91 @@ impl TableReader {
         if end.lt(start.clone())? || Int::from(self.available()).lt(position.add(end.clone())?)? {
             return Err(item_error(py, position, &start, &end, self.available()));
         }
-        position.add(start)
+
+        Ok((position.add(start)?, position.add(end)?))
     }
+
+    /// Reads every string of the vector of strings at `at`, as
+    /// `get_string_vector()` reads them
+    pub(crate) fn strings_at<'py>(
+        &self,
+        py: Python<'py>,
+        at: usize,
+    ) -> PyResult<Bound<'py, PyList>> {
+        let vector = self
+            .core()
+            .get_vector(at)
+            .map_err(|error| core_error(py, &error))?;
+
+        // The list first, since creating it may run the garbage collector,
+        // and with it Python code, which creating the strings doesn't. Each
+        // string is decoded by CPython, which checks it as UTF-8 on its own,
+        // from the bounds that the Rust runtime reads and checks one after
+        // another.
+        let list = unsafe {
+            Bound::from_owned_ptr_or_err(py, ffi::PyList_New(vector.len().cast_signed()))?
+                .cast_into_unchecked::<PyList>()
+        };
+        for (index, item) in vector.iter().enumerate() {
+            let bytes = item.map_err(|error| core_error(py, &error))?;
+            let string = decode_utf8(py, bytes, self.offset_of(bytes))?;
+            list_set(&list, index, string)?;
+        }
+
+        Ok(list)
+    }
+
+    /// Decodes the string from `start` to `end` in the bytes, which
+    /// `item_bounds()` found, as the pure-Python runtime decodes a string of
+    /// a vector of strings. A string that starts before the bytes, at a
+    /// negative position, lies outside them.
+    #[inline]
+    pub(crate) fn decode_string<'py>(
+        &self,
+        py: Python<'py>,
+        start: &Int<'py>,
+        end: &Int<'py>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        match (start.index(), end.index()) {
+            (Some(from), Some(to)) => decode_utf8(py, &self.bytes_slice()[from..to], from),
+            _ => Err(out_of_range(
+                py,
+                start,
+                &end.sub(start.clone())?,
+                self.available(),
+            )),
+        }
+    }
+}
+
+/// Decodes `bytes`, a string at `start` in a reader's bytes, as UTF-8, or
+/// raises the pure-Python runtime's `DecodeError` for them, whose cause is
+/// the `UnicodeDecodeError`. Creating a `str` runs no Python code, so the
+/// bytes stay borrowed.
+#[inline]
+fn decode_utf8<'py>(py: Python<'py>, bytes: &[u8], start: usize) -> PyResult<Bound<'py, PyAny>> {
+    let string = unsafe {
+        ffi::PyUnicode_DecodeUTF8(
+            bytes.as_ptr().cast(),
+            bytes.len().cast_signed(),
+            c"strict".as_ptr(),
+        )
+    };
+    if string.is_null() {
+        return Err(string_error(py, start));
+    }
+
+    Ok(unsafe { Bound::from_owned_ptr(py, string) })
+}
+
+/// The error of a string of a vector of strings, at `start`, that isn't
+/// valid UTF-8, whose `UnicodeDecodeError` `CPython` has just raised
+#[cold]
+fn string_error(py: Python<'_>, start: usize) -> PyErr {
+    let cause = PyErr::fetch(py);
+    let error = decode_error(py, format!("The string at {start} isn't valid UTF-8"));
+    error.set_cause(py, Some(cause));
+    error
 }
 
 /// The error of a vector item that starts after it ends, or ends past the
@@ -531,7 +629,7 @@ impl TableReader {
                     ffi::Py_True()
                 }
             };
-            list_set(&list, index, bool)?;
+            list_set_bool(&list, index, bool)?;
         }
 
         Ok(list)
@@ -645,7 +743,11 @@ impl TableReader {
     /// Raises ``DecodeError`` if the count or the ends after it don't lie
     /// within the buffer. Every item has an end, so a count that the bytes
     /// can't hold fails before anything is allocated for it.
-    fn get_vector_length(&self, py: Python<'_>, position: &Bound<'_, PyAny>) -> PyResult<usize> {
+    pub(crate) fn get_vector_length(
+        &self,
+        py: Python<'_>,
+        position: &Bound<'_, PyAny>,
+    ) -> PyResult<usize> {
         let at = self.position(position, self.size())?;
         let vector = self
             .core()
@@ -826,6 +928,50 @@ impl TableReader {
             list.append(self.slice(py, start, start + length)?)?;
         }
         Ok(list)
+    }
+
+    /// Reads every string of the vector of strings at ``position``, in
+    /// order.
+    ///
+    /// A vector of strings is laid out as a vector of tables is: its count,
+    /// the end of each string from the vector's position, and then the
+    /// strings' UTF-8, one after another, so the ends are read and checked
+    /// as ``get_vector()`` reads a vector's. Each string reads as reading it
+    /// on its own with ``get_string_vector_item()`` would.
+    ///
+    /// Raises ``DecodeError`` if the count, the ends or the strings don't
+    /// lie within the buffer, a string ends before it starts, or one isn't
+    /// valid UTF-8: the error that reading the strings one after another
+    /// with ``get_string_vector_item()`` raises first.
+    fn get_string_vector<'py>(
+        &self,
+        py: Python<'py>,
+        position: &Bound<'_, PyAny>,
+    ) -> PyResult<Bound<'py, PyList>> {
+        let at = self.position(position, self.size())?;
+        self.strings_at(py, at)
+    }
+
+    /// Reads string ``index`` of the vector of strings at ``position``,
+    /// from its end and the end of the string before it, without reading
+    /// any other string. It takes the vector's ``count``, which
+    /// ``get_vector_length()`` returned, and doesn't read or check it again,
+    /// as ``get_vector_item_offset()`` does, so that reading many strings,
+    /// as a ``StringVector`` does, reads and checks the count once.
+    ///
+    /// Raises ``IndexError`` if ``index`` isn't below ``count``, and
+    /// ``DecodeError`` if the string's ends or the string don't lie within
+    /// the buffer, it ends before it starts, or it isn't valid UTF-8.
+    fn get_string_vector_item<'py>(
+        &self,
+        py: Python<'py>,
+        position: &Bound<'py, PyAny>,
+        count: &Bound<'py, PyAny>,
+        index: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let position = Int::new(position)?;
+        let (start, end) = self.item_bounds(py, &position, &Int::new(count)?, &Int::new(index)?)?;
+        self.decode_string(py, &start, &end)
     }
 }
 
@@ -1018,6 +1164,20 @@ fn read_slot(bytes: &[u8], size: usize) -> usize {
     }
 }
 
+/// Sets item `index` of a list that was just created
+#[inline]
+fn list_set(list: &Bound<'_, PyList>, index: usize, value: Bound<'_, PyAny>) -> PyResult<()> {
+    #[cfg(not(Py_LIMITED_API))]
+    unsafe {
+        ffi::PyList_SET_ITEM(list.as_ptr(), index.cast_signed(), value.into_ptr());
+    }
+    #[cfg(Py_LIMITED_API)]
+    if unsafe { ffi::PyList_SetItem(list.as_ptr(), index.cast_signed(), value.into_ptr()) } != 0 {
+        return Err(PyErr::fetch(list.py()));
+    }
+    Ok(())
+}
+
 /// Sets item `index` of a tuple that was just created
 #[inline]
 fn tuple_set(tuple: &Bound<'_, PyAny>, index: usize, value: Bound<'_, PyAny>) -> PyResult<()> {
@@ -1035,7 +1195,7 @@ fn tuple_set(tuple: &Bound<'_, PyAny>, index: usize, value: Bound<'_, PyAny>) ->
 /// Sets item `index` of a list that was just created to `True` or `False`,
 /// borrowed from the interpreter
 #[inline]
-fn list_set(list: &Bound<'_, PyList>, index: usize, bool: *mut ffi::PyObject) -> PyResult<()> {
+fn list_set_bool(list: &Bound<'_, PyList>, index: usize, bool: *mut ffi::PyObject) -> PyResult<()> {
     // The list holds a reference of its own, which these calls steal
     let bool = unsafe { ffi::Py_NewRef(bool) };
     #[cfg(not(Py_LIMITED_API))]

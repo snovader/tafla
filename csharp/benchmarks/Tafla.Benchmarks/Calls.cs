@@ -81,6 +81,8 @@ internal static class Sink
     public static ItemList? List;
     public static Sample Sample;
     public static double Number;
+    public static string[]? Strings;
+    public static string? Text;
 
     /// <summary>Forgets every result, so that a check sees only what the next call stores.</summary>
     public static void Clear()
@@ -92,6 +94,8 @@ internal static class Sink
         List = null;
         Sample = default;
         Number = double.NaN;
+        Strings = null;
+        Text = null;
     }
 
     /// <summary>Keeps the last results alive to the end of the run.</summary>
@@ -104,6 +108,8 @@ internal static class Sink
         GC.KeepAlive(List);
         GC.KeepAlive(Sample);
         GC.KeepAlive(Number);
+        GC.KeepAlive(Strings);
+        GC.KeepAlive(Text);
     }
 }
 
@@ -234,6 +240,39 @@ internal readonly struct DeserializeSample<TCodec>(byte[] bytes, Sample sample) 
     public void Call() => Sink.Sample = default(TCodec).DeserializeSample(bytes);
 
     public bool Check() => Sink.Sample.Same(sample);
+}
+
+internal readonly struct SerializeStrings<TCodec>(string[] strings) : ICall
+    where TCodec : struct, IStringListCodec
+{
+    public string Name => default(TCodec).Name;
+
+    public void Call() => Sink.Bytes = default(TCodec).SerializeStrings(strings);
+
+    public bool Check() =>
+        Sink.Bytes is { } bytes
+        && default(TCodec).DeserializeStrings(bytes).AsSpan().SequenceEqual(strings)
+        && default(TCodec).ReadLastString(bytes) == strings[^1];
+}
+
+internal readonly struct DeserializeStrings<TCodec>(byte[] bytes, string[] strings) : ICall
+    where TCodec : struct, IStringListCodec
+{
+    public string Name => default(TCodec).Name;
+
+    public void Call() => Sink.Strings = default(TCodec).DeserializeStrings(bytes);
+
+    public bool Check() => Sink.Strings is { } read && read.AsSpan().SequenceEqual(strings);
+}
+
+internal readonly struct ReadLastString<TCodec>(byte[] bytes, string last) : ICall
+    where TCodec : struct, IStringListCodec
+{
+    public string Name => default(TCodec).Name;
+
+    public void Call() => Sink.Text = default(TCodec).ReadLastString(bytes);
+
+    public bool Check() => Sink.Text == last;
 }
 
 /// <summary>One of tafla's reads of <see cref="TaflaReads"/> or <see cref="TaflaGenReads"/>, which sums what it reads.</summary>

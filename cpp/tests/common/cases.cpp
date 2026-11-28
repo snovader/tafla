@@ -146,6 +146,9 @@ Field field_of(const nlohmann::json& field) {
     if (type == "string") {
         return {value.get<std::string>()};
     }
+    if (type == "string[]") {
+        return {StringVectorField{plain_array_of<std::string>(value)}};
+    }
     if (type == "struct") {
         Struct structure;
         for (const auto& scalar : field.at("fields")) {

@@ -25,8 +25,8 @@ const intIs64 = strconv.IntSize == 64
 //
 // Arrays, strings, structs and vector items are read in place, sharing the
 // bytes rather than copying them, so they change when the bytes do. A
-// string shares them too, which Go's strings otherwise don't: the bytes
-// must not change while it's in use.
+// string, and each string of a vector of strings, shares them too, which
+// Go's strings otherwise don't: the bytes must not change while it's in use.
 //
 // A TableReader is a small value, which is cheap to copy and to create for
 // each read. The zero TableReader reads empty bytes in the default layout.
@@ -424,6 +424,16 @@ func (r TableReader) GetVector(position int) (Vector, error) {
 		length:     count,
 		offsetType: r.layout.offsetType,
 	}, nil
+}
+
+// GetStringVector reads the vector of strings at position, checking that its
+// count and the ends of its strings lie within the bytes, as
+// [TableReader.GetVector] checks a vector's. Each string is checked when it's
+// read. It fails with OutOfRange if the count or the ends don't lie within
+// the bytes.
+func (r TableReader) GetStringVector(position int) (StringVector, error) {
+	vector, err := r.GetVector(position)
+	return StringVector{vector: vector}, err
 }
 
 func getArray[T Element](r TableReader, position int) (ArrayView[T], error) {

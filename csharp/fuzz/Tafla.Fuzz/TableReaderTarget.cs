@@ -8,7 +8,7 @@ namespace Tafla.Fuzz;
 /// <summary>
 /// Reads the rest of its input with every getter of <see cref="TableReader"/> at a position, in an
 /// offset type and header, which the input's first four bytes choose, and reads the arrays, struct
-/// arrays and vector that it finds there.
+/// arrays, vector and vector of strings that it finds there.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -48,8 +48,9 @@ internal static class TableReaderTarget
 
     /// <summary>
     /// What a read that throws may allocate: its <see cref="DecodeException"/>, with its message and
-    /// stack trace, and an invalid string's <see cref="DecoderFallbackException"/> within it. The
-    /// most that one allocated, over 3.4 million inputs of both builds, was 1,672 bytes.
+    /// stack trace, and an invalid string's <see cref="DecoderFallbackException"/> within it, which
+    /// a string decoded in one pass decodes again for. The most that one allocated, over 3.4 million
+    /// inputs of both builds, was 1,672 bytes.
     /// </summary>
     private const long ExceptionAllowance = 4 << 10;
 
@@ -77,28 +78,29 @@ internal static class TableReaderTarget
     /// <summary>
     /// Whether the reads' allocations are checked, which the static constructor sets once the target
     /// has warmed up, since the runtime and .NET allocate some things once, such as the reader's UTF-8
-    /// decoder and an exception's resources
+    /// decoders and an exception's resources
     /// </summary>
     private static readonly bool ChecksAllocations;
 
     static TableReaderTarget()
     {
         CheckDefaultVector();
+        CheckDefaultStringVector();
         WarmUp();
         ChecksAllocations = true;
     }
 
     /// <summary>
-    /// Reads that throw, decode an invalid and a valid string, copy arrays where the runtime copies
+    /// Reads that throw, decode invalid and valid strings, copy arrays where the runtime copies
     /// them, and read bools, one at a time and 16 at a time, unchecked, so that what the runtime and
-    /// .NET allocate once, such as the reader's UTF-8 decoder and an exception's resources, is
-    /// allocated before the reads that are checked
+    /// .NET allocate once, such as the reader's UTF-8 decoders, an exception's resources and the
+    /// chars that the reader decodes strings into on each thread, is allocated before the reads that
+    /// are checked
     /// </summary>
     private static void WarmUp()
     {
         var layout = new TableLayout { OffsetType = OffsetType.UInt8 };
         var invalid = new TableReader(new byte[] { 2, 0xc0, 0x80 }, layout);
-        var valid = new TableReader(new byte[] { 1, (byte)'a' }, layout);
         var empty = new TableReader(new byte[] { 0 }, layout);
         var bools = new TableReader(new byte[] { 17, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 }, layout);
 
@@ -114,11 +116,60 @@ internal static class TableReaderTarget
         }
         catch (DecodeException) { }
 
-        _ = valid.GetString(0);
+        // The reader decodes strings of up to 128 bytes, of up to 1,024 and longer ones each in its
+        // own way, and ASCII in another
+        foreach (var length in new[] { 1, 200, 1100 })
+        {
+            WarmUpString(Encoding.ASCII.GetBytes(new string('a', length)));
+            WarmUpString(Encoding.UTF8.GetBytes(new string('é', (length + 1) / 2)));
+            WarmUpString([.. Encoding.ASCII.GetBytes(new string('a', length)), 0xff]);
+        }
+
+        var strings = new TableReader(new byte[] { 2, 3, 4, 0xc0, 0x80 }, layout).GetStringVector(0);
+        _ = strings[0];
+        try
+        {
+            _ = strings[1];
+        }
+        catch (DecodeException) { }
+
         _ = empty.GetInt16Array(0).Length + empty.GetUInt16Array(0).Length;
         _ = empty.GetInt32Array(0).Length + empty.GetUInt32Array(0).Length + empty.GetFloat32Array(0).Length;
         _ = empty.GetInt64Array(0).Length + empty.GetUInt64Array(0).Length + empty.GetFloat64Array(0).Length;
         _ = empty.GetBoolArray(0).Length + bools.GetBoolArray(0).Length;
+    }
+
+    /// <summary>
+    /// Reads <paramref name="utf8"/>, valid or not, as the string of a table of uint16 offsets, and as
+    /// the string of a vector of one, which is decoded as a string is
+    /// </summary>
+    private static void WarmUpString(byte[] utf8)
+    {
+        var layout = new TableLayout { OffsetType = OffsetType.UInt16 };
+
+        var bytes = new byte[sizeof(ushort) + utf8.Length];
+        bytes[0] = (byte)utf8.Length;
+        bytes[1] = (byte)(utf8.Length >> 8);
+        utf8.CopyTo(bytes, sizeof(ushort));
+
+        try
+        {
+            _ = new TableReader(bytes, layout).GetString(0);
+        }
+        catch (DecodeException) { }
+
+        // The vector's count, 1, and its string's end, from the vector's position, before its UTF-8
+        var vector = new byte[2 * sizeof(ushort) + utf8.Length];
+        vector[0] = 1;
+        vector[2] = (byte)vector.Length;
+        vector[3] = (byte)(vector.Length >> 8);
+        utf8.CopyTo(vector, 2 * sizeof(ushort));
+
+        try
+        {
+            _ = new TableReader(vector, layout).GetStringVector(0)[0];
+        }
+        catch (DecodeException) { }
     }
 
     public static void Run(ReadOnlySpan<byte> input)
@@ -203,6 +254,7 @@ internal static class TableReaderTarget
         }
 
         CheckVector(bytes, reader, position);
+        CheckStringVector(bytes, reader, position);
     }
 
     /// <summary>Reads each scalar at <paramref name="position"/>, and compares their bits with the bytes'</summary>
@@ -557,6 +609,205 @@ internal static class TableReaderTarget
 
         Check.That(vector.Count == 0 && !inOrder.MoveNext() && !inPlace.MoveNext());
         Check.That(ThrowsOutOfRange(vector, vector => vector.Get(0)) && ThrowsOutOfRange(vector, vector => vector.GetInPlace(0)));
+    }
+
+    /// <summary>
+    /// Reads the vector of strings at <paramref name="position"/>, whose count and ends lie as a
+    /// vector's, and checks each of its strings, by index and in order, and all of them at once
+    /// </summary>
+    private static void CheckStringVector(ReadOnlySpan<byte> bytes, TableReader reader, int position)
+    {
+        var offsetType = reader.OffsetType;
+
+        // A count, and an end for each string after it, within the bytes
+        var expected = SlotAt(bytes, position, offsetType);
+        if (expected.Value is { } count && RangeAt(bytes, position + (long)offsetType.Size, count * offsetType.Size) is { Value: null } ends)
+        {
+            expected = new Expected<long>(null, ends.Position, ends.ByteLength);
+        }
+
+        var start = Allocated();
+        StringVector vector;
+        try
+        {
+            vector = reader.GetStringVector(position);
+        }
+        catch (DecodeException error)
+        {
+            CheckFailure(bytes, error, expected, start);
+            return;
+        }
+
+        CheckAllocation(Allocated() - start, 0);
+        Check.That(expected.Value is { } length && vector.Count == length);
+        CheckStrings(bytes, position, offsetType, vector);
+    }
+
+    /// <summary>A string of a vector of strings, or the error of reading it</summary>
+    private readonly record struct Text(string? Value, DecodeException? Error);
+
+    /// <summary>
+    /// Reads the strings by index and in order, each of which must be what its bytes hold, the first
+    /// <see cref="Checked"/> and then on to the first that fails, and the last by index, and all of
+    /// them at once, which must read the same strings, or fail with the error of the first that fails.
+    /// Reading stops at the first failure past the first <see cref="Checked"/> strings, since a .NET
+    /// exception takes microseconds, and a vector may hold as many strings as the input has bytes.
+    /// </summary>
+    private static void CheckStrings(ReadOnlySpan<byte> bytes, int position, OffsetType offsetType, StringVector vector)
+    {
+        var found = new List<string>();
+        var inOrder = vector.GetEnumerator();
+        DecodeException? first = null;
+        long allowed = ObjectOverhead + (long)IntPtr.Size * vector.Count;
+
+        var index = 0;
+        for (; index < vector.Count && (index < Checked || first is null); index++)
+        {
+            var text = FindString(vector, index);
+            CheckVectorString(bytes, position, offsetType, index, text);
+            Check.That(SameText(NextString(ref inOrder), text));
+
+            if (text.Value is { } value)
+            {
+                found.Add(value);
+                allowed += 2L * value.Length + ObjectOverhead;
+            }
+            else
+            {
+                first ??= text.Error;
+            }
+        }
+
+        // The enumerator ends after the last string
+        if (index == vector.Count)
+        {
+            Check.That(!inOrder.MoveNext());
+        }
+
+        if (vector.Count > 0)
+        {
+            var last = vector.Count - 1;
+            CheckVectorString(bytes, position, offsetType, last, FindString(vector, last));
+        }
+
+        var start = Allocated();
+        try
+        {
+            var all = vector.ToArray();
+            CheckAllocation(Allocated() - start, allowed);
+            Check.That(first is null && all.AsSpan().SequenceEqual(found.ToArray()));
+        }
+        catch (DecodeException error)
+        {
+            Check.That(first is not null && SameError(error, first));
+        }
+
+        // Indices that aren't a string's are a caller's mistake
+        foreach (var outside in (int[])[vector.Count, int.MaxValue, -1, int.MinValue])
+        {
+            Check.That(ThrowsOutOfRange(vector, vector => vector[outside]));
+        }
+    }
+
+    /// <summary>Reads string <paramref name="index"/> by its ends, which allocates the string, or its exception</summary>
+    private static Text FindString(StringVector vector, int index)
+    {
+        var start = Allocated();
+        try
+        {
+            var value = vector[index];
+            CheckAllocation(Allocated() - start, 2L * value.Length + ObjectOverhead);
+
+            return new Text(value, null);
+        }
+        catch (DecodeException error)
+        {
+            CheckAllocation(Allocated() - start, ExceptionAllowance);
+            return new Text(null, error);
+        }
+    }
+
+    /// <summary>Moves to the next string, which lies within the vector</summary>
+    private static Text NextString(ref StringVector.Enumerator strings)
+    {
+        try
+        {
+            Check.That(strings.MoveNext());
+            return new Text(strings.Current, null);
+        }
+        catch (DecodeException error)
+        {
+            return new Text(null, error);
+        }
+    }
+
+    /// <summary>
+    /// Checks string <paramref name="index"/> of the vector of strings at <paramref name="position"/>,
+    /// which starts where the one before it ends, and the first after the count and the ends, and is
+    /// its bytes' UTF-8 exactly when they lie within the bytes and are valid
+    /// </summary>
+    private static void CheckVectorString(ReadOnlySpan<byte> bytes, int position, OffsetType offsetType, int index, Text text)
+    {
+        // The count and the ends, which the vector's reader checked lie within the bytes
+        var width = offsetType.Size;
+        var start = index == 0
+            ? (SlotWithin(bytes, position, offsetType) + 1) * width
+            : SlotWithin(bytes, position + (long)index * width, offsetType);
+        var end = SlotWithin(bytes, position + (index + 1L) * width, offsetType);
+
+        if (start > end)
+        {
+            var error = text.Error ?? throw new CheckFailedException("A string that ends before it starts was read");
+            Check.That(error.Kind == DecodeErrorKind.ItemEndsBeforeStart && error.Message.Length > 0);
+            Check.That(error.Position == position + start && error.End == position + end);
+        }
+        else if (position + end > bytes.Length)
+        {
+            var failure = text.Error ?? throw new CheckFailedException("A string past the bytes was read");
+            CheckOutOfRange(bytes, failure, new Expected<long>(null, position + start, end - start));
+        }
+        else
+        {
+            var utf8 = bytes.Slice((int)(position + start), (int)(end - start));
+            if (Utf8.IsValid(utf8))
+            {
+                Check.That(text.Value == Encoding.UTF8.GetString(utf8));
+            }
+            else
+            {
+                var error = text.Error ?? throw new CheckFailedException("A string that isn't valid UTF-8 was read");
+                Check.That(error.Kind == DecodeErrorKind.InvalidUtf8 && error.Position == position + start);
+                Check.That(error.Message.Length > 0 && error.InnerException is DecoderFallbackException);
+            }
+        }
+    }
+
+    private static bool SameText(Text a, Text b) =>
+        a.Error is not null || b.Error is not null
+            ? a.Error is { } x && b.Error is { } y && SameError(x, y)
+            : a.Value == b.Value;
+
+    private static bool ThrowsOutOfRange(StringVector vector, Func<StringVector, string> read)
+    {
+        try
+        {
+            read(vector);
+            return false;
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return true;
+        }
+    }
+
+    /// <summary>The default vector of strings is empty</summary>
+    private static void CheckDefaultStringVector()
+    {
+        var vector = default(StringVector);
+        var strings = vector.GetEnumerator();
+
+        Check.That(vector.Count == 0 && vector.ToArray().Length == 0 && !strings.MoveNext());
+        Check.That(ThrowsOutOfRange(vector, vector => vector[0]));
     }
 
     /// <summary>Checks that a read returns the expected value, or throws for the read that leaves the bytes</summary>

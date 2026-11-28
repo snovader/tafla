@@ -101,7 +101,8 @@ func TestArraysStartAtAMultipleOfTheirAlignment(t *testing.T) {
 // Scalars hold their values' little-endian bytes, structs their scalars',
 // arrays and strings their counts' and their elements', and vectors their
 // counts' and their items' ends', which count from the vector's position,
-// after the ends
+// after the ends. Vectors of strings hold their counts', their strings' ends'
+// and then their strings' UTF-8, one after another without padding.
 func TestValuesAreLittleEndian(t *testing.T) {
 	checkFormat(t, func(t *rapid.T, found tableIn) {
 		width := found.table.Layout.OffsetType.Size()
@@ -117,6 +118,11 @@ func TestValuesAreLittleEndian(t *testing.T) {
 					!bytes.Equal(bytesOf[width:], value.bytes)) {
 					t.Fatalf("%+v holds % x", field.field, bytesOf)
 				}
+				continue
+			}
+
+			if strings, ok := field.field.(tables.StringVector); ok {
+				checkStringVectorBytes(t, bytesOf, strings, width)
 				continue
 			}
 
@@ -139,6 +145,30 @@ func TestValuesAreLittleEndian(t *testing.T) {
 			}
 		}
 	})
+}
+
+// checkStringVectorBytes checks that the bytes of a vector of strings hold their
+// count, the end of each string from the vector's position, and then the
+// strings' UTF-8, one after another, each from the end of the one before it
+func checkStringVectorBytes(t *rapid.T, bytesOf []byte, strings tables.StringVector, width int) {
+	if !bytes.Equal(bytesOf[:width], slotBytes(len(strings), width)) {
+		t.Fatalf("a vector of %d strings holds the count % x", len(strings), bytesOf[:width])
+	}
+
+	start := (len(strings) + 1) * width
+	for index, value := range strings {
+		end := start + len(value)
+
+		slot := bytesOf[(index+1)*width : (index+2)*width]
+		if !bytes.Equal(slot, slotBytes(end, width)) {
+			t.Fatalf("string %d ends at % x rather than %d", index, slot, end)
+		}
+		if !bytes.Equal(bytesOf[start:end], []byte(value)) {
+			t.Fatalf("string %d holds % x rather than %q", index, bytesOf[start:end], value)
+		}
+
+		start = end
+	}
 }
 
 // Values follow the header and offsets in field order, each after the
@@ -233,6 +263,12 @@ func findTables(bytes []byte, table tables.Table, ownBytes []byte, found *[]tabl
 				end += findNested(bytes, end, item, found)
 			}
 			length = end - position
+		case tables.StringVector:
+			// The strings follow the count and the ends
+			length = (len(field) + 1) * width
+			for _, value := range field {
+				length += len(value)
+			}
 		default:
 			value, _ := valueOf(field)
 			length = value.byteLength(width)

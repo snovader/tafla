@@ -2,7 +2,7 @@ from collections.abc import Buffer, Callable, Collection, Iterable, Sequence
 from typing import Any
 
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
-from .elements import as_elements, bool_bytes, byte_view, struct_count
+from .elements import as_elements, bool_bytes, byte_view, str_vector_error, struct_count
 from .implementation import TableLayout, TableReader, TableWriter
 from .layout import MAX_LENGTHS, header_length, padding_to
 from .types import ElementSize, OffsetSize, TypeCode
@@ -35,7 +35,8 @@ class TableBuilder:
     """Builds a table: a header with one offset per field, after the table's
     total length and version when its layout has them, followed by the fields
     in the order they're set. Arrays, strings and vectors start with their
-    count, and a vector then holds the end of each item. Arrays of scalars and
+    count, and a vector, of tables or of strings, then holds the end of each
+    item. Arrays of scalars and
     of structs are padded so their elements are aligned from the start of the
     table. Fields are read back by index with ``TableReader.root_offset()``, or
     ``TableReader.field_offset()`` for a table nested in another.
@@ -261,6 +262,40 @@ class TableBuilder:
             encoded = string.encode()
             self.__add_field(
                 TableWriter._set_encoded_string, encoded, self.__size + len(encoded)
+            )
+
+    def set_string_vector(self, strings: Sequence[str]) -> None:
+        """Writes a vector of strings, each as UTF-8, after the end of each,
+        which lets readers find any string without reading the others. It
+        takes no more bytes for each string than the end of it, where a
+        vector of tables of one string each takes each table's offset and the
+        string's count too.
+
+        Raises ``UnicodeEncodeError``, a ``ValueError``, if a string has a
+        lone surrogate, which UTF-8 can't encode, and ``TypeError`` for a
+        ``str``, which is a sequence of its characters.
+        """
+        if isinstance(strings, str):
+            raise str_vector_error()
+
+        # Strings of ASCII are as long as their UTF-8, so the writer encodes
+        # them, from a tuple that the builder owns. Any others are encoded
+        # here, to count their bytes, and written as they are, as
+        # set_string() writes a string, which raises the error of the first
+        # item that can't be encoded, as the writer does.
+        items = tuple(strings)
+        try:
+            joined = "".join(items)
+        except TypeError:
+            joined = None
+        if joined is not None and joined.isascii():
+            byte_length = self.__size * (1 + len(items)) + len(joined)
+            self.__add_field(TableWriter.set_string_vector, items, byte_length)
+        else:
+            encoded = list(map(str.encode, items))
+            byte_length = self.__size * (1 + len(encoded)) + sum(map(len, encoded))
+            self.__add_field(
+                TableWriter._set_encoded_string_vector, encoded, byte_length
             )
 
     def set_struct(self, data: Buffer) -> None:

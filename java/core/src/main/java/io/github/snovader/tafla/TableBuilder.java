@@ -8,10 +8,10 @@ import java.util.function.*;
 /**
  * Builds a table: a header with one offset per field, after the table's total length and version
  * when its layout has them, followed by the fields in the order they're set. Arrays, strings and
- * vectors start with their count, and a vector then holds the end of each item. Arrays of scalars
- * and of structs are padded so that their elements are aligned from the start of the table. Fields
- * are read back by index with {@link TableReader#rootOffset}, or {@link TableReader#fieldOffset} for
- * a table nested in another.
+ * vectors start with their count, and a vector, of tables or of strings, then holds the end of each
+ * item. Arrays of scalars and of structs are padded so that their elements are aligned from the
+ * start of the table. Fields are read back by index with {@link TableReader#rootOffset}, or
+ * {@link TableReader#fieldOffset} for a table nested in another.
  *
  * <p>Setting a field records it and counts its bytes. {@link #bytes()} then allocates the table at
  * its exact size and writes every field in one pass, with a {@link TableWriter} as the generated
@@ -235,6 +235,40 @@ public final class TableBuilder {
             var byteLength = offsetType.size() + (long) utf8.length;
             addField(byteLength, 0, (writer, index) -> writer.setEncodedString(index, utf8));
         }
+    }
+
+    /**
+     * Writes a vector of strings, each as UTF-8 with lone surrogates replaced by U+FFFD, after the
+     * end of each, which lets readers find any string without reading the others. It takes no
+     * more bytes for each string than its end, where a vector of tables of one string takes each
+     * table's offset and the string's count too. {@link TableReader#getStringVector} and
+     * {@link StringVector} read it back.
+     *
+     * <p>The list is copied, so later changes to it don't change the table.</p>
+     */
+    public void setStringVector(List<String> strings) {
+        var items = strings.toArray(new String[0]);
+
+        // As setString() records a string: a short one is counted, and the writer encodes it in
+        // place, and a long one is encoded once here, in order, and the writer copies it
+        List<byte[]> longStrings = List.of();
+        var byteLength = (items.length + 1L) * offsetType.size();
+        for (var string : items) {
+            if (string.length() < Utf8.SHORT_LENGTH) {
+                byteLength += Utf8.length(string);
+                continue;
+            }
+
+            if (longStrings.isEmpty()) {
+                longStrings = new ArrayList<>();
+            }
+            var utf8 = Utf8.encode(string);
+            longStrings.add(utf8);
+            byteLength += utf8.length;
+        }
+
+        var encoded = longStrings;
+        addField(byteLength, 0, (writer, index) -> writer.setStringVector(index, items, encoded));
     }
 
     /**
@@ -806,6 +840,10 @@ public final class TableBuilder {
 
         public void setString(String string) {
             TableBuilder.this.setString(string);
+        }
+
+        public void setStringVector(List<String> strings) {
+            TableBuilder.this.setStringVector(strings);
         }
 
         public void setStruct(byte[] bytes) {

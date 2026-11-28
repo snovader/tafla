@@ -18,7 +18,14 @@ from dataclasses import dataclass
 from math import copysign, isinf, isnan
 from typing import Any, Literal, cast
 
-from tafla import OffsetType, TableBuilder, TableLayout, TableReader, TableWriter
+from tafla import (
+    OffsetType,
+    StringVector,
+    TableBuilder,
+    TableLayout,
+    TableReader,
+    TableWriter,
+)
 
 # A table, field, layout or vector item as cases.json describes it
 type Description = dict[str, Any]
@@ -104,8 +111,9 @@ def to_json(kind: str, value: Any) -> Any:
 def is_typed_array(kind: str) -> bool:
     """Whether a field's type is an array of integers or floats, whose
     elements are aligned to their size, rather than of structs or of bools,
-    which a description sets out in fields and bools of their own"""
-    return kind.endswith("[]") and kind not in ("struct[]", "bool[]")
+    which a description sets out in fields and bools of their own, or a vector
+    of strings"""
+    return kind.endswith("[]") and kind not in ("struct[]", "bool[]", "string[]")
 
 
 def offset_size_of(offset_type: OffsetType) -> int:
@@ -178,6 +186,8 @@ def set_field(builder: TableBuilder, field: Description) -> None:
         builder.set_struct_array(data, packing.size, struct_alignment(types))
     elif kind == "bool[]":
         builder.set_bool_array(field["value"])
+    elif kind == "string[]":
+        builder.set_string_vector(field["value"])
     elif kind.endswith("[]"):
         element = kind.removesuffix("[]")
         getattr(builder, f"set_{element}_array")(_array_values(element, field))
@@ -334,6 +344,8 @@ def write_field(writer: TableWriter, index: int, field: Description) -> None:
         writer.set_struct_array(index, data, packing.size, struct_alignment(types))
     elif kind == "bool[]":
         writer.set_bool_array(index, field["value"])
+    elif kind == "string[]":
+        writer.set_string_vector(index, field["value"])
     elif kind.endswith("[]"):
         element = kind.removesuffix("[]")
         getattr(writer, f"set_{element}_array")(index, _array_values(element, field))
@@ -595,6 +607,8 @@ class DescriptionReader:
 
         if kind == "bool[]":
             return {**field, "value": self.__reader.get_bool_array(position)}
+        if kind == "string[]":
+            return {**field, "value": self.__read_string_vector(position)}
 
         if kind.endswith("[]"):
             element = kind.removesuffix("[]")
@@ -636,6 +650,31 @@ class DescriptionReader:
             )
 
         return read
+
+    def __read_string_vector(self, position: int) -> list[str]:
+        """Reads every string of a vector of strings, and then each from its
+        ends alone, with the reader and with a ``StringVector``, and raises
+        ``MismatchError`` if one of those reads another string, or another
+        number of them"""
+        reader = self.__reader
+        strings = reader.get_string_vector(position)
+        count = reader.get_vector_length(position)
+        vector = StringVector(reader, position)
+        if count != len(strings) or len(vector) != len(strings):
+            raise MismatchError(
+                f"The vector holds {count} strings, a view of it {len(vector)}, "
+                f"and reading them all {len(strings)}"
+            )
+
+        for index, string in enumerate(strings):
+            found = reader.get_string_vector_item(position, count, index)
+            if found != string or vector[index] != string:
+                raise MismatchError(
+                    f"String {index} of the vector isn't the same from its ends "
+                    "as among every string"
+                )
+
+        return strings
 
     def __read_struct(
         self, position: int, scalars: list[Description]

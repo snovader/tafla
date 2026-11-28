@@ -57,12 +57,17 @@ enum Field: Hashable, Sendable {
     /// it's set with when the description gives one
     case table(Nested, alignment: Alignment?)
     case vector([Nested])
+    /// A vector of strings: a count, the end of each string, and the strings'
+    /// UTF-8, one after another
+    case stringVector(utf8: [[UInt8]])
 
     static func float32(_ value: Float) -> Field { .float32(bits: value.bitPattern) }
 
     static func float64(_ value: Double) -> Field { .float64(bits: value.bitPattern) }
 
     static func string(_ value: String) -> Field { .string(utf8: Array(value.utf8)) }
+
+    static func stringVector(_ values: [String]) -> Field { .stringVector(utf8: values.map { Array($0.utf8) }) }
 
     /// The type of a scalar field, or `nil` for a field of any other type
     var scalarType: ScalarType? {

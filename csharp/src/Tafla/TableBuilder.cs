@@ -8,10 +8,11 @@ namespace Tafla;
 /// <summary>
 /// Builds a table, which a <see cref="TableReader"/> reads back: a header with one offset per field,
 /// after the table's byte length and version when its layout has them, followed by the fields in the
-/// order they're set. Arrays, strings and vectors start with their count, and a vector then holds the
-/// end of each item. Arrays of scalars and of structs are padded so that their elements are aligned
-/// from the start of the table. Fields are read back by index with <see cref="TableReader.RootOffset"/>,
-/// or <see cref="TableReader.FieldOffset"/> for a table nested in another.
+/// order they're set. Arrays, strings and vectors start with their count, and a vector, of tables or
+/// of strings, then holds the end of each item. Arrays of scalars and of structs are padded so that
+/// their elements are aligned from the start of the table. Fields are read back by index with
+/// <see cref="TableReader.RootOffset"/>, or <see cref="TableReader.FieldOffset"/> for a table nested
+/// in another.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -223,6 +224,31 @@ public sealed partial class TableBuilder
         // The field fits in the table, so its count does too
         WriteSlot(field, (uint)byteCount);
         Encoding.UTF8.GetBytes(value, field[width..]);
+    }
+
+    /// <summary>
+    /// Sets a vector of strings: its count, the end of each string, counted from the vector's start,
+    /// and then each string's UTF-8, one after another, which lets readers find any string without
+    /// reading the others. A lone surrogate is written as U+FFFD, as <see cref="SetString"/> writes
+    /// it. It takes no more bytes for each string than its end, where a vector of tables of one string
+    /// each takes each table's offset and the string's count too.
+    /// </summary>
+    /// <exception cref="BuildException">As <see cref="SetInt8"/> throws it.</exception>
+    /// <exception cref="ArgumentNullException">A string is null.</exception>
+    public void SetStringVector(params ReadOnlySpan<string> values)
+    {
+        int width = _layout.OffsetSize;
+        long stringsStart = (values.Length + 1L) * width;
+        var vector = AddField(0, stringsStart + Utf8Length(values), 1);
+
+        // The field fits in the table, so its count and ends do too
+        WriteSlot(vector, (uint)values.Length);
+        int end = (int)stringsStart;
+        for (var index = 0; index < values.Length; index++)
+        {
+            end += Encoding.UTF8.GetBytes(values[index], vector[end..]);
+            WriteSlot(vector[((index + 1) * width)..], (uint)end);
+        }
     }
 
     /// <summary>
@@ -842,6 +868,25 @@ public sealed partial class TableBuilder
         }
 
         return length + Encoding.UTF8.GetByteCount(value);
+    }
+
+    /// <summary>
+    /// Counts the UTF-8 bytes of every string of a vector of strings, each as
+    /// <see cref="Utf8Length(ReadOnlySpan{char})"/> counts it, after checking that it isn't null.
+    /// <see cref="TableSizer"/> counts them with it too.
+    /// </summary>
+    /// <exception cref="ArgumentNullException">A string is null.</exception>
+    internal static long Utf8Length(ReadOnlySpan<string> values)
+    {
+        // At most 2^31 - 1 strings of at most 3 bytes a char, which a long holds
+        long length = 0;
+        foreach (var value in values)
+        {
+            ArgumentNullException.ThrowIfNull(value, nameof(values));
+            length += Utf8Length(value);
+        }
+
+        return length;
     }
 
     /// <summary>

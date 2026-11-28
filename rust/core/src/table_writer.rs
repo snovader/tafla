@@ -267,6 +267,19 @@ impl TableSizer {
         self.add(slots.saturating_mul(self.width()));
     }
 
+    /// Adds a vector of strings: its count, the end of each string, and the
+    /// strings' UTF-8 bytes, without padding
+    #[inline]
+    pub fn add_str_vector<S: AsRef<str>>(&mut self, strings: &[S]) {
+        // The count, and then the end of each string
+        let slots = (strings.len() as u64).saturating_add(1);
+        let utf8 = strings.iter().fold(0_u64, |length, string| {
+            length.saturating_add(string.as_ref().len() as u64)
+        });
+
+        self.add(slots.saturating_mul(self.width()).saturating_add(utf8));
+    }
+
     /// Adds `count` nested tables of `byte_length` bytes each, whose
     /// fields' sizes the schema fixes, which [`TableWriter::copy_table()`]
     /// then writes whole: a field's table, after
@@ -747,6 +760,40 @@ impl TableWriter {
         self.push_zeros(count * width);
 
         VectorPosition { position, count }
+    }
+
+    /// Writes vector of strings field `index`: its count, the end of each
+    /// string, counted from the vector's position, and then each string's
+    /// UTF-8 bytes, one after another, as `TableBuilder::set_str_vector()`
+    /// writes them. The ends are known from the strings' lengths, so they're
+    /// written before the strings rather than after each.
+    #[inline]
+    pub fn set_str_vector<S: AsRef<str>>(&mut self, index: usize, strings: &[S]) {
+        self.set_offset(index);
+
+        // The count and the ends. Without room for them, the strings aren't
+        // written either, so that no end is written past the bytes.
+        let width = self.offset_type.size();
+        let count = strings.len();
+        let slots = count
+            .checked_add(1)
+            .and_then(|slots| slots.checked_mul(width));
+        let Some(slots) = slots.filter(|&slots| slots <= self.room()) else {
+            self.fail();
+            return;
+        };
+
+        self.push_slot(count);
+        // Saturating, since only strings longer than the table can overflow,
+        // which then fail to fit
+        let mut end = slots;
+        for string in strings {
+            end = end.saturating_add(string.as_ref().len());
+            self.push_slot(end);
+        }
+        for string in strings {
+            self.push(string.as_ref().as_bytes());
+        }
     }
 
     /// Writes the end of item `item` of the vector, which was just written

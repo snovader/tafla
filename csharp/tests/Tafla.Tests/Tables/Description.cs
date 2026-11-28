@@ -79,6 +79,9 @@ public sealed record BoolArray(Seq<bool> Values) : Field;
 
 public sealed record StringField(string Value) : Field;
 
+/// <summary>A vector of strings, empty too, and of empty strings.</summary>
+public sealed record StringVectorField(Seq<string> Values) : Field;
+
 /// <summary>A struct of scalars, one after another.</summary>
 public sealed record StructField(Seq<Scalar> Scalars) : Field;
 

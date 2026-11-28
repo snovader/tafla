@@ -1,0 +1,9 @@
+// The strings suite's message, a repeated string, the same as the TypeScript
+// strings suite's, from which the build generates the protobuf codec's code
+// with `protoc --cpp_out`. proto3 checks that a string is UTF-8 when it
+// writes it and when it parses it.
+syntax = "proto3";
+
+package tafla_proto;
+
+message Strings { repeated string items = 1; }

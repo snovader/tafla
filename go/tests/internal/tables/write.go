@@ -131,6 +131,8 @@ func Add(sizer *tafla.TableSizer, field Field) {
 		sizer.AddBoolArray(len(value))
 	case String:
 		sizer.AddString(string(value))
+	case StringVector:
+		sizer.AddStringVector(value)
 	case Struct:
 		sizer.AddStruct(StructSize(StructTypes(value)))
 	case StructArray:
@@ -197,6 +199,8 @@ func Write(writer *tafla.TableWriter, index int, field Field) {
 		writer.SetBoolArray(index, value)
 	case String:
 		writer.SetString(index, string(value))
+	case StringVector:
+		writer.SetStringVector(index, value)
 	case Struct:
 		writer.SetStruct(index, StructBytes(value))
 	case StructArray:

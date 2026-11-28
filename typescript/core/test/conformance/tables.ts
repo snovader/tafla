@@ -9,6 +9,7 @@ import {
     readUint16,
     readUint32,
     readUint64,
+    StringVector,
     StructWriter,
     TableBuilder,
     TableLayout,
@@ -270,6 +271,10 @@ export function setField(builder: TableItem, field: FieldDescription): void {
 
         case 'string':
             builder.setString(field.value);
+            break;
+
+        case 'string[]':
+            builder.setStringVector(field.value);
             break;
 
         case 'struct':
@@ -595,6 +600,10 @@ function addField(sizer: TableSizer, field: FieldDescription): void {
             sizer.addString(field.value);
             break;
 
+        case 'string[]':
+            sizer.addStringVector(field.value);
+            break;
+
         case 'struct':
             sizer.addStruct(structSize(field.fields.map(({ type }) => type)));
             break;
@@ -726,6 +735,10 @@ function writeField(
 
         case 'string':
             writer.setString(index, field.value);
+            break;
+
+        case 'string[]':
+            writer.setStringVector(index, field.value);
             break;
 
         case 'struct':
@@ -1136,6 +1149,9 @@ export class DescriptionReader {
             case 'string':
                 return { ...field, value: reader.getString(position) };
 
+            case 'string[]':
+                return { ...field, value: this.#readStringVector(position) };
+
             case 'struct': {
                 const types = field.fields.map(({ type }) => type);
                 const values = readStruct(
@@ -1203,6 +1219,37 @@ export class DescriptionReader {
                 ? this.#readInPlace(offsets[index], item.table)
                 : readTable(vector[index], item.table)
         }));
+    }
+
+    /**
+     * Reads every string of a vector of strings, and each from its ends
+     * alone.
+     *
+     * @throws {DescriptionMismatch} If a string read from its ends alone
+     * isn't the one read among every string, or a view of the vector reads
+     * another.
+     */
+    #readStringVector(position: number): string[] {
+        const reader = this.#reader;
+        const strings = reader.getStringVector(position);
+        const count = reader.getVectorLength(position);
+        const view = new StringVector(reader, position);
+        if (count !== strings.length || view.length() !== strings.length) {
+            throw new DescriptionMismatch(
+                `The vector holds ${count} strings, a view of it ${view.length()}, and reading them all ${strings.length}`
+            );
+        }
+
+        for (const [index, string] of strings.entries()) {
+            const found = reader.getStringVectorItem(position, count, index);
+            if (found !== string || view.get(index) !== string) {
+                throw new DescriptionMismatch(
+                    `String ${index} of the vector isn't the same from its ends as among every string`
+                );
+            }
+        }
+
+        return strings;
     }
 
     #readStructArray(

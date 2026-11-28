@@ -236,6 +236,24 @@ function expectLittleEndian(
         return;
     }
 
+    if (field.type === 'string[]') {
+        // The count, then the end of each string from the vector's position,
+        // then the strings' UTF-8, one after another
+        const count = field.value.length;
+        expect(readUnsigned(bytes, position, offsetSize)).toBe(count);
+
+        let start = (count + 1) * offsetSize;
+        for (const [index, string] of field.value.entries()) {
+            const utf8 = ENCODER.encode(string);
+            const end = readUnsigned(bytes, position + (index + 1) * offsetSize, offsetSize);
+
+            expect(end).toBe(start + utf8.length);
+            expect(bytes.subarray(position + start, position + end)).toStrictEqual(utf8);
+            start = end;
+        }
+        return;
+    }
+
     if (isArrayField(field)) {
         const type = elementTypeOf(field.type);
         const start = position + offsetSize;
@@ -292,6 +310,12 @@ const GETTERS = {
     getVectorItemOffset: (reader, position) => {
         const length = reader.getVectorLength(position);
         return length === 0 ? null : reader.getVectorItemOffset(position, length, length - 1);
+    },
+    getStringVector: (reader, position) => reader.getStringVector(position),
+    // The last string, which reads the ends before and after it
+    getStringVectorItem: (reader, position) => {
+        const length = reader.getVectorLength(position);
+        return length === 0 ? null : reader.getStringVectorItem(position, length, length - 1);
     }
 } satisfies Record<string, (reader: TableReader, position: number) => unknown>;
 

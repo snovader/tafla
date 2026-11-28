@@ -77,6 +77,7 @@ export type FieldDescription =
     | { type: ArrayType; value: JsonNumber[] }
     | BoolArrayField
     | { type: 'string'; value: string }
+    | StringVectorField
     | { type: 'struct'; fields: StructScalar[] }
     | StructArrayField
     | TableField
@@ -100,16 +101,26 @@ export interface BoolArrayField {
     value: boolean[];
 }
 
+/**
+ * A vector of strings: a count, the end of each string, and the strings'
+ * UTF-8, one after another
+ */
+export interface StringVectorField {
+    type: 'string[]';
+    value: string[];
+}
+
 export type ArrayField = Extract<FieldDescription, { type: ArrayType }>;
 
 /**
  * Whether a field is an array of integers or floats, rather than of structs
- * or bools
+ * or bools, or a vector of strings
  */
 export function isArrayField(field: FieldDescription): field is ArrayField {
     return (
         field.type !== 'struct[]' &&
         field.type !== 'bool[]' &&
+        field.type !== 'string[]' &&
         field.type.endsWith('[]')
     );
 }

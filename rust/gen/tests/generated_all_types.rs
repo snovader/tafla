@@ -4,6 +4,8 @@
 //! decode errors without panicking. Its structs are written and read at
 //! their fixed sizes, as fields and in arrays. Its enums are written and read
 //! as the integers that store them, whether the schema names them or not.
+//! Its vectors of strings read every string whole as they read each, and a
+//! string that isn't valid UTF-8 fails alone.
 
 #[path = "golden/all_types/rust/all_types.rs"]
 mod all_types;
@@ -14,11 +16,12 @@ use std::fmt::Debug;
 use std::ops::Range;
 
 use all_types::{
-    Arrays, ArraysFields, Change, Direction, Documented, Enums, EnumsFields, Extent, Inner,
-    InnerFields, Keywords, KeywordsFields, Level, Mark, Mask, Nested, NestedFields, Outer,
+    Arrays, ArraysFields, Change, Direction, Documented, Entry, EntryFields, EntryVector, Enums,
+    EnumsFields, Extent, Inner, InnerFields, Keywords, KeywordsFields, Labels, LabelsFields, Level,
+    Mark, Mask, NarrowStringVectors, NarrowStringVectorsFields, Nested, NestedFields, Outer,
     OuterFields, Packed, Path, PathFields, Point, Reserved, ReservedFields, Scalars, ScalarsFields,
-    Segment, Sign, Status, Step, StepFields, StepVector, Structs, StructsFields, Tree, TreeFields,
-    TreeVector, Turn, Unit, Word,
+    Segment, Sign, Status, Step, StepFields, StepVector, StringVectors, StringVectorsFields,
+    Structs, StructsFields, Tree, TreeFields, TreeVector, Turn, Unit, Word,
 };
 use proptest::arbitrary::Arbitrary;
 use proptest::array::uniform5;
@@ -29,10 +32,16 @@ use tables::{
     check_truncated, expected, float32s, float64s, integers, overwrites, placements, strings,
     struct_bytes, table, to_vec, truncations, vector,
 };
-use tafla::{Alignment, BuildError, DecodeError, TableLayout, TableReader};
+use tafla::{
+    Alignment, BuildError, DecodeError, OffsetType, StringVector, TableLayout, TableReader,
+};
 
-/// The header of every message, none of which has attributes
+/// The header of every message but `NarrowStringVectors`, none of which has
+/// attributes
 const MESSAGE: Header = Header::new(TableLayout::DEFAULT);
+
+/// The header of `NarrowStringVectors`, of `uint16` offsets
+const NARROW: Header = Header::new(TableLayout::DEFAULT.with_offset_type(OffsetType::Uint16));
 
 // Reading every field with the generated getters, including those after one
 // that fails
@@ -259,6 +268,69 @@ fn step_vector(view: StepVector<'_>, order: ViewOrder) -> Result<Value, DecodeEr
     vector(steps.iter().map(read_step))
 }
 
+fn read_string_vectors(string_vectors: &StringVectors, order: ViewOrder) -> Fields {
+    vec![
+        string_vectors.id().map(Value::U32),
+        string_vectors
+            .tags()
+            .and_then(|tags| string_vector(tags, order)),
+        string_vectors
+            .labels()
+            .and_then(|labels| table(read_labels(&labels, order))),
+        string_vectors
+            .entries()
+            .and_then(|entries| entry_vector(entries, order)),
+    ]
+}
+
+fn read_labels(labels: &Labels, order: ViewOrder) -> Fields {
+    vec![
+        labels
+            .values()
+            .and_then(|values| string_vector(values, order)),
+    ]
+}
+
+fn read_entry(entry: &Entry, order: ViewOrder) -> Fields {
+    vec![
+        entry.key().map(Value::string),
+        entry
+            .aliases()
+            .and_then(|aliases| string_vector(aliases, order)),
+    ]
+}
+
+/// The value of a vector of entries, or the first error of its items in
+/// order
+fn entry_vector(view: EntryVector<'_>, order: ViewOrder) -> Result<Value, DecodeError> {
+    let entries: Vec<Entry> = order
+        .items(view.len(), |index| view.get(index), view.iter())
+        .into_iter()
+        .collect::<Result<_, _>>()?;
+
+    vector(entries.iter().map(|entry| read_entry(entry, order)))
+}
+
+fn read_narrow(narrow: &NarrowStringVectors, order: ViewOrder) -> Fields {
+    vec![
+        narrow.names().and_then(|names| string_vector(names, order)),
+        narrow.count().map(Value::U8),
+    ]
+}
+
+/// The value of a vector of strings, or the error of its first string that
+/// fails, read a string at a time in `order`, after checking that reading
+/// them whole with `to_vec()` reads the same
+fn string_vector(view: StringVector<'_>, order: ViewOrder) -> Result<Value, DecodeError> {
+    let each = order
+        .items(view.len(), |index| view.get(index), view.iter())
+        .into_iter()
+        .collect::<Result<Vec<_>, _>>();
+    assert_eq!(view.to_vec(), each, "to_vec() reads what each string reads");
+
+    each.map(|strings| Value::strings(&strings))
+}
+
 fn struct_array(
     size: usize,
     alignment: Alignment,
@@ -474,6 +546,27 @@ fn describe_mark(mark: Mark) -> Vec<Value> {
         Value::I8(mark.turn.direction.0),
         Value::U64(mark.turn.mask.0),
     ]
+}
+
+fn describe_string_vectors(fields: &StringVectorsFields) -> Vec<Value> {
+    vec![
+        Value::U32(fields.id),
+        Value::strings(fields.tags),
+        Value::Table(describe_labels(&fields.labels)),
+        Value::Vector(fields.entries.iter().map(describe_entry).collect()),
+    ]
+}
+
+fn describe_labels(fields: &LabelsFields) -> Vec<Value> {
+    vec![Value::strings(fields.values)]
+}
+
+fn describe_entry(fields: &EntryFields) -> Vec<Value> {
+    vec![Value::string(fields.key), Value::strings(fields.aliases)]
+}
+
+fn describe_narrow(fields: &NarrowStringVectorsFields) -> Vec<Value> {
+    vec![Value::strings(fields.names), Value::U8(fields.count)]
 }
 
 /// A `Packed`'s fields little-endian at their offsets, one after another,
@@ -1067,6 +1160,96 @@ fn owned_enums() -> impl Strategy<Value = OwnedEnums> {
     })
 }
 
+/// The values of a `StringVectors`' fields and of the tables it nests
+#[derive(Clone, Debug)]
+struct OwnedStringVectors {
+    id: u32,
+    tags: Vec<String>,
+    labels: Vec<String>,
+    /// Each entry's key and aliases
+    entries: Vec<(String, Vec<String>)>,
+}
+
+impl OwnedStringVectors {
+    /// Writes the `StringVectors`
+    // `StringVectorsFields::serialize` itself isn't general enough over the
+    // fields' lifetimes, which clippy doesn't see
+    #[allow(clippy::redundant_closure_for_method_calls)]
+    fn serialize(&self) -> Result<Vec<u8>, BuildError> {
+        self.with_fields(|fields| fields.serialize())
+    }
+
+    /// Calls `f` with the fields, which borrow lists of the strings
+    fn with_fields<R>(&self, f: impl FnOnce(&StringVectorsFields<'_>) -> R) -> R {
+        let tags = as_strs(&self.tags);
+        let labels = as_strs(&self.labels);
+        let aliases: Vec<Vec<&str>> = self
+            .entries
+            .iter()
+            .map(|(_, aliases)| as_strs(aliases))
+            .collect();
+        let entries: Vec<EntryFields> = self
+            .entries
+            .iter()
+            .zip(&aliases)
+            .map(|((key, _), aliases)| EntryFields { key, aliases })
+            .collect();
+
+        f(&StringVectorsFields {
+            id: self.id,
+            tags: &tags,
+            labels: LabelsFields { values: &labels },
+            entries: &entries,
+        })
+    }
+}
+
+fn owned_string_vectors() -> impl Strategy<Value = OwnedStringVectors> {
+    let entries = arrays((strings(), arrays(strings())));
+
+    (
+        integers(0, u32::MAX),
+        arrays(strings()),
+        arrays(strings()),
+        entries,
+    )
+        .prop_map(|(id, tags, labels, entries)| OwnedStringVectors {
+            id,
+            tags,
+            labels,
+            entries,
+        })
+}
+
+/// The values of a `NarrowStringVectors`' fields
+#[derive(Clone, Debug)]
+struct OwnedNarrow {
+    names: Vec<String>,
+    count: u8,
+}
+
+impl OwnedNarrow {
+    /// Calls `f` with the fields, which borrow a list of the names
+    fn with_fields<R>(&self, f: impl FnOnce(&NarrowStringVectorsFields<'_>) -> R) -> R {
+        let names = as_strs(&self.names);
+
+        f(&NarrowStringVectorsFields {
+            names: &names,
+            count: self.count,
+        })
+    }
+}
+
+fn owned_narrows() -> impl Strategy<Value = OwnedNarrow> {
+    (arrays(strings()), integers(0, u8::MAX))
+        .prop_map(|(names, count)| OwnedNarrow { names, count })
+}
+
+/// A list of the strings, which the generated code writes from
+fn as_strs(strings: &[String]) -> Vec<&str> {
+    strings.iter().map(String::as_str).collect()
+}
+
 /// Bytes too short for a struct of `size` bytes
 fn shorter_than(size: usize) -> impl Strategy<Value = Vec<u8>> {
     vec(any::<u8>(), 0..size)
@@ -1162,6 +1345,32 @@ proptest! {
     }
 
     #[test]
+    fn string_vectors_read_back_every_string_wherever_their_bytes_lie(
+        string_vectors in owned_string_vectors(),
+        narrow in owned_narrows(),
+        placement in placements(),
+    ) {
+        string_vectors.with_fields(|fields| -> Result<(), TestCaseError> {
+            let bytes = placement.place(&fields.serialize()?);
+
+            for order in ViewOrder::ALL {
+                let read = read_string_vectors(&StringVectors::new(bytes.bytes()), order);
+                prop_assert_eq!(read, expected(describe_string_vectors(fields)), "{:?}", order);
+            }
+            Ok(())
+        })?;
+        narrow.with_fields(|fields| -> Result<(), TestCaseError> {
+            let bytes = placement.place(&fields.serialize()?);
+
+            for order in ViewOrder::ALL {
+                let read = read_narrow(&NarrowStringVectors::new(bytes.bytes()), order);
+                prop_assert_eq!(read, expected(describe_narrow(fields)), "{:?}", order);
+            }
+            Ok(())
+        })?;
+    }
+
+    #[test]
     fn scalars_reads_any_byte_of_its_bool_but_0_as_true(fields in scalars(), byte in 2..=u8::MAX) {
         let mut bytes = ScalarsFields { bool: false, ..fields }.serialize()?;
         let position = TableReader::new(&bytes, TableLayout::DEFAULT).root_offset(10)?;
@@ -1229,6 +1438,21 @@ proptest! {
         let fields = enums.fields();
 
         prop_assert_eq!(fields.serialize(), build(MESSAGE, &describe_enums(&fields)));
+    }
+
+    #[test]
+    fn string_vectors_are_written_as_table_builder_writes_them(
+        string_vectors in owned_string_vectors(),
+        narrow in owned_narrows(),
+    ) {
+        string_vectors.with_fields(|fields| -> Result<(), TestCaseError> {
+            prop_assert_eq!(fields.serialize(), build(MESSAGE, &describe_string_vectors(fields)));
+            Ok(())
+        })?;
+        narrow.with_fields(|fields| -> Result<(), TestCaseError> {
+            prop_assert_eq!(fields.serialize(), build(NARROW, &describe_narrow(fields)));
+            Ok(())
+        })?;
     }
 
     // Decode errors
@@ -1341,6 +1565,42 @@ proptest! {
     }
 
     #[test]
+    fn corrupted_string_vectors_read_as_values_or_decode_errors(
+        string_vectors in owned_string_vectors(),
+        narrow in owned_narrows(),
+        overwrite in overwrites(),
+    ) {
+        string_vectors.with_fields(|fields| -> Result<(), TestCaseError> {
+            let bytes = fields.serialize()?;
+            let written = describe_string_vectors(fields);
+
+            for order in ViewOrder::ALL {
+                for truncated in truncations(&bytes) {
+                    let read = read_string_vectors(&StringVectors::new(truncated), order);
+                    check_truncated(Ok(read), &written)?;
+                }
+
+                read_string_vectors(&StringVectors::new(&overwrite.apply(&bytes)), order);
+            }
+            Ok(())
+        })?;
+        narrow.with_fields(|fields| -> Result<(), TestCaseError> {
+            let bytes = fields.serialize()?;
+            let written = describe_narrow(fields);
+
+            for order in ViewOrder::ALL {
+                for truncated in truncations(&bytes) {
+                    let read = read_narrow(&NarrowStringVectors::new(truncated), order);
+                    check_truncated(Ok(read), &written)?;
+                }
+
+                read_narrow(&NarrowStringVectors::new(&overwrite.apply(&bytes)), order);
+            }
+            Ok(())
+        })?;
+    }
+
+    #[test]
     fn arbitrary_bytes_read_as_any_message_or_decode_errors(bytes in arbitrary_bytes()) {
         read_scalars(&Scalars::new(&bytes));
         read_arrays(&Arrays::new(&bytes));
@@ -1349,6 +1609,8 @@ proptest! {
             read_nested(&Nested::new(&bytes), order);
             read_structs(&Structs::new(&bytes), order);
             read_enums(&Enums::new(&bytes), order);
+            read_string_vectors(&StringVectors::new(&bytes), order);
+            read_narrow(&NarrowStringVectors::new(&bytes), order);
         }
     }
 
@@ -1375,12 +1637,34 @@ proptest! {
     }
 
     #[test]
+    fn string_vectors_read_corrupted_bytes_alike_by_index_and_in_order(
+        string_vectors in owned_string_vectors(),
+        overwrite in overwrites(),
+    ) {
+        use ViewOrder::{FromLast, Iterated};
+        let bytes = string_vectors.serialize()?;
+
+        for bytes in truncations(&bytes).chain([&overwrite.apply(&bytes)[..]]) {
+            let read = StringVectors::new(bytes);
+            prop_assert_eq!(
+                read_string_vectors(&read, FromLast),
+                read_string_vectors(&read, Iterated)
+            );
+        }
+    }
+
+    #[test]
     fn views_read_arbitrary_bytes_alike_by_index_and_in_order(bytes in arbitrary_bytes()) {
         use ViewOrder::{FromLast, Iterated};
         let (nested, structs) = (Nested::new(&bytes), Structs::new(&bytes));
 
         prop_assert_eq!(read_nested(&nested, FromLast), read_nested(&nested, Iterated));
         prop_assert_eq!(read_structs(&structs, FromLast), read_structs(&structs, Iterated));
+        let string_vectors = StringVectors::new(&bytes);
+        prop_assert_eq!(
+            read_string_vectors(&string_vectors, FromLast),
+            read_string_vectors(&string_vectors, Iterated)
+        );
     }
 
     #[test]
@@ -1396,6 +1680,18 @@ proptest! {
         prop_assert!(trees.get(trees.len() + past).is_none());
         let documented = Structs::new(&structs).documented()?;
         prop_assert!(documented.get(documented.len() + past).is_none());
+    }
+
+    #[test]
+    fn vectors_of_strings_have_no_string_past_their_last(
+        string_vectors in owned_string_vectors(),
+        past in 0..1000_usize,
+    ) {
+        let bytes = string_vectors.serialize()?;
+
+        let tags = StringVectors::new(&bytes).tags()?;
+        prop_assert!(tags.get(tags.len() + past).is_none());
+        prop_assert_eq!(tags.iter().len(), tags.len());
     }
 
     // The structs
@@ -1716,6 +2012,19 @@ fn views_of_empty_vectors_and_arrays_of_structs_hold_no_items()
     assert!(segments.is_empty() && segments.get(0).is_none());
     let points = structs.path()?.points()?;
     assert!(points.is_empty() && points.iter().len() == 0);
+
+    let empty = StringVectorsFields {
+        id: 0,
+        tags: &[],
+        labels: LabelsFields { values: &[] },
+        entries: &[],
+    };
+    let string_vectors = empty.serialize()?;
+    let string_vectors = StringVectors::new(&string_vectors);
+    let tags = string_vectors.tags()?;
+    assert!(tags.is_empty() && tags.get(0).is_none() && tags.to_vec()?.is_empty());
+    let entries = string_vectors.entries()?;
+    assert!(entries.is_empty() && entries.get(0).is_none() && entries.iter().len() == 0);
     Ok(())
 }
 
@@ -1735,4 +2044,76 @@ fn tables_are_aligned_to_their_arrays_and_nested_tables() {
     assert_eq!(KeywordsFields::ALIGNMENT, Alignment::One);
     // Enums, a struct of them and a string
     assert_eq!(StepFields::ALIGNMENT, Alignment::One);
+    // Vectors of strings, which aren't padded, and a string
+    assert_eq!(LabelsFields::ALIGNMENT, Alignment::One);
+    assert_eq!(EntryFields::ALIGNMENT, Alignment::One);
+}
+
+/// `NarrowStringVectors` has `uint16` offsets, which its names fill, after
+/// its two offsets and their count and end, and before its count, and a
+/// byte more fails as `TableBuilder` fails
+#[test]
+fn narrow_string_vectors_fill_their_uint16_offsets_and_fail_for_a_byte_more() {
+    let room = 65_535 - 9;
+    let longest = "a".repeat(room);
+    let too_long = "a".repeat(room + 1);
+
+    let fields = NarrowStringVectorsFields {
+        names: &[&longest],
+        count: 7,
+    };
+    let bytes = fields.serialize().unwrap();
+    assert_eq!(bytes.len(), 65_535);
+    let narrow = NarrowStringVectors::new(&bytes);
+    assert_eq!(narrow.names().unwrap().to_vec(), Ok(vec![longest.as_str()]));
+    assert_eq!(narrow.count(), Ok(7));
+
+    let error = BuildError::TooLong {
+        index: 1,
+        length: 65_536,
+        offset_type: OffsetType::Uint16,
+    };
+    let fields = NarrowStringVectorsFields {
+        names: &[&too_long],
+        count: 7,
+    };
+    assert_eq!(fields.serialize(), Err(error));
+    assert_eq!(build(NARROW, &describe_narrow(&fields)), Err(error));
+}
+
+/// A tag that isn't valid UTF-8 fails on its own, and reading every tag
+/// fails, while the other tags and fields read
+#[test]
+fn a_tag_of_invalid_utf8_fails_alone() {
+    let fields = StringVectorsFields {
+        id: 7,
+        tags: &["ok", "bad", "fine"],
+        labels: LabelsFields { values: &["label"] },
+        entries: &[EntryFields {
+            key: "key",
+            aliases: &["alias"],
+        }],
+    };
+    let mut bytes = fields.serialize().unwrap();
+    // The second tag's first byte, after the tags' count, their three ends
+    // and the first tag
+    let reader = TableReader::new(&bytes, TableLayout::DEFAULT);
+    let bad = reader.root_offset(1).unwrap() + 4 + 3 * 4 + 2;
+    bytes[bad] = 0xff;
+
+    let string_vectors = StringVectors::new(&bytes);
+    let tags = string_vectors.tags().unwrap();
+    assert_eq!(tags.get(0), Some(Ok("ok")));
+    assert!(matches!(
+        tags.get(1),
+        Some(Err(DecodeError::InvalidUtf8 { position, .. })) if position == bad
+    ));
+    assert_eq!(tags.get(2), Some(Ok("fine")));
+    assert_eq!(tags.to_vec(), Err(tags.get(1).unwrap().unwrap_err()));
+
+    let read = read_string_vectors(&string_vectors, ViewOrder::Iterated);
+    let written = describe_string_vectors(&fields);
+    for index in [0, 2, 3] {
+        assert_eq!(read[index], Ok(written[index].clone()), "field {index}");
+    }
 }

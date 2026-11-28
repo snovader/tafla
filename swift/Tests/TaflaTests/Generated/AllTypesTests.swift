@@ -5,8 +5,9 @@ import Testing
 // The code generated from schemas/all_types.tafla, of every type of field:
 // how the tests draw and read its messages and structs, arrays of bools,
 // whose getters return their bytes, fields named after keywords, trees of
-// tables that hold vectors of themselves, and enums, whose fields hold any
-// integer of their types, named or not.
+// tables that hold vectors of themselves, enums, whose fields hold any
+// integer of their types, named or not, and vectors of strings, a string of
+// which fails to read on its own.
 // GeneratedTests.swift checks the properties of every message and struct of
 // the example schemas.
 
@@ -47,6 +48,18 @@ let allTypesMessages = [
         draw: { $0.enums() },
         read: { bytes throws(DecodeError) in try EnumsFields(reading: Enums(bytes)) }
     ),
+    Message(
+        "all_types.StringVectors",
+        layout: .default,
+        draw: { $0.stringVectors() },
+        read: { bytes throws(DecodeError) in try StringVectorsFields(reading: StringVectors(bytes)) }
+    ),
+    Message(
+        "all_types.NarrowStringVectors",
+        layout: TableLayout(offsetType: .uint16),
+        draw: { $0.narrowStringVectors() },
+        read: { bytes throws(DecodeError) in try NarrowStringVectorsFields(reading: NarrowStringVectors(bytes)) }
+    ),
 ]
 
 let allTypesStructs = [
@@ -64,6 +77,8 @@ extension NestedFields: GeneratedFields {}
 extension ReservedFields: GeneratedFields {}
 extension StructsFields: GeneratedFields {}
 extension EnumsFields: GeneratedFields {}
+extension StringVectorsFields: GeneratedFields {}
+extension NarrowStringVectorsFields: GeneratedFields {}
 extension Segment: GeneratedStruct {}
 extension Point: GeneratedStruct {}
 extension Packed: GeneratedStruct {}
@@ -249,6 +264,25 @@ extension Draw {
     fileprivate mutating func turn() -> Turn {
         Turn(direction: value(), mask: value())
     }
+
+    fileprivate mutating func stringVectors() -> StringVectorsFields {
+        StringVectorsFields(
+            id: integer(),
+            tags: strings(),
+            labels: LabelsFields(values: strings()),
+            entries: array(most: 3) { EntryFields(key: $0.string(most: 6), aliases: $0.strings()) }
+        )
+    }
+
+    /// Names that fit in a table of uint16 offsets
+    fileprivate mutating func narrowStringVectors() -> NarrowStringVectorsFields {
+        NarrowStringVectorsFields(names: strings(), count: integer())
+    }
+
+    /// Up to 6 strings, empty too, and of empty strings
+    fileprivate mutating func strings() -> [String] {
+        array(most: 6) { $0.string(most: 8) }
+    }
 }
 
 extension ScalarsFields {
@@ -388,6 +422,43 @@ extension EnumsFields {
 extension StepFields {
     init(reading step: borrowing Step) throws(DecodeError) {
         try self.init(level: step.level, mark: step.mark, name: step.name)
+    }
+}
+
+extension StringVectorsFields {
+    /// Reads every string of the tags and the labels at once, and each of an
+    /// entry's aliases from its ends
+    init(reading table: borrowing StringVectors) throws(DecodeError) {
+        let view = try table.entries
+        var entries: [EntryFields] = []
+        for index in view.indices {
+            entries.append(try EntryFields(reading: view[index]))
+        }
+
+        try self.init(
+            id: table.id,
+            tags: Array(table.tags),
+            labels: LabelsFields(values: Array(table.labels.values)),
+            entries: entries
+        )
+    }
+}
+
+extension EntryFields {
+    init(reading entry: borrowing Entry) throws(DecodeError) {
+        let view = try entry.aliases
+        var aliases: [String] = []
+        for index in view.indices {
+            aliases.append(try view[index])
+        }
+
+        try self.init(key: entry.key, aliases: aliases)
+    }
+}
+
+extension NarrowStringVectorsFields {
+    init(reading table: borrowing NarrowStringVectors) throws(DecodeError) {
+        try self.init(names: Array(table.names), count: table.count)
     }
 }
 
@@ -560,6 +631,58 @@ struct AllTypesTests {
         ]
         #expect(bytes == integers.flatMap { $0 })
         #expect(try withSpan(of: bytes) { bytes throws in try Mark(bytes) } == mark)
+    }
+
+    // The names' count, ends and 64 KiB of strings make the table longer
+    // than uint16 offsets address, which the sizer reports for the field, as
+    // TableBuilder does
+    @Test func rejectsNarrowStringVectorsTooLongForUInt16Offsets() throws {
+        let fields = NarrowStringVectorsFields(
+            names: [String(repeating: "a", count: 0x8000), String(repeating: "b", count: 0x8000)],
+            count: 0
+        )
+        // Two offsets, and a count, two ends and the strings
+        let tooLong = BuildError.tooLong(index: 0, length: 4 + 2 + 4 + 0x1_0000, offsetType: .uint16)
+
+        #expect(throws: tooLong) {
+            try fields.serialize()
+        }
+        #expect(throws: tooLong) {
+            try build(fields, layout: NarrowStringVectors.layout, version: nil)
+        }
+    }
+
+    // A tag of invalid UTF-8 fails to read, and so does reading every tag,
+    // but the tags before and after it read, as do the other fields
+    @Test func readsTheOtherTagsOfATagThatIsntValidUTF8() throws {
+        let fields = StringVectorsFields(
+            id: 1,
+            tags: ["ok", "bad", "fine"],
+            labels: LabelsFields(values: ["label"]),
+            entries: []
+        )
+        var bytes = try fields.serialize()
+
+        // The second tag's first byte, after the count, three ends and "ok"
+        let tags = try withSpan(of: bytes) { bytes throws in try TableReader(bytes).rootOffset(1) }
+        let bad = tags + 4 * 4 + 2
+        bytes[bad] = 0xc0
+
+        try withSpan(of: bytes) { bytes throws in
+            let table = StringVectors(bytes)
+            let view = try table.tags
+
+            #expect(try view[0] == "ok")
+            #expect(throws: DecodeError.invalidUTF8(position: bad)) {
+                _ = try view[1]
+            }
+            #expect(try view[2] == "fine")
+            #expect(throws: DecodeError.invalidUTF8(position: bad)) {
+                _ = try Array(view)
+            }
+            #expect(try table.id == 1)
+            #expect(try Array(table.labels.values) == ["label"])
+        }
     }
 }
 

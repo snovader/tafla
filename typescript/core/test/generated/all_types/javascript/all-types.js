@@ -22,6 +22,7 @@ import {
     writeUint16,
     writeUint32,
     writeUint64,
+    StringVector,
     StructWriter,
     TableLayout,
     TableReader,
@@ -1211,6 +1212,437 @@ export class Reserved {
  *
  * @typedef {object} ReservedFields
  * @property {KeywordsFields} keywords
+ */
+
+/** A nested table whose only field is a vector of strings */
+export class Labels {
+    /**
+     * The alignment that a parent pads a `Labels` to: the largest
+     * alignment of its arrays and nested tables, or 1
+     *
+     * @type {1}
+     */
+    static ALIGNMENT = 1;
+
+    /**
+     * Reads the table at `position`, as its parent's getter finds it
+     *
+     * @param {TableReader} reader
+     * @param {number} position
+     */
+    constructor(reader, position) {
+        this._reader = reader;
+        this._position = position;
+    }
+
+    /**
+     * Reads every field of the table at `position`, as `fields()` does,
+     * without creating a `Labels`
+     *
+     * @param {TableReader} reader
+     * @param {number} position
+     * @returns {LabelsFields}
+     */
+    static read(reader, position) {
+        return {
+            values: reader.getStringVector(reader.fieldOffset(position, 0))
+        };
+    }
+
+    /**
+     * Adds a `Labels` to its parent's sizer, after the field or
+     * vector that holds it
+     *
+     * @param {TableSizer} sizer
+     * @param {LabelsFields} fields
+     * @returns {void}
+     */
+    static size(sizer, fields) {
+        const parent = sizer.startTable(1);
+        sizer.addStringVector(fields.values);
+        sizer.endTable(parent);
+    }
+
+    /**
+     * Writes a `Labels` where its parent's writer is, after the
+     * field or vector that holds it
+     *
+     * @param {TableWriter} writer
+     * @param {LabelsFields} fields
+     * @returns {void}
+     */
+    static write(writer, fields) {
+        const parent = writer.startTable(1);
+        writer.setStringVector(0, fields.values);
+        writer.endTable(parent);
+    }
+
+    /** @returns {StringVector} */
+    values() {
+        return new StringVector(
+            this._reader,
+            this._reader.fieldOffset(this._position, 0)
+        );
+    }
+
+    /**
+     * Reads every field into the `LabelsFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     *
+     * @returns {LabelsFields}
+     */
+    fields() {
+        return Labels.read(this._reader, this._position);
+    }
+}
+
+/**
+ * The fields of a `Labels`, to write
+ *
+ * @typedef {object} LabelsFields
+ * @property {readonly string[]} values
+ */
+
+/** An item of a vector, which holds a string and a vector of strings */
+export class Entry {
+    /**
+     * The alignment that a parent pads an `Entry` to: the largest
+     * alignment of its arrays and nested tables, or 1
+     *
+     * @type {1}
+     */
+    static ALIGNMENT = 1;
+
+    /**
+     * Reads the table at `position`, as its parent's getter finds it
+     *
+     * @param {TableReader} reader
+     * @param {number} position
+     */
+    constructor(reader, position) {
+        this._reader = reader;
+        this._position = position;
+    }
+
+    /**
+     * Reads every field of the table at `position`, as `fields()` does,
+     * without creating an `Entry`
+     *
+     * @param {TableReader} reader
+     * @param {number} position
+     * @returns {EntryFields}
+     */
+    static read(reader, position) {
+        return {
+            key: reader.getString(reader.fieldOffset(position, 0)),
+            aliases: reader.getStringVector(reader.fieldOffset(position, 1))
+        };
+    }
+
+    /**
+     * Adds an `Entry` to its parent's sizer, after the field or
+     * vector that holds it
+     *
+     * @param {TableSizer} sizer
+     * @param {EntryFields} fields
+     * @returns {void}
+     */
+    static size(sizer, fields) {
+        const parent = sizer.startTable(2);
+        sizer.addString(fields.key);
+        sizer.addStringVector(fields.aliases);
+        sizer.endTable(parent);
+    }
+
+    /**
+     * Writes an `Entry` where its parent's writer is, after the
+     * field or vector that holds it
+     *
+     * @param {TableWriter} writer
+     * @param {EntryFields} fields
+     * @returns {void}
+     */
+    static write(writer, fields) {
+        const parent = writer.startTable(2);
+        writer.setString(0, fields.key);
+        writer.setStringVector(1, fields.aliases);
+        writer.endTable(parent);
+    }
+
+    /** @returns {string} */
+    key() {
+        return this._reader.getString(
+            this._reader.fieldOffset(this._position, 0)
+        );
+    }
+
+    /** @returns {StringVector} */
+    aliases() {
+        return new StringVector(
+            this._reader,
+            this._reader.fieldOffset(this._position, 1)
+        );
+    }
+
+    /**
+     * Reads every field into the `EntryFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     *
+     * @returns {EntryFields}
+     */
+    fields() {
+        return Entry.read(this._reader, this._position);
+    }
+}
+
+/**
+ * The fields of an `Entry`, to write
+ *
+ * @typedef {object} EntryFields
+ * @property {string} key
+ * @property {readonly string[]} aliases
+ */
+
+/** A vector of `Entry`s, which reads each item when it's asked for */
+export class EntryVector {
+    /**
+     * Views the vector at `position`, as its parent's getter finds it
+     *
+     * @param {TableReader} reader
+     * @param {number} position
+     * @throws {DecodeError} If the vector's count or the ends of its items lie
+     * outside the bytes.
+     */
+    constructor(reader, position) {
+        this._reader = reader;
+        this._position = position;
+        this._length = reader.getVectorLength(position);
+    }
+
+    /** @returns {number} The number of items */
+    length() {
+        return this._length;
+    }
+
+    /**
+     * Reads item `index`, without reading the others
+     *
+     * @param {number} index
+     * @returns {Entry}
+     * @throws {RangeError} If the vector has no item `index`.
+     * @throws {DecodeError} If the item lies outside the bytes.
+     */
+    get(index) {
+        return new Entry(
+            this._reader,
+            this._reader.getVectorItemOffset(
+                this._position,
+                this._length,
+                index
+            )
+        );
+    }
+}
+
+/**
+ * Vectors of strings beside other fields, in a nested table and in the
+ * items of a vector
+ */
+export class StringVectors {
+    static #LAYOUT = TableLayout.DEFAULT;
+
+    /** @param {Uint8Array} bytes */
+    constructor(bytes) {
+        this._reader = new TableReader(bytes, StringVectors.#LAYOUT);
+    }
+
+    /**
+     * Writes a `StringVectors` with every field
+     *
+     * @param {StringVectorsFields} fields
+     * @returns {Uint8Array}
+     */
+    static serialize(fields) {
+        const sizer = new TableSizer(4, StringVectors.#LAYOUT);
+        sizer.addUint32();
+        sizer.addStringVector(fields.tags);
+        sizer.addTable(Labels.ALIGNMENT);
+        Labels.size(sizer, fields.labels);
+        sizer.addVector(fields.entries.length);
+        for (const item of fields.entries) {
+            Entry.size(sizer, item);
+        }
+
+        const writer = sizer.writer();
+        writer.setUint32(0, fields.id);
+        writer.setStringVector(1, fields.tags);
+        writer.setTable(2, Labels.ALIGNMENT);
+        Labels.write(writer, fields.labels);
+        const vector3 = writer.setVector(3, fields.entries.length);
+        for (let i = 0; i < fields.entries.length; i++) {
+            Entry.write(writer, fields.entries[i]);
+            writer.setItemEnd(vector3, i);
+        }
+
+        return writer.bytes();
+    }
+
+    /**
+     * Writes a `StringVectors` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @param {StringVectorsFields} fields
+     * @param {Uint8Array} bytes
+     * @returns {Uint8Array}
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(fields, bytes) {
+        const sizer = new TableSizer(4, StringVectors.#LAYOUT);
+        sizer.addUint32();
+        sizer.addStringVector(fields.tags);
+        sizer.addTable(Labels.ALIGNMENT);
+        Labels.size(sizer, fields.labels);
+        sizer.addVector(fields.entries.length);
+        for (const item of fields.entries) {
+            Entry.size(sizer, item);
+        }
+
+        const writer = sizer.writer(bytes);
+        writer.setUint32(0, fields.id);
+        writer.setStringVector(1, fields.tags);
+        writer.setTable(2, Labels.ALIGNMENT);
+        Labels.write(writer, fields.labels);
+        const vector3 = writer.setVector(3, fields.entries.length);
+        for (let i = 0; i < fields.entries.length; i++) {
+            Entry.write(writer, fields.entries[i]);
+            writer.setItemEnd(vector3, i);
+        }
+
+        return writer.bytes();
+    }
+
+    /** @returns {number} */
+    id() {
+        return this._reader.getUint32(this._reader.rootOffset(0));
+    }
+
+    /**
+     * A vector of strings, whose getter reads each string when it's asked
+     * for
+     *
+     * @returns {StringVector}
+     */
+    tags() {
+        return new StringVector(this._reader, this._reader.rootOffset(1));
+    }
+
+    /** @returns {Labels} */
+    labels() {
+        return new Labels(this._reader, this._reader.rootOffset(2));
+    }
+
+    /** @returns {EntryVector} */
+    entries() {
+        return new EntryVector(this._reader, this._reader.rootOffset(3));
+    }
+}
+
+/**
+ * The fields of a `StringVectors`, to write
+ *
+ * @typedef {object} StringVectorsFields
+ * @property {number} id
+ * @property {readonly string[]} tags A vector of strings, whose getter reads each string when it's asked for
+ * @property {LabelsFields} labels
+ * @property {readonly EntryFields[]} entries
+ */
+
+/** A vector of strings in a message of `uint16` offsets, before a scalar */
+export class NarrowStringVectors {
+    static #LAYOUT = TableLayout.create({ offsetType: 'uint16' });
+
+    /** @param {Uint8Array} bytes */
+    constructor(bytes) {
+        this._reader = new TableReader(bytes, NarrowStringVectors.#LAYOUT);
+    }
+
+    /**
+     * Writes a `NarrowStringVectors` with every field
+     *
+     * @param {NarrowStringVectorsFields} fields
+     * @returns {Uint8Array}
+     */
+    static serialize(fields) {
+        const sizer = new TableSizer(2, NarrowStringVectors.#LAYOUT);
+        sizer.addStringVector(fields.names);
+        sizer.addUint8();
+
+        const writer = sizer.writer();
+        writer.setStringVector(0, fields.names);
+        writer.setUint8(1, fields.count);
+
+        return writer.bytes();
+    }
+
+    /**
+     * Writes a `NarrowStringVectors` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @param {NarrowStringVectorsFields} fields
+     * @param {Uint8Array} bytes
+     * @returns {Uint8Array}
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(fields, bytes) {
+        const sizer = new TableSizer(2, NarrowStringVectors.#LAYOUT);
+        sizer.addStringVector(fields.names);
+        sizer.addUint8();
+
+        const writer = sizer.writer(bytes);
+        writer.setStringVector(0, fields.names);
+        writer.setUint8(1, fields.count);
+
+        return writer.bytes();
+    }
+
+    /** @returns {StringVector} */
+    names() {
+        return new StringVector(this._reader, this._reader.rootOffset(0));
+    }
+
+    /** @returns {number} */
+    count() {
+        return this._reader.getUint8(this._reader.rootOffset(1));
+    }
+
+    /**
+     * Reads every field into the `NarrowStringVectorsFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     *
+     * @returns {NarrowStringVectorsFields}
+     */
+    fields() {
+        return {
+            names: this._reader.getStringVector(this._reader.rootOffset(0)),
+            count: this._reader.getUint8(this._reader.rootOffset(1))
+        };
+    }
+}
+
+/**
+ * The fields of a `NarrowStringVectors`, to write
+ *
+ * @typedef {object} NarrowStringVectorsFields
+ * @property {readonly string[]} names
+ * @property {number} count
  */
 
 /**

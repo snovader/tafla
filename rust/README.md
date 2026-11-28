@@ -39,7 +39,10 @@ node gen/tests/wasm/check.mjs target/wasm32-unknown-unknown/wasm/tafla_gen.wasm
 
 `cargo test` runs the benchmarks' check that every codec reads back what it
 wrote. The benchmarks themselves run with
-`cargo bench -p tafla-benchmarks`, and take several minutes.
+`cargo bench -p tafla-benchmarks`, and take about 3 minutes for the
+comparison and 9 for the strings comparison, as `benchmarks/README.md`
+describes, and the suite of lists of strings alone with
+`cargo bench -p tafla-benchmarks --bench lists`.
 
 Miri runs the runtime's tests to check its `unsafe` code for undefined
 behavior, on the host and on a big-endian target, which reads every array
@@ -80,7 +83,7 @@ on nightly Rust. A panic, a hang or a run out of memory is a finding:
 
 - `table_reader` reads arbitrary bytes with every getter of `TableReader`, at
   every position and past the end, in every offset type and header, and
-  reads every array, struct array and vector there. Each read must return
+  reads every array, struct array, vector and vector of strings there. Each read must return
   the bytes that lie where the format puts them, exactly when they lie
   within the input, and the decode error otherwise.
 - `conformance` mutates the conformance suite's tables and reads them as

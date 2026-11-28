@@ -34,6 +34,7 @@ from tests.descriptions import (
     LAYOUTS,
     OFFSET_TYPES,
     SCALAR_VALUES,
+    STRINGS,
     STRUCT_TYPES,
     longest_length,
     tables,
@@ -258,6 +259,22 @@ class TestFormatRules(unittest.TestCase):
             start = position + size
             self.assertEqual(unsigned(data, position, size), len(values))
             self.assertEqual(bytes(data[start : start + len(elements)]), elements)
+        elif kind == "string[]":
+            # The count, then the end of each string from the vector's
+            # position, then the strings' UTF-8, one after another
+            strings = field["value"]
+            self.assertEqual(unsigned(data, position, size), len(strings))
+
+            start = (len(strings) + 1) * size
+            for index, string in enumerate(strings):
+                encoded = string.encode()
+                end = unsigned(data, position + (index + 1) * size, size)
+
+                self.assertEqual(end, start + len(encoded))
+                self.assertEqual(
+                    bytes(data[position + start : position + end]), encoded
+                )
+                start = end
         elif kind.endswith("[]"):
             element = kind.removesuffix("[]")
             values = [from_json(element, value) for value in field["value"]]
@@ -305,6 +322,17 @@ def _last_vector_item(reader: TableReader, position: int) -> int | None:
     return None if length == 0 else reader.get_vector_offset(position, length - 1)
 
 
+def _last_string(reader: TableReader, position: int) -> str | None:
+    """Reads the last string of the vector of strings at ``position`` from
+    its ends, which reads the ends before and after it"""
+    length = reader.get_vector_length(position)
+    return (
+        None
+        if length == 0
+        else reader.get_string_vector_item(position, length, length - 1)
+    )
+
+
 type _Getter = Callable[[TableReader, int], object]
 
 # Every getter of a value at a position, with sizes of structs that need one
@@ -323,6 +351,8 @@ _GETTERS: dict[str, _Getter] = {
     "get_struct": lambda reader, position: reader.get_struct(position, 9),
     "get_struct_array": lambda reader, position: reader.get_struct_array(position, 3),
     "get_vector_offset": _last_vector_item,
+    "get_string_vector": TableReader.get_string_vector,
+    "get_string_vector_item": _last_string,
 }
 
 # Positions and indices that a caller gives: around the bytes, around the
@@ -480,16 +510,24 @@ _GROWING_TABLES: dict[bool, SearchStrategy[Callable[[int], Description]]] = {
 
 @composite
 def growing_fields(draw: DrawFn, offset_type: OffsetType) -> GrowingField:
-    """Strings, arrays of scalars, of bools and of structs, and tables nested
-    with ``set_table()`` and in a vector that end in a ``uint8[]``, which grow
-    by a character, element, bool or struct at a time, and vectors that grow
-    by an empty item, for tables of the offset type ``offset_type``. Nested
-    tables have uint32 offsets, so that they fit any length that their parent
-    does."""
-    kinds = ["array", "bool array", "struct array", "string", "table", "vector item"]
+    """Strings, alone and last in a vector of strings, arrays of scalars, of
+    bools and of structs, and tables nested with ``set_table()`` and in a
+    vector that end in a ``uint8[]``, which grow by a character, element, bool
+    or struct at a time, and vectors of tables and of strings that grow by an
+    empty item, for tables of the offset type ``offset_type``. Nested tables
+    have uint32 offsets, so that they fit any length that their parent does."""
+    kinds = [
+        "array",
+        "bool array",
+        "struct array",
+        "string",
+        "string vector item",
+        "table",
+        "vector item",
+    ]
     if offset_type == "uint8":
         # A vector of thousands of items would take most of the suite's time
-        kinds.append("vector count")
+        kinds += ["vector count", "string vector count"]
 
     match draw(sampled_from(kinds)):
         case "array":
@@ -524,6 +562,22 @@ def growing_fields(draw: DrawFn, offset_type: OffsetType) -> GrowingField:
             return GrowingField(
                 lambda count: {"type": "string", "value": character * count},
                 len(character.encode()),
+            )
+        case "string vector item":
+            character = draw(characters(codec="utf-8"))
+            others = draw(lists(STRINGS, max_size=3))
+
+            return GrowingField(
+                lambda count: {
+                    "type": "string[]",
+                    "value": [*others, character * count],
+                },
+                len(character.encode()),
+            )
+        case "string vector count":
+            return GrowingField(
+                lambda count: {"type": "string[]", "value": [""] * count},
+                offset_size_of(offset_type),
             )
         case "table":
             nested = draw(_GROWING_TABLES[False])

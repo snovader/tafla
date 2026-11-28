@@ -162,20 +162,23 @@ internal static class Workloads
 
     /// <summary>Returns the sum of an item's three float32s, as doubles, as Go's item reads add them.</summary>
     public static double SumItem(float value, float first, float second) => (double)value + first + second;
+}
 
-    /// <summary>The TypeScript generator's xorshift, in [0, 1), whose 32-bit state JavaScript's shifts keep.</summary>
-    private sealed class Xorshift(int seed)
+/// <summary>
+/// The TypeScript generator's xorshift, in [0, 1), whose 32-bit state JavaScript's shifts keep, which
+/// makes the workloads' values and the lists suite's strings.
+/// </summary>
+internal sealed class Xorshift(int seed)
+{
+    private uint _state = 0x2545_f491 ^ (uint)seed;
+
+    public double Next()
     {
-        private uint _state = 0x2545_f491 ^ (uint)seed;
+        _state ^= _state << 13;
+        _state ^= _state >> 17;
+        _state ^= _state << 5;
 
-        public double Next()
-        {
-            _state ^= _state << 13;
-            _state ^= _state >> 17;
-            _state ^= _state << 5;
-
-            return _state / 4_294_967_296.0;
-        }
+        return _state / 4_294_967_296.0;
     }
 }
 

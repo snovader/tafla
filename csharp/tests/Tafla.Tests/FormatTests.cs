@@ -73,7 +73,8 @@ public class FormatTests
     /// <summary>
     /// Scalars hold their values' little-endian bytes, structs their scalars', arrays and strings their
     /// counts' and their elements', and vectors their counts' and their items' ends', which count from
-    /// the vector's position, after the ends
+    /// the vector's position, after the ends. A vector of strings holds its strings' UTF-8 after its
+    /// ends, one after another, without padding.
     /// </summary>
     [Fact]
     public void ValuesAreLittleEndian() =>
@@ -94,6 +95,20 @@ public class FormatTests
                     else
                     {
                         Assert.Equal(value.Bytes, bytes);
+                    }
+                }
+                else if (field.Field is StringVectorField strings)
+                {
+                    Assert.Equal(Bytes.SlotBytes(strings.Values.Count, width), bytes[..width]);
+
+                    int end = (strings.Values.Count + 1) * width;
+                    for (var index = 0; index < strings.Values.Count; index++)
+                    {
+                        var utf8 = Encoding.UTF8.GetBytes(strings.Values[index]);
+                        Assert.Equal(utf8, bytes[end..(end + utf8.Length)]);
+
+                        end += utf8.Length;
+                        Assert.Equal(Bytes.SlotBytes(end, width), bytes[((index + 1) * width)..((index + 2) * width)]);
                     }
                 }
                 else if (field.Field is VectorField vector)
@@ -209,6 +224,11 @@ public class FormatTests
                     }
 
                     length = end - position;
+                    break;
+
+                case StringVectorField strings:
+                    // The count and the ends, and then the strings
+                    length = (strings.Values.Count + 1) * width + strings.Values.Sum(Encoding.UTF8.GetByteCount);
                     break;
 
                 default:

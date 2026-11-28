@@ -102,6 +102,7 @@ fn fixed_field_size(
         FieldType::Table(index) => table(index),
         FieldType::Array(_)
         | FieldType::String
+        | FieldType::StringVector
         | FieldType::StructArray(_)
         | FieldType::Vector(_) => None,
     }

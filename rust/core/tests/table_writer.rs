@@ -418,6 +418,10 @@ enum Call {
     CopyTable {
         length: usize,
     },
+    StrVector {
+        index: usize,
+        count: usize,
+    },
 }
 
 fn call() -> impl Strategy<Value = Call> {
@@ -447,6 +451,7 @@ fn call() -> impl Strategy<Value = Call> {
         (small(), small()).prop_map(|(index, count)| Call::Vector { index, count }),
         small().prop_map(|item| Call::ItemEnd { item }),
         (0..40_usize).prop_map(|length| Call::CopyTable { length }),
+        (small(), 0..8_usize).prop_map(|(index, count)| Call::StrVector { index, count }),
     ]
 }
 
@@ -485,6 +490,10 @@ impl Call {
                 }
             }
             Self::CopyTable { length } => writer.copy_table(&vec![0xa5; length]),
+            Self::StrVector { index, count } => {
+                let strings: Vec<String> = (0..count).map(|length| "é".repeat(length)).collect();
+                writer.set_str_vector(index, &strings);
+            }
         }
     }
 }

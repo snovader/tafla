@@ -54,6 +54,7 @@ const ALIGNMENTS: readonly Alignment[] = [1, 2, 4, 8];
 
 const FIELDS_PER_TABLE = 6;
 const ITEMS_PER_VECTOR = 3;
+const STRINGS_PER_VECTOR = 6;
 /** How deep tables nest below the root, with setTable() or in vectors */
 const NESTING_DEPTH = 2;
 
@@ -165,6 +166,10 @@ const stringFields = STRINGS.map((value): FieldDescription => ({
 const boolArrayFields = fc
     .array(fc.boolean())
     .map((value): FieldDescription => ({ type: 'bool[]', value }));
+/** Vectors of strings, empty too, and of empty strings */
+const stringVectorFields = fc
+    .array(STRINGS, { maxLength: STRINGS_PER_VECTOR })
+    .map((value): FieldDescription => ({ type: 'string[]', value }));
 
 const ITEMS_PER_STRUCT_ARRAY = 4;
 
@@ -257,6 +262,7 @@ export const FIELDS: fc.Arbitrary<FieldDescription> = fc.letrec<{
                 ARRAY_FIELDS,
                 boolArrayFields,
                 stringFields,
+                stringVectorFields,
                 structFields,
                 STRUCT_ARRAY_FIELDS
             ),

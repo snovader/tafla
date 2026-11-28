@@ -145,6 +145,21 @@ sealed interface FieldDescription {
         }
     }
 
+    /**
+     * A vector of strings: a count, the end of each string, and the strings' UTF-8, one after
+     * another, with {@code setStringVector()}
+     */
+    record StringVectorField(List<String> values) implements FieldDescription {
+        public StringVectorField {
+            values = List.copyOf(values);
+        }
+
+        @Override
+        public String toString() {
+            return DescriptionJson.write(this).toString();
+        }
+    }
+
     /** A table nested from its builder or from the bytes that its builder writes */
     record NestedTable(Source from, TableDescription table) {
         @Override

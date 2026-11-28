@@ -3,9 +3,10 @@ import Testing
 @testable import Tafla
 
 // TableReader validates strings with the standard library where its runtime
-// can, from Swift 6.0's on, and with a validator of its own on older Apple
-// systems, which CI's hosts don't run. The validator must accept exactly the
-// bytes that the standard library accepts.
+// can, as a UTF8Span from Swift 6.2's on, and with String(validating:as:)
+// from Swift 6.0's, and with a validator of its own on older Apple systems,
+// which CI's hosts don't run. Each must accept exactly the bytes that the
+// standard library's String(validating:as:) accepts.
 
 @Suite("UTF-8")
 struct UTF8Tests {
@@ -34,6 +35,9 @@ struct UTF8Tests {
                 let expected = String(validating: bytes, as: UTF8.self)
                 #expect(isValidUTF8(bytes) == (expected != nil))
                 #expect(decodeUTF8(bytes) == expected)
+
+                let validated = validatedString(RawSpan(_unsafeBytes: bytes))
+                #expect(validated.map { Array($0.utf8) } == expected.map { Array($0.utf8) })
             }
         }
     }
@@ -64,6 +68,9 @@ struct UTF8Tests {
     func validatesTheBoundariesOfEachSequence(_ bytes: [UInt8], _ valid: Bool) {
         bytes.withUnsafeBytes { bytes in
             #expect(isValidUTF8(bytes) == valid)
+
+            let validated = validatedString(RawSpan(_unsafeBytes: bytes))
+            #expect(validated.map { Array($0.utf8) } == (valid ? Array(bytes) : nil))
         }
     }
 }

@@ -2,8 +2,9 @@
 //! at the root of the repository states them: the header holds the length
 //! and version, offsets lie within the table, values follow each other in
 //! field order with only the padding that aligns arrays and nested tables,
-//! multi-byte values are little-endian, and nested tables and vector items
-//! hold the bytes of their tables.
+//! multi-byte values are little-endian, nested tables and vector items hold
+//! the bytes of their tables, and vectors of strings hold the end of each
+//! string and then the strings' UTF-8, one after another.
 
 mod common;
 
@@ -90,7 +91,8 @@ proptest! {
     /// Scalars hold their values' `to_le_bytes()`, structs their scalars',
     /// arrays and strings their counts' and their elements', and vectors
     /// their counts' and their items' ends', which count from the vector's
-    /// position, after the ends
+    /// position, after the ends. Vectors of strings hold their counts' and
+    /// their strings' ends', and then the strings' UTF-8 without padding.
     #[test]
     fn test_values_are_little_endian(table in strategy::table()) {
         let bytes = table.to_bytes().unwrap();
@@ -118,6 +120,21 @@ proptest! {
                             let slot = &value[position..position + width];
                             prop_assert_eq!(slot, slot_bytes(end, width));
                         }
+                    }
+                    (Field::StringVector(strings), None) => {
+                        prop_assert_eq!(&value[..width], slot_bytes(strings.len(), width));
+
+                        let start = (strings.len() + 1) * width;
+                        let mut end = start;
+                        for (index, string) in strings.iter().enumerate() {
+                            end += string.len();
+
+                            let position = (index + 1) * width;
+                            let slot = &value[position..position + width];
+                            prop_assert_eq!(slot, slot_bytes(end, width));
+                        }
+                        let utf8 = strings.concat();
+                        prop_assert_eq!(&value[start..], utf8.as_bytes());
                     }
                     _ => {}
                 }
@@ -226,6 +243,10 @@ fn find_tables<'a>(
 
                 end - position
             }
+            // The count, the ends and the strings
+            Field::StringVector(strings) => {
+                (strings.len() + 1) * width + strings.iter().map(String::len).sum::<usize>()
+            }
             value => Value::of(value).unwrap().byte_length(width),
         };
 
@@ -317,7 +338,7 @@ impl Value {
                     .flat_map(|scalars| struct_bytes(scalars))
                     .collect(),
             },
-            Field::Table { .. } | Field::Vector(_) => return None,
+            Field::Table { .. } | Field::Vector(_) | Field::StringVector(_) => return None,
         })
     }
 

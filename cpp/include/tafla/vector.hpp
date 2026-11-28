@@ -107,6 +107,8 @@ public:
 private:
     template <bool>
     friend class TableReader;
+    /// Reads its strings from their ends, as the items are found
+    friend class StringVector;
 
     /// Views `size` items in the `length` bytes at `bytes`, from the
     /// vector's `position` to the end of the buffer, which must have been

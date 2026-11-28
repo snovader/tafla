@@ -96,7 +96,7 @@ public readonly ref struct Vector
     public VectorItems ItemsInPlace() => new(this, inPlace: true);
 
     /// <summary>Returns where item <paramref name="index"/> starts and ends, from the vector's position.</summary>
-    private (long Start, long End) Bounds(int index)
+    internal (long Start, long End) Bounds(int index)
     {
         if ((uint)index >= (uint)_count)
         {
@@ -145,6 +145,13 @@ public readonly ref struct Vector
         int itemStart = (int)(_position + start);
         return inPlace ? _bytes[itemStart..] : _bytes[itemStart..(int)(_position + end)];
     }
+
+    /// <summary>
+    /// Decodes the item from <paramref name="start"/> to <paramref name="end"/>, from the vector's
+    /// position, as a string of a vector of strings: its bytes, which are UTF-8 without a count
+    /// </summary>
+    internal string String(long start, long end) =>
+        TableReader.DecodeString(Item(start, end, inPlace: false), (int)(_position + start));
 }
 
 /// <summary>

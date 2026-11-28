@@ -160,6 +160,10 @@ final class GeneratedDescriptions {
         return new VectorField(items);
     }
 
+    static StringVectorField stringVector(List<String> values) {
+        return new StringVectorField(values);
+    }
+
     private static TableDescription tableOf(FieldDescription... fields) {
         return new TableDescription(DEFAULT_LAYOUT, OptionalLong.empty(), List.of(fields));
     }

@@ -89,6 +89,7 @@ final class DescriptionReader {
             case StructArrayField array -> StructBytes.readArray(reader, position, array.fields());
             case TableField table -> new TableField(table.from(), readNested(position, table.table()), table.alignment());
             case VectorField vector -> new VectorField(readVector(position, vector.items()));
+            case StringVectorField ignored -> new StringVectorField(readStringVector(position));
         };
     }
 
@@ -141,6 +142,27 @@ final class DescriptionReader {
         }
 
         return read;
+    }
+
+    /**
+     * Reads every string of a vector of strings, and finds each from its ends alone, with the
+     * reader and through a {@link StringVector}, by index and in order, which read the same
+     * strings
+     */
+    private List<String> readStringVector(int position) {
+        var strings = reader.getStringVector(position);
+        var count = reader.getVectorLength(position);
+        var view = new StringVector(reader, position);
+        assertEquals(strings.length, count, "The vector's length");
+        assertEquals(strings.length, view.size(), "The view's size");
+
+        for (int index = 0; index < count; index++) {
+            assertEquals(strings[index], reader.getStringVectorItem(position, count, index), "String " + index);
+            assertEquals(strings[index], view.get(index), "String " + index + " of the view");
+        }
+        assertEquals(List.of(strings), List.copyOf(view), "The view's strings in order");
+
+        return List.of(strings);
     }
 
     private boolean readsInPlace(LayoutDescription nested) {

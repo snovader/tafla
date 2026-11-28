@@ -31,6 +31,18 @@ first commits, for code built from its source before the release.
   returns an error, leaves fields unset or panics. The benchmarks' vector of
   100 nested tables took 4.4 µs so, rather than 8.8 µs from a builder per
   item, in 4 allocations rather than 208.
+- Vectors of strings, which `SPEC.md` adds to the format: a count, the end
+  of each string and the strings' UTF-8, one after another.
+  `TableReader::get_str_vector()` returns a `StringVector`, which reads one
+  string from its ends with `get()`, each in turn with `iter()`, and every
+  string into a `Vec<&str>` with `to_vec()`, borrowed from the bytes.
+  `to_vec()` checks the strings' run of bytes as UTF-8 at once, and read
+  lists of ASCII in 0.34–0.92 times the time of reading each string.
+  `TableReader::get_str_vector_item()` reads one string from a count that
+  the caller keeps. Each string is checked as UTF-8 on its own, so an end
+  that splits a character fails both strings around it.
+  `TableSizer::add_str_vector()`, `TableWriter::set_str_vector()` and
+  `TableBuilder::set_str_vector()` write them from a list of strings.
 - `TableSizer::add_table_bytes()`, a public `TableWriter::copy_table()`, and
   `TableWriter::table_bytes()` and `versioned_table_bytes()`, for the code
   that tafla-gen generates: they add and copy whole a table whose length its
@@ -81,6 +93,44 @@ first commits, for code built from its source before the release.
   rather than 6.7 ns, and its document of 100 rows in 15.3 ns rather than
   16.5 ns. A table of 16 strings of 8 ASCII characters was read in 51 ns
   rather than 76 ns. Its values and errors are unchanged.
+- `TableReader::root_offset()` and `field_offset()`, and the reads of
+  lengths and offsets that they and the getters share, are inlined into
+  their callers. With several of them, as in a reader written by hand, LLVM
+  called them out of line, which `#[inline]` didn't change, and each read
+  the layout from memory and branched on its offset size. The comparison
+  suite's versioned document of 100 rows, read with `TableReader` by hand,
+  was read in 12.7 ns rather than 27.1 ns, its record in 5.4 ns rather than
+  6.8 ns, and the last table of its vector in 6.3 ns rather than 7.9 ns.
+  tafla-gen's code, whose reads were already inlined, is unchanged. Their
+  values and errors are unchanged.
+- `ArrayView::to_cow()` is inlined into its callers, and only its copy of
+  elements that aren't in place is called out of line. LLVM called the whole
+  of it out of line, with the copy. tafla-gen's document of 100 rows was read
+  in 12.5 ns rather than 15.3 ns, and with `TableReader` by hand in 10.3 ns
+  rather than 12.9 ns. Its values are unchanged.
+- `Vector::get_in_place()` is inlined into its callers. With two of them,
+  LLVM called it out of line, which `#[inline]` didn't change. tafla-gen's
+  view read the last of a vector's 100 tables in 3.8 ns rather than 6.5 ns,
+  and `TableReader` by hand in 4.0 ns rather than 6.4 ns. Its values and
+  errors are unchanged.
+- `Vector::get()` is inlined into its callers, as `get_in_place()` is.
+  Called out of line, it read the vector's offset type from memory and
+  branched on its size at every call. The last of a vector's 100 sized
+  tables, which `get()` returns as tables of their own, was read with
+  `TableReader` by hand in 4.1 ns rather than 6.1 ns. Its values and errors
+  are unchanged.
+- `TableReader::get_str()` and `StringVector`'s reads of one string check a
+  string shorter than 64 bytes for ASCII where they're inlined, a word at a
+  time as the standard library's `is_ascii()` does, and call `is_ascii()`
+  for longer ones. LLVM called `is_ascii()` out of line from larger callers,
+  such as a read of a record's fields. The benchmarks' record was read in
+  5.0 ns rather than 5.6 ns, by hand and through tafla-gen's getters, their
+  document of 100 rows in 0.94 to 0.97 of the time, and a table of 16
+  strings shorter than 64 bytes, through tafla-gen's getters, in 0.86 to
+  0.95. 16 strings of 64 bytes or more took 1.02 to 1.10 times as long
+  through tafla-gen's getters, whose read grew by 16 inlined checks, and 16
+  empty strings 1.06 times as long by hand. Their values and errors are
+  unchanged.
 - `TableBuilder` makes room to record at least 8 fields when it starts, its
   own and those of the tables that it records in place, rather than only its
   own. Recording a table in place grew a small table's record by a

@@ -118,6 +118,10 @@ public static class Write
                 sizer.AddString(value.Value);
                 break;
 
+            case StringVectorField value:
+                sizer.AddStringVector([.. value.Values]);
+                break;
+
             case StructField value:
                 sizer.AddStruct(Scalars.StructSize(value.Scalars.Select(scalar => scalar.Type)));
                 break;
@@ -179,6 +183,10 @@ public static class Write
 
             case StringField value:
                 writer.SetString(index, value.Value);
+                break;
+
+            case StringVectorField value:
+                writer.SetStringVector(index, [.. value.Values]);
                 break;
 
             case StructField value:

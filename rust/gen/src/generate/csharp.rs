@@ -406,6 +406,7 @@ impl Generator<'_> {
                 format!("_reader.FieldOffset(_position, {index})")
             };
             let value = match field.field_type {
+                FieldType::StringVector => format!("_reader.GetStringVector({offset})"),
                 FieldType::Scalar(Scalar::Bool) => format!("_reader.GetUInt8({offset}) != 0"),
                 FieldType::Scalar(scalar) => to_enum(
                     self.enum_name(field),
@@ -441,10 +442,10 @@ impl Generator<'_> {
         }
     }
 
-    /// A getter's documentation: the field's, and for a vector or an array of
-    /// structs, that the getter returns a view whose items are read when
-    /// they're asked for, and for an array of bools, that it returns their
-    /// bytes
+    /// A getter's documentation: the field's, and for a vector, a vector of
+    /// strings or an array of structs, that the getter returns a view whose
+    /// items are read when they're asked for, and for an array of bools, that
+    /// it returns their bytes
     fn getter_docs(&self, writer: &mut CodeWriter, field: &Field) {
         let mut docs = schema_docs(&field.docs);
         let (note, exception) = match field.field_type {
@@ -462,6 +463,13 @@ impl Generator<'_> {
             FieldType::Array(Scalar::Bool) => (
                 "A byte for each bool, which is true where it isn't 0".to_owned(),
                 None,
+            ),
+            FieldType::StringVector => (
+                format!(
+                    "Views the strings, reading each one when it's asked for, so that a string whose bytes are corrupt throws a {} when it's read, rather than here.",
+                    cref(&self.runtime_type("DecodeException"))
+                ),
+                Some("The vector's count or the ends of its strings don't lie within the bytes."),
             ),
             _ => {
                 summary(writer, &docs);
@@ -850,6 +858,7 @@ impl Generator<'_> {
         for field in &definition.fields {
             let value = member(&field.name, &definition.name);
             let call = match field.field_type {
+                FieldType::StringVector => format!("sizer.AddStringVector({value}.Span);"),
                 FieldType::Scalar(scalar) => format!("sizer.Add{}();", method_name(scalar)),
                 FieldType::Array(Scalar::Bool) => format!("sizer.AddBoolArray({value}.Length);"),
                 FieldType::Array(scalar) => {
@@ -902,6 +911,9 @@ impl Generator<'_> {
         for (index, field) in definition.fields.iter().enumerate() {
             let value = member(&field.name, &definition.name);
             let call = match field.field_type {
+                FieldType::StringVector => {
+                    format!("writer.SetStringVector({index}, {value}.Span);")
+                }
                 FieldType::Scalar(Scalar::Bool) => {
                     format!("writer.SetUInt8({index}, {value} ? (byte)1 : (byte)0);")
                 }
@@ -1261,6 +1273,9 @@ impl Generator<'_> {
     /// .NET bool of a byte other than 1 or 0 misbehaves.
     fn value_type(&self, field: &Field) -> String {
         match field.field_type {
+            // The runtime's view of the strings, which reads each one when it's
+            // asked for
+            FieldType::StringVector => self.runtime_type("StringVector"),
             FieldType::Scalar(scalar) => self
                 .enum_name(field)
                 .unwrap_or(scalar_type(scalar))
@@ -1282,12 +1297,14 @@ impl Generator<'_> {
     }
 
     /// The type of a field in its definition's fields, which hold arrays,
-    /// structs and items as ranges of memory that they don't copy
+    /// structs, items and strings of a vector as ranges of memory that they
+    /// don't copy
     fn input_type(&self, field: &Field) -> String {
         match field.field_type {
             FieldType::Array(scalar) => {
                 format!("global::System.ReadOnlyMemory<{}>", scalar_type(scalar))
             }
+            FieldType::StringVector => "global::System.ReadOnlyMemory<string>".to_owned(),
             FieldType::StructArray(index) => format!(
                 "global::System.ReadOnlyMemory<{}>",
                 self.schema.definition(index).name

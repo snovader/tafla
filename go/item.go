@@ -92,6 +92,10 @@ func (i Item) SetBoolArray(values []bool) error { return i.builder.SetBoolArray(
 // SetString sets a string field, as [TableBuilder.SetString] does.
 func (i Item) SetString(value string) error { return i.builder.SetString(value) }
 
+// SetStringVector sets a vector of strings, as
+// [TableBuilder.SetStringVector] does.
+func (i Item) SetStringVector(values []string) error { return i.builder.SetStringVector(values) }
+
 // SetStruct sets a struct field from its bytes, as [TableBuilder.SetStruct]
 // does.
 func (i Item) SetStruct(bytes []byte) error { return i.builder.SetStruct(bytes) }

@@ -71,4 +71,24 @@ struct ConformanceTests {
             }
         }
     }
+
+    // What a vector of strings adds to the format is how its items are read,
+    // so a vector's items are its strings' UTF-8
+    @Test func aVectorOfStringsHoldsAVectorOfItemsThatAreEachStringsUTF8() throws {
+        guard let valid = suite.valid.first(where: { $0.name == "string-vectors" }),
+            case .stringVector(let utf8) = valid.table.fields[0]
+        else {
+            Issue.record("The first field of string-vectors is its strings")
+            return
+        }
+
+        let table = Table(layout: valid.table.layout, version: valid.table.version, fields: [.stringVector(utf8: utf8)])
+        try withSpan(of: table.bytes()) { bytes throws in
+            let reader = TableReader(bytes, layout: table.layout)
+            let vector = try reader.vector(at: reader.rootOffset(0))
+
+            #expect(try vector.indices.map { try vector.item(at: $0).withUnsafeBytes(Array.init) } == utf8)
+            #expect(try readTable(bytes, table) == table)
+        }
+    }
 }

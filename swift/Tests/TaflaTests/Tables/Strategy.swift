@@ -12,8 +12,9 @@ import Testing
 // table and the tables in it fit in their offset types.
 //
 // PropertyBased runs each property, and a failing table shrinks by losing
-// fields and vector items. Other values are drawn from a Draw, which the
-// property's generator seeds, and don't shrink.
+// fields, vector items and the strings of vectors of strings. Other values
+// are drawn from a Draw, which the property's generator seeds, and don't
+// shrink.
 
 /// The number of cases of each property, as proptest runs in the Rust tests
 let propertyChecks = 256
@@ -47,7 +48,7 @@ enum Tables {
     static let any = of { draw in draw.layout() }
 
     /// Tables of the layouts that `layouts` draws, which shrink by losing
-    /// fields and vector items
+    /// fields, vector items and the strings of vectors of strings
     static func of(_ layouts: @escaping @Sendable (inout Draw) -> TableLayout) -> Generator<Table, [Table]> {
         Generator(
             run: { rng in
@@ -63,8 +64,9 @@ enum Tables {
     static let depth = 2
 }
 
-/// Smaller tables than `table`, each without one of its fields, or of the
-/// fields or items of a table nested in it
+/// Smaller tables than `table`, each without one of its fields, of the
+/// fields or items of a table nested in it, or of the strings of a vector of
+/// strings
 func shrinks(of table: Table) -> [Table] {
     var candidates: [Table] = []
 
@@ -98,6 +100,14 @@ func shrinks(of table: Table) -> [Table] {
                     smaller.fields[index] = .vector(shrunkItems)
                     candidates.append(smaller)
                 }
+            }
+        case .stringVector(let utf8):
+            for string in utf8.indices {
+                var fewer = utf8
+                fewer.remove(at: string)
+                var smaller = table
+                smaller.fields[index] = .stringVector(utf8: fewer)
+                candidates.append(smaller)
             }
         default:
             break
@@ -305,6 +315,8 @@ struct Draw: RandomNumberGenerator {
             (3, { .string($0.string(most: limits.characters)) }),
             (3, { draw in .struct(draw.scalars(draw.structTypes())) }),
             (3, { $0.structArray(most: limits.structs) }),
+            // Empty too, and of empty strings
+            (3, { draw in .stringVector(draw.array(most: limits.strings) { $0.string(most: limits.characters) }) }),
         ]
 
         return weighted(choices)
@@ -365,20 +377,23 @@ struct Draw: RandomNumberGenerator {
     }
 }
 
-/// The most fields, array elements, characters, structs in an array and
-/// vector items that a table holds. A table of uint8 offsets, or nested in
-/// one, holds few enough to fit in its 255 bytes more often than not, and
-/// others hold enough for uint16 lengths and offsets past 255.
+/// The most fields, array elements, characters, structs in an array, vector
+/// items and strings in a vector of strings that a table holds. A table of
+/// uint8 offsets, or nested in one, holds few enough to fit in its 255 bytes
+/// more often than not, and others hold enough for uint16 lengths and offsets
+/// past 255.
 struct Limits {
     var fields = 8
     var elements = 24
     var characters = 16
     var structs = 6
     var items = 4
+    var strings = 6
 
     init(small: Bool) {
         if small {
             (fields, elements, characters, structs, items) = (5, 6, 6, 2, 2)
+            strings = 3
         }
     }
 }
@@ -439,5 +454,6 @@ func longest(_ field: Field, width: UInt64) -> UInt64 {
         return UInt64(structAlignment(types).bytes) - 1 + width + UInt64(items.count * structSize(types))
     case .table(let nested, _): return 7 + longestTable(nested.table)
     case .vector(let items): return items.reduce(width) { $0 + width + longestTable($1.table) }
+    case .stringVector(let utf8): return utf8.reduce(width) { $0 + width + UInt64($1.count) }
     }
 }

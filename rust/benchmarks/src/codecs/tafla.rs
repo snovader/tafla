@@ -6,6 +6,7 @@ use tafla::{
 
 use crate::codec::{Codec, DocumentWorkload, Error, Workload};
 use crate::item_access::{ItemAccess, no_items, sum_item};
+use crate::string_workloads::{COUNT, Strings, StringsShape};
 use crate::workloads::{
     Document, DocumentShape, Item, List, ListShape, Record, RecordShape, Sample, SampleShape,
     StructsShape, sum_column,
@@ -32,6 +33,10 @@ const ITEM_ALIGNMENT: Alignment = Alignment::Four;
 /// `to_le_bytes()` and read with `TableReader`'s getters, and an array of
 /// structs with `to_le_bytes()` and `from_le_bytes()`, as tafla-gen's code
 /// writes and reads an array of them.
+///
+/// The strings comparison's table is a table of 16 string fields, which it
+/// times, rather than a vector of strings. Their `get_str()` checks each
+/// string's UTF-8.
 #[derive(Clone, Copy, Debug)]
 pub struct Tafla;
 
@@ -187,6 +192,30 @@ impl Workload<SampleShape> for Tafla {
             a: reader.get_f32(4)?,
             b: reader.get_f32(8)?,
         })
+    }
+}
+
+impl Workload<StringsShape> for Tafla {
+    type Bytes = Vec<u8>;
+
+    fn serialize(self, input: &Strings<'_>) -> Result<Vec<u8>, Error> {
+        let mut builder = TableBuilder::new(COUNT, TableLayout::DEFAULT)?;
+        for string in &input.items {
+            builder.set_str(string.as_ref())?;
+        }
+
+        Ok(builder.to_bytes()?)
+    }
+
+    fn deserialize(self, bytes: &[u8]) -> Result<Strings<'_>, Error> {
+        let reader = TableReader::new(bytes, TableLayout::DEFAULT);
+
+        let mut items = [const { Cow::Borrowed("") }; COUNT];
+        for (index, item) in items.iter_mut().enumerate() {
+            *item = Cow::Borrowed(reader.get_str(reader.root_offset(index)?)?);
+        }
+
+        Ok(Strings { items })
     }
 }
 

@@ -13,6 +13,7 @@
 #include "element.hpp"
 #include "errors.hpp"
 #include "layout.hpp"
+#include "string_vector.hpp"
 #include "utf8.hpp"
 #include "vector.hpp"
 
@@ -262,6 +263,17 @@ public:
         static_cast<void>(range(position + width, static_cast<std::uint64_t>(count) * width));
 
         return {data_ + position, size_ - position, position, count, layout_.offset_type()};
+    }
+
+    /// Reads the vector of strings at `position`, checking that its count and
+    /// the ends of its strings lie within the bytes, as `get_vector()` checks
+    /// a vector's. Each string is checked when it's read, from its ends, as
+    /// UTF-8 on its own.
+    ///
+    /// Throws a `DecodeError` if the count or the ends don't lie within the
+    /// bytes.
+    [[nodiscard]] TAFLA_ALWAYS_INLINE StringVector get_string_vector(std::size_t position) const {
+        return StringVector(get_vector(position));
     }
 
 private:

@@ -1,6 +1,6 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'hypotes';
-import { DecodeError } from 'tafla';
+import { DecodeError, TableReader } from 'tafla';
 import { SUITE } from './cases.ts';
 import type { Suite, ValidCase } from './description.ts';
 import { writeSuite, SUITE_DIRECTORY } from './files.ts';
@@ -94,3 +94,30 @@ describe('invalid cases', () => {
         }
     );
 });
+
+describe('the vector of strings', () => {
+    it('should hold the bytes of a vector of items that are each string’s UTF-8', () => {
+        // What a vector of strings adds to the format is how its items are
+        // read, so the builders that write vectors from bytes write it too
+        const { table } = validCaseNamed('string-vectors');
+        const [strings] = table.fields;
+        if (strings.type !== 'string[]') {
+            throw new Error('The first field of string-vectors is its strings');
+        }
+
+        const encoder = new TextEncoder();
+        const built = buildTable({ ...table, fields: [strings] }).bytes();
+        const reader = new DescriptionReader(built, table.layout);
+        const items = strings.value.map(string => encoder.encode(string));
+
+        expect(itemsOf(built)).toStrictEqual(items);
+        expect(reader.readRootField(0, strings)).toStrictEqual(strings);
+    });
+});
+
+/** The items of the vector that is the first field of a table of `bytes` */
+function itemsOf(bytes: Uint8Array): Uint8Array[] {
+    const reader = new TableReader(bytes);
+
+    return reader.getVector(reader.rootOffset(0)).map(item => item.slice());
+}

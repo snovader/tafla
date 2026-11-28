@@ -31,6 +31,12 @@ repository's first commits, for code built from its source before the release.
 - Arrays of bools, stored as `uint8` arrays of 1 and 0:
   `TableBuilder.setBoolArray()`, `TableSizer.addBoolArray()`,
   `TableWriter.setBoolArray()` and `TableReader.getBoolArray()`.
+- A vector of strings, which `SPEC.md` adds to the format:
+  `TableBuilder.setStringVector()`, `TableSizer.addStringVector()` and
+  `TableWriter.setStringVector()` write one from an array of strings,
+  `TableReader.getStringVector()` reads every string,
+  `TableReader.getStringVectorItem()` one from its ends, and `StringVector`
+  views one.
 - API for the code that tafla-gen generates, which lays out the fields whose
   sizes the schema fixes itself, and may change with it:
   `TableSizer.addTableBytes()`, which adds a nested table or a vector's items

@@ -486,6 +486,7 @@ enum FieldType {
     Scalar(Index),
     Array(Index),
     String,
+    StringVector,
     /// Any of the structs, or in a struct one of the structs after it, or a
     /// scalar if there's none
     Struct(Index),
@@ -621,6 +622,7 @@ fn field_type() -> impl Strategy<Value = FieldType> {
         any::<Index>().prop_map(FieldType::Scalar),
         any::<Index>().prop_map(FieldType::Array),
         Just(FieldType::String),
+        Just(FieldType::StringVector),
         any::<Index>().prop_map(FieldType::Struct),
         any::<Index>().prop_map(FieldType::StructArray),
         any::<Index>().prop_map(FieldType::Table),
@@ -846,6 +848,7 @@ impl Schema {
             }
             FieldType::Table(_) => "float64".to_owned(),
             FieldType::String | FieldType::Vector(_) => "string".to_owned(),
+            FieldType::StringVector => "[string]".to_owned(),
         }
     }
 

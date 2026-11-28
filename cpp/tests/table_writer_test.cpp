@@ -740,6 +740,40 @@ TEST(TableWriter, FailsForFieldsShorterThanThoseSized) {
     EXPECT_STREQ(error.what(), "The fields wrote 9 of the table's 10 bytes");
 }
 
+TEST(TableWriter, FailsForStringsOfAVectorLongerOrShorterThanThoseSized) {
+    const std::vector<std::string_view> sized{"a", "b"};
+    const auto writer_of = [&sized] {
+        TableSizer sizer(1, TableLayout());
+        sizer.add_string_vector(sized);
+        return sizer.writer();
+    };
+    const auto finish = [](TableWriter& writer) { static_cast<void>(writer.finish()); };
+
+    // The table's offset, the count, two ends and "a" were written before
+    // "bc" didn't fit
+    const std::vector<std::string_view> longer{"a", "bc"};
+    auto longer_writer = writer_of();
+    longer_writer.set_string_vector(0, longer);
+    EXPECT_TRUE(same_details(build_error_of([&] { finish(longer_writer); }), BuildError::not_as_sized(17, 18)));
+
+    // Without room for a third end, after the table's offset
+    const std::vector<std::string_view> more{"a", "b", ""};
+    auto more_writer = writer_of();
+    more_writer.set_string_vector(0, more);
+    EXPECT_TRUE(same_details(build_error_of([&] { finish(more_writer); }), BuildError::not_as_sized(4, 18)));
+
+    const std::vector<std::string_view> shorter{"a", ""};
+    auto shorter_writer = writer_of();
+    shorter_writer.set_string_vector(0, shorter);
+    EXPECT_TRUE(same_details(build_error_of([&] { finish(shorter_writer); }), BuildError::not_as_sized(17, 18)));
+
+    auto writer = writer_of();
+    writer.set_string_vector(0, sized);
+    TableBuilder builder(1, TableLayout());
+    builder.set_string_vector(sized);
+    EXPECT_EQ(writer.finish(), builder.to_bytes());
+}
+
 TEST(TableWriter, FailsForAFieldPastItsTablesFields) {
     TableSizer sizer(2, TableLayout());
     sizer.add_uint8();

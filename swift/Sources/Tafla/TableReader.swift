@@ -273,12 +273,7 @@ public struct TableReader: ~Escapable {
     /// ``DecodeError/invalidUTF8(position:)`` if it isn't valid UTF-8.
     public func string(at position: Int) throws(DecodeError) -> String {
         let utf8 = try arrayBytes(at: position, elementSize: 1)
-
-        guard let string = utf8.withUnsafeBytes(decodeUTF8) else {
-            throw .invalidUTF8(position: position)
-        }
-
-        return string
+        return try decodeString(utf8, at: position)
     }
 
     /// Reads the `size` bytes, which mustn't be negative, of the struct at
@@ -329,6 +324,18 @@ public struct TableReader: ~Escapable {
         try check(position &+ width, UInt64(count) &* UInt64(width))
 
         return Vector(bytes: bytes, position: position, count: count, offsetType: layout.offsetType)
+    }
+
+    /// Reads the vector of strings at `position`, checking that its count and
+    /// the ends of its strings lie within the bytes, as ``vector(at:)``
+    /// checks a vector's. Each string is checked when it's read.
+    ///
+    /// Throws ``DecodeError/outOfRange(position:byteLength:available:)`` if
+    /// the count or the ends don't lie within the bytes.
+    @inlinable
+    @_lifetime(copy self)
+    public func stringVector(at position: Int) throws(DecodeError) -> StringVector {
+        StringVector(try vector(at: position))
     }
 
     /// Returns the bytes of the elements after the count at `position`

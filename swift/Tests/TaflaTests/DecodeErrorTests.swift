@@ -398,6 +398,7 @@ struct ArbitraryReads: Sendable {
             .float32(bits: 0), .float64(bits: 0), .int8Array([]), .uint8Array([]), .int16Array([]),
             .uint16Array([]), .int32Array([]), .uint32Array([]), .int64Array([]), .uint64Array([]),
             .float32Array(bits: []), .float64Array(bits: []), .boolArray([]), .string(utf8: []),
+            .stringVector(utf8: []),
         ]
 
         var reads = values.map { field in read { .value(try readField(reader, at: position, field)) } }

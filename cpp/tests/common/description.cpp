@@ -31,6 +31,8 @@ bool same(const T& left, const T& right) {
         return left.nested == right.nested && left.alignment == right.alignment;
     } else if constexpr (std::is_same_v<T, VectorField>) {
         return left.items == right.items;
+    } else if constexpr (std::is_same_v<T, StringVectorField>) {
+        return left.strings == right.strings;
     } else {
         return left == right;
     }
@@ -236,6 +238,13 @@ std::ostream& operator<<(std::ostream& stream, const Field& field) {
                        stream << "vector[";
                        for (const auto& item : value.items) {
                            stream << (item.from == Source::builder ? "builder " : "bytes ") << item.table << "; ";
+                       }
+                       stream << "]";
+                   },
+                   [&stream](const StringVectorField& value) {
+                       stream << "string[";
+                       for (std::size_t index = 0; index < value.strings.size(); ++index) {
+                           stream << (index == 0 ? "\"" : ", \"") << value.strings[index] << '"';
                        }
                        stream << "]";
                    },

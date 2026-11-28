@@ -1,9 +1,9 @@
 //! Rust for `tafla`. Messages and tables are `Copy` views that read fields
-//! lazily, borrowing strings and arrays from the bytes, and vectors and
-//! arrays of structs as views that read each item when it's asked for;
-//! they're written from structs of their fields, which a `TableSizer` sizes
-//! and a `TableWriter` writes, nested tables in place. Structs are plain
-//! structs read and written at fixed offsets. An enum is a `Copy` struct of
+//! lazily, borrowing strings and arrays from the bytes, and vectors, vectors
+//! of strings and arrays of structs as views that read each item when it's
+//! asked for; they're written from structs of their fields, which a
+//! `TableSizer` sizes and a `TableWriter` writes, nested tables in place.
+//! Structs are plain structs read and written at fixed offsets. An enum is a `Copy` struct of
 //! its integer, with a constant of each value that the schema names, so that
 //! a field of it holds any integer of its type; an array of an enum is an
 //! array of its integers. An array of bools is read as its bytes, in place,
@@ -197,6 +197,10 @@ impl Generator<'_> {
             .iter()
             .flat_map(|definition| &definition.fields)
             .any(|field| matches!(field.field_type, FieldType::Vector(_)));
+        let has_string_vector = definitions
+            .iter()
+            .flat_map(|definition| &definition.fields)
+            .any(|field| field.field_type == FieldType::StringVector);
 
         let mut names = Vec::new();
         // Arrays of structs and nested tables are padded to their alignment
@@ -212,6 +216,10 @@ impl Generator<'_> {
         names.push("DecodeError");
         if has_offset_type {
             names.push("OffsetType");
+        }
+        // Getters of vectors of strings return the runtime's view of them
+        if has_string_vector {
+            names.push("StringVector");
         }
         // Messages make sizers, or the bytes of a whole one, and tables take
         // sizers and writers
@@ -266,7 +274,7 @@ impl Generator<'_> {
         writer.close("}");
         writer.blank();
 
-        writer.open(format!("impl<'a> {name}<'a> {{"));
+        open_reader_impl(writer, definition);
         if let Some(version) = layout.version {
             rust_doc(
                 writer,
@@ -334,7 +342,7 @@ impl Generator<'_> {
         writer.close("}");
         writer.blank();
 
-        writer.open(format!("impl<'a> {name}<'a> {{"));
+        open_reader_impl(writer, definition);
         rust_doc(
             writer,
             &[
@@ -1053,6 +1061,7 @@ impl Generator<'_> {
                     writer.close("}");
                     continue;
                 }
+                FieldType::StringVector => ("add_str_vector".to_owned(), vec![text(value)]),
             };
             writer.statement(&STYLE, "", &call(format!("sizer.{method}"), arguments), ";");
         }
@@ -1145,6 +1154,9 @@ impl Generator<'_> {
                     writer.close("}");
                     continue;
                 }
+                FieldType::StringVector => {
+                    ("set_str_vector".to_owned(), vec![position, text(value)])
+                }
             };
             writer.statement(
                 &STYLE,
@@ -1175,6 +1187,18 @@ impl Generator<'_> {
             let docs = self.getter_docs(field);
             writer.blank();
             rust_doc(writer, &docs);
+            // Inlined into its callers, as the runtime's reads that it calls
+            // are, so that a getter compiles to the read that `TableReader`'s
+            // getters make by hand. Out of line, it returns its `Result`
+            // through memory: LLVM called the nested table's getters of the
+            // benchmarks' document out of line, and 12 of the 16 string
+            // getters of their table of strings, which `#[inline]` didn't
+            // change. Inlined, the document read in 10.3 ns rather than
+            // 12.6 ns, and 16 empty strings in 41 ns rather than 61 ns. The
+            // record read took 5.5 ns rather than 5.0 ns, as by hand, since
+            // LLVM had inlined `is_ascii()` into its string's getter alone,
+            // until the runtime checked short strings in its callers itself.
+            writer.line("#[inline(always)]");
             let name = identifier(&field.name);
             let result = format!("Result<{}, DecodeError>", self.value_type(field));
             open_method(writer, &format!("pub fn {name}"), &["&self"], &result);
@@ -1252,6 +1276,7 @@ impl Generator<'_> {
                     writer.line("vector: reader.get_vector(position)?,");
                     writer.close("})");
                 }
+                FieldType::StringVector => writer.line("reader.get_str_vector(position)"),
             }
             writer.close("}");
         }
@@ -1283,6 +1308,14 @@ impl Generator<'_> {
             FieldType::Array(Scalar::Bool) => (
                 vec!["A byte for each bool, which is true where it isn't 0".to_owned()],
                 "if the field lies outside the bytes",
+            ),
+            FieldType::StringVector => (
+                vec![
+                    "A view of the strings, which reads each string when it's asked for, and"
+                        .to_owned(),
+                    "fails then if its bytes are corrupt".to_owned(),
+                ],
+                "if the field, or the vector's count or the ends of its strings, lie outside the bytes",
             ),
             _ => (
                 self.integers_doc(field).into_iter().collect(),
@@ -1350,6 +1383,7 @@ impl Generator<'_> {
             }
             FieldType::Table(index) => format!("{}<'a>", self.schema.definition(index).name),
             FieldType::Vector(index) => format!("{}Vector<'a>", self.schema.definition(index).name),
+            FieldType::StringVector => "StringVector<'a>".to_owned(),
         }
     }
 
@@ -1368,6 +1402,7 @@ impl Generator<'_> {
             }
             FieldType::Table(index) => fields(index),
             FieldType::Vector(index) => format!("&'a [{}]", fields(index)),
+            FieldType::StringVector => "&'a [&'a str]".to_owned(),
         }
     }
 }
@@ -1603,7 +1638,8 @@ fn borrowing(schema: &Schema) -> Vec<bool> {
                     FieldType::Array(_)
                     | FieldType::String
                     | FieldType::StructArray(_)
-                    | FieldType::Vector(_) => true,
+                    | FieldType::Vector(_)
+                    | FieldType::StringVector => true,
                     FieldType::Table(nested) => borrows[nested] == Some(true),
                 });
             borrows[index] = Some(borrowing);
@@ -1840,6 +1876,16 @@ fn let_call(
         &call(callee, arguments),
         suffix,
     );
+}
+
+/// Opens the `impl` block of a message's or a table's reader, which allows
+/// clippy's pedantic `inline_always` for the getters that
+/// `Generator::getters()` inlines
+fn open_reader_impl(writer: &mut CodeWriter, definition: &Definition) {
+    if !definition.fields.is_empty() {
+        writer.line("#[allow(clippy::inline_always)]");
+    }
+    writer.open(format!("impl<'a> {}<'a> {{", definition.name));
 }
 
 /// Opens a method of an `impl` block, with its parameters on lines of their

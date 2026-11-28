@@ -59,6 +59,8 @@ const STRUCT_ARRAY = 24;
 const TABLE_IN_PLACE = 25;
 /** A vector recorded in place, whose items' fields' records follow its own */
 const VECTOR_IN_PLACE = 26;
+/** A vector of strings, whose strings are encoded when it's written */
+const STRING_VECTOR = 27;
 /** An array of bools, written as a `uint8` array of 1 and 0 */
 const BOOL_ARRAY = 28;
 
@@ -390,6 +392,28 @@ export class TableBuilder {
     setString(string: string): void {
         // The writer encodes it in place, so only its length is counted here
         this.#addField(STRING, string, this._size + utf8Length(string), 0, 0);
+    }
+
+    /**
+     * Writes a vector of strings, each as UTF-8 with lone surrogates
+     * replaced by U+FFFD, after the end of each, which lets readers find any
+     * string without reading the others. It takes no more bytes for each
+     * string than the end of it, where a vector of tables of one string
+     * takes each table's offset and the string's count too.
+     *
+     * It takes an array, rather than any array-like, since a string is an
+     * array-like of strings too, of one character each.
+     */
+    setStringVector(strings: readonly string[]): void {
+        // The writer encodes them in place, so only their lengths are
+        // counted here
+        const count = strings.length;
+        let byteLength = (count + 1) * this._size;
+        for (let i = 0; i < count; i++) {
+            byteLength += utf8Length(strings[i]);
+        }
+
+        this.#addField(STRING_VECTOR, strings, byteLength, 0, 0);
     }
 
     /**
@@ -1056,7 +1080,11 @@ function writeField(
             break;
         }
 
-        // Last, so that the kinds before it are written as they were
+        // Last, so that the kinds before them are written as they were
+        case STRING_VECTOR:
+            writer.setStringVector(index, value as readonly string[]);
+            break;
+
         case BOOL_ARRAY:
             writer.setBoolArray(index, value as ArrayLike<boolean>);
             break;

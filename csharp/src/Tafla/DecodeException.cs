@@ -12,13 +12,16 @@ public enum DecodeErrorKind
     /// </summary>
     OutOfRange = 1,
 
-    /// <summary>A string, whose count lies at <see cref="DecodeException.Position"/>, that isn't valid UTF-8.</summary>
+    /// <summary>
+    /// A string, whose count lies at <see cref="DecodeException.Position"/>, or a string of a vector of
+    /// strings, which starts there, that isn't valid UTF-8.
+    /// </summary>
     InvalidUtf8,
 
     /// <summary>
-    /// A vector item that starts at <see cref="DecodeException.Position"/> and ends before it, at
-    /// <see cref="DecodeException.End"/>. An item starts where the item before it ends, and the first
-    /// after the ends.
+    /// A vector item, or a string of a vector of strings, that starts at
+    /// <see cref="DecodeException.Position"/> and ends before it, at <see cref="DecodeException.End"/>.
+    /// An item starts where the item before it ends, and the first after the ends.
     /// </summary>
     ItemEndsBeforeStart,
 
@@ -31,21 +34,22 @@ public enum DecodeErrorKind
     UnsupportedVersion,
 
     /// <summary>
-    /// A string, whose count lies at <see cref="DecodeException.Position"/>, of
-    /// <see cref="DecodeException.ByteLength"/> bytes that hold more characters than a .NET
-    /// <see cref="string"/> can, 1,073,741,791. The bytes may be a valid table, since a table of
-    /// <see cref="OffsetType.UInt32"/> offsets can hold a longer string, but .NET can't. Only a string
-    /// of more bytes than that can fail so, as UTF-8 has at most one character per byte.
+    /// A string, whose count lies at <see cref="DecodeException.Position"/>, or a string of a vector of
+    /// strings, which starts there, of <see cref="DecodeException.ByteLength"/> bytes that hold more
+    /// characters than a .NET <see cref="string"/> can, 1,073,741,791. The bytes may be a valid table,
+    /// since a table of <see cref="OffsetType.UInt32"/> offsets can hold a longer string, but .NET
+    /// can't. Only a string of more bytes than that can fail so, as UTF-8 has at most one character per
+    /// byte.
     /// </summary>
     StringTooLong,
 }
 
 /// <summary>
 /// Thrown when bytes can't be read as the table, array, string, struct, vector or value that a read
-/// expects. Every read of a <see cref="TableReader"/> and a <see cref="Vector"/> checks its range
-/// against the supplied bytes before it returns, so a truncated or corrupted buffer throws this rather
-/// than returning values from outside them, or throwing any other exception. Strings must also be
-/// valid UTF-8.
+/// expects. Every read of a <see cref="TableReader"/>, a <see cref="Vector"/> and a
+/// <see cref="StringVector"/> checks its range against the supplied bytes before it returns, so a
+/// truncated or corrupted buffer throws this rather than returning values from outside them, or
+/// throwing any other exception. Strings must also be valid UTF-8.
 /// </summary>
 /// <remarks>
 /// Checks can't tell a value that was corrupted within range from a real one, such as an offset that
@@ -70,9 +74,10 @@ public sealed class DecodeException : Exception
 
     /// <summary>
     /// Where the read starts, for <see cref="DecodeErrorKind.OutOfRange"/>, where the string's count lies,
-    /// for <see cref="DecodeErrorKind.InvalidUtf8"/> and <see cref="DecodeErrorKind.StringTooLong"/>, and
-    /// where the item starts, for <see cref="DecodeErrorKind.ItemEndsBeforeStart"/>. It can be negative,
-    /// or past the largest <see cref="int"/>, for a read of a position that no bytes hold.
+    /// or where a string of a vector of strings starts, for <see cref="DecodeErrorKind.InvalidUtf8"/> and
+    /// <see cref="DecodeErrorKind.StringTooLong"/>, and where the item starts, for
+    /// <see cref="DecodeErrorKind.ItemEndsBeforeStart"/>. It can be negative, or past the largest
+    /// <see cref="int"/>, for a read of a position that no bytes hold.
     /// </summary>
     public long Position { get; private init; }
 
@@ -125,7 +130,7 @@ public sealed class DecodeException : Exception
             Available = available,
         };
 
-    internal static DecodeException InvalidUtf8(int position, Exception innerException) =>
+    internal static DecodeException InvalidUtf8(int position, Exception? innerException = null) =>
         new(DecodeErrorKind.InvalidUtf8, $"The string at {position} isn't valid UTF-8", innerException)
         {
             Position = position,
