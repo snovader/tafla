@@ -108,6 +108,12 @@ first commits, for code built from its source before the release.
   view read the last of a vector's 100 tables in 3.8 ns rather than 6.5 ns,
   and `TableReader` by hand in 4.0 ns rather than 6.4 ns. Its values and
   errors are unchanged.
+- `Vector::get()` is inlined into its callers, as `get_in_place()` is.
+  Called out of line, it read the vector's offset type from memory and
+  branched on its size at every call. The last of a vector's 100 sized
+  tables, which `get()` returns as tables of their own, was read with
+  `TableReader` by hand in 4.1 ns rather than 6.1 ns. Its values and errors
+  are unchanged.
 - `TableBuilder` makes room to record at least 8 fields when it starts, its
   own and those of the tables that it records in place, rather than only its
   own. Recording a table in place grew a small table's record by a
