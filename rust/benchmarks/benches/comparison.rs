@@ -11,6 +11,7 @@ use tafla_benchmarks::check;
 use tafla_benchmarks::codec::{DocumentWorkload, Error, Workload};
 use tafla_benchmarks::codecs::LeBytes;
 use tafla_benchmarks::item_access::{self, ItemAccess, ItemBytes};
+use tafla_benchmarks::sized_items;
 use tafla_benchmarks::workloads::{
     self, DOCUMENT_ROWS, Document, DocumentShape, LIST_ITEMS, ListShape, RECORD, RecordShape,
     SAMPLE, SampleShape, Shape, StructsShape, thousands,
@@ -33,7 +34,7 @@ criterion_group! {
         .measurement_time(Duration::from_secs(1))
         .sample_size(50)
         .nresamples(1000);
-    targets = record, documents, list, structs, item_access, sample
+    targets = record, documents, list, structs, item_access, sized_items, sample
 }
 
 criterion_main!(comparison);
@@ -132,6 +133,21 @@ fn item_access(criterion: &mut Criterion) {
             |access, name| read(group, name, || access.every_struct(black_box(structs)))
         );
     });
+}
+
+/// Reads the last item of the vector's items written as sized tables, which
+/// `Vector::get()` returns as tables of their own
+fn sized_items(criterion: &mut Criterion) {
+    let list = workloads::list(LIST_ITEMS);
+    let bytes = checked(sized_items::write(&list));
+    checked(sized_items::check(&list, &bytes));
+
+    let vector = format!("vector of {LIST_ITEMS} sized tables");
+    group(
+        criterion,
+        &format!("{vector}: read the last item"),
+        |group| read(group, "tafla", || sized_items::last_item(black_box(&bytes))),
+    );
 }
 
 fn sample(criterion: &mut Criterion) {

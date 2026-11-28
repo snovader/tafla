@@ -11,5 +11,6 @@ pub mod codec;
 pub mod codecs;
 pub mod item_access;
 pub mod lists;
+pub mod sized_items;
 pub mod string_workloads;
 pub mod workloads;

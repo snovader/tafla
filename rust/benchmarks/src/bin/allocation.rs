@@ -14,6 +14,7 @@ use tafla_benchmarks::check;
 use tafla_benchmarks::codec::{Codec, DocumentWorkload, Error, Workload};
 use tafla_benchmarks::codecs::LeBytes;
 use tafla_benchmarks::item_access::{self, ItemAccess, ItemBytes};
+use tafla_benchmarks::sized_items;
 use tafla_benchmarks::string_workloads::{self, StringsShape};
 use tafla_benchmarks::workloads::{
     self, DOCUMENT_ROWS, Document, DocumentShape, LIST_ITEMS, ListShape, RECORD, RecordShape,
@@ -149,6 +150,16 @@ fn count_workloads() -> Result<(), Error> {
         for_each_item_access!(|access, name| read(name, || access.every_struct(structs)));
         Ok(())
     })?;
+
+    let sized = sized_items::write(&list)?;
+    sized_items::check(&list, &sized)?;
+    group(
+        &format!("vector of {LIST_ITEMS} sized tables: read the last item"),
+        || {
+            read("tafla", || sized_items::last_item(&sized));
+            Ok(())
+        },
+    )?;
 
     group("fixed-size record: serialize", || {
         for_each_codec!(|codec| serialize::<SampleShape, _>(codec, &SAMPLE)?);
