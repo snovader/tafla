@@ -214,21 +214,21 @@ pub fn sum_column(values: impl IntoIterator<Item = f32>) -> f64 {
 
 /// The TypeScript generator's xorshift, in [0, 1), so every run sees the same
 /// values. Its state is a `u32`, whose bits JavaScript's 32-bit shifts keep
-/// the same.
-struct Xorshift {
+/// the same. The strings' generator uses it too, with its own seeds.
+pub(crate) struct Xorshift {
     state: u32,
 }
 
 impl Xorshift {
     // A seed wraps to 32 bits, as JavaScript's `^` wraps its operands
     #[allow(clippy::cast_possible_truncation)]
-    const fn new(seed: usize) -> Self {
+    pub(crate) const fn new(seed: usize) -> Self {
         Self {
             state: 0x2545_f491 ^ seed as u32,
         }
     }
 
-    fn next(&mut self) -> f64 {
+    pub(crate) fn next(&mut self) -> f64 {
         self.state ^= self.state << 13;
         self.state ^= self.state >> 17;
         self.state ^= self.state << 5;

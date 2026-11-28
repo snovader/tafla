@@ -315,8 +315,14 @@ jobs:
       - name: Print encoded sizes
         run: cargo run -p tafla-benchmarks --bin encoding
 
+      - name: Print the strings' encoded sizes
+        run: cargo run -p tafla-benchmarks --bin encoding -- --strings
+
       - name: Print allocations
         run: cargo run --release -p tafla-benchmarks --bin allocation
+
+      - name: Print the strings' allocations
+        run: cargo run --release -p tafla-benchmarks --bin allocation -- --strings
 
   wasm:
     name: WebAssembly

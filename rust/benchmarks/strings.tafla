@@ -1,0 +1,23 @@
+// The strings suites' table, which tafla-gen's code writes and reads as the
+// suites' hand-built TableBuilder codecs do. Every strings suite has a copy
+// of this schema, which rust/gen/tests/benchmarks.rs keeps the same.
+
+/// A table of 16 strings, so that a call spends its time on their UTF-8
+message Strings {
+    s0: string;
+    s1: string;
+    s2: string;
+    s3: string;
+    s4: string;
+    s5: string;
+    s6: string;
+    s7: string;
+    s8: string;
+    s9: string;
+    s10: string;
+    s11: string;
+    s12: string;
+    s13: string;
+    s14: string;
+    s15: string;
+}
