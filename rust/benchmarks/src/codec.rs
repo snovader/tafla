@@ -31,30 +31,6 @@ pub trait Workload<S: Shape>: Codec {
     fn deserialize(self, bytes: &[u8]) -> Result<S::Value<'_>, Error>;
 }
 
-/// One library's encoding of a shape into what it keeps between calls
-///
-/// It reuses a builder or a buffer as the library's documentation shows,
-/// for the reused rows, and writes the bytes that
-/// [`Workload::serialize()`] writes.
-pub trait Reused<S: Shape>: Workload<S> {
-    /// What the library reuses between calls: a builder or a buffer, which
-    /// starts empty
-    type State: Default;
-
-    /// Writes the value into `state`, as the library's documentation shows it
-    /// reused, and returns a view of the bytes, which the next call
-    /// overwrites
-    ///
-    /// # Errors
-    ///
-    /// The library's error, if it can't write the value.
-    fn serialize_reused<'s>(
-        self,
-        input: &S::Value<'_>,
-        state: &'s mut Self::State,
-    ) -> Result<&'s [u8], Error>;
-}
-
 /// The documents' workload, which also reads a column one element at a time
 pub trait DocumentWorkload: Workload<DocumentShape> {
     /// Sums column `a` through the library's own per-element accessor, with

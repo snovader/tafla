@@ -4,7 +4,7 @@ use tafla::{
     Alignment, BuildError, DecodeError, InPlaceTable, TableBuilder, TableLayout, TableReader,
 };
 
-use crate::codec::{Codec, DocumentWorkload, Error, Reused, Workload};
+use crate::codec::{Codec, DocumentWorkload, Error, Workload};
 use crate::item_access::{ItemAccess, no_items, sum_item};
 use crate::string_workloads::{COUNT, Strings, StringsShape};
 use crate::workloads::{
@@ -340,100 +340,4 @@ fn read_item_struct(bytes: &[u8; ITEM_SIZE]) -> Item {
         first: f32::from_le_bytes(bytes[4..8].try_into().unwrap_or_default()),
         second: f32::from_le_bytes(bytes[8..12].try_into().unwrap_or_default()),
     }
-}
-
-/// tafla's reused rows: one builder, which `reset()` starts each table in,
-/// in the buffer of the one before, and whose `finish()` lends the table
-impl Reused<RecordShape> for Tafla {
-    type State = Option<TableBuilder>;
-
-    fn serialize_reused<'s>(
-        self,
-        input: &Record<'_>,
-        state: &'s mut Option<TableBuilder>,
-    ) -> Result<&'s [u8], Error> {
-        let builder = reuse(state, 4, TableLayout::DEFAULT)?;
-        builder.set_f64(input.x)?;
-        builder.set_f64(input.y)?;
-        builder.set_i64(input.id)?;
-        builder.set_str(input.name.as_ref())?;
-
-        Ok(builder.finish()?)
-    }
-}
-
-impl Reused<DocumentShape> for Tafla {
-    type State = Option<TableBuilder>;
-
-    fn serialize_reused<'s>(
-        self,
-        input: &Document<'_>,
-        state: &'s mut Option<TableBuilder>,
-    ) -> Result<&'s [u8], Error> {
-        let document = reuse(state, 4, DOCUMENT_LAYOUT)?;
-        document.set_f64(input.x)?;
-        document.set_f64(input.y)?;
-        document.set_str(input.name.as_ref())?;
-        document.set_table_with(4, |columns| {
-            columns.set_i64(input.base)?;
-            columns.set_u32_array(input.keys.as_ref())?;
-            columns.set_f32_array(input.a.as_ref())?;
-            columns.set_f32_array(input.b.as_ref())
-        })?;
-
-        Ok(document.finish()?)
-    }
-}
-
-impl Reused<ListShape> for Tafla {
-    type State = Option<TableBuilder>;
-
-    fn serialize_reused<'s>(
-        self,
-        input: &List,
-        state: &'s mut Option<TableBuilder>,
-    ) -> Result<&'s [u8], Error> {
-        let items = &input.items;
-
-        let builder = reuse(state, 1, TableLayout::DEFAULT)?;
-        builder.set_vector_with(items.len(), 2, |index, item| set_item(item, &items[index]))?;
-
-        Ok(builder.finish()?)
-    }
-}
-
-impl Reused<StructsShape> for Tafla {
-    type State = Option<TableBuilder>;
-
-    fn serialize_reused<'s>(
-        self,
-        input: &List,
-        state: &'s mut Option<TableBuilder>,
-    ) -> Result<&'s [u8], Error> {
-        let mut structs = Vec::with_capacity(input.items.len() * ITEM_SIZE);
-        for item in &input.items {
-            structs.extend_from_slice(&item_struct(item));
-        }
-
-        let builder = reuse(state, 1, TableLayout::DEFAULT)?;
-        builder.set_struct_array(structs, ITEM_SIZE, ITEM_ALIGNMENT)?;
-
-        Ok(builder.finish()?)
-    }
-}
-
-/// The builder in `state`, started for a table of `fields` fields in
-/// `layout`: reset when there's one, and new otherwise
-fn reuse<const VERSIONED: bool>(
-    state: &mut Option<TableBuilder>,
-    fields: usize,
-    layout: TableLayout<VERSIONED>,
-) -> Result<&mut TableBuilder, BuildError> {
-    if let Some(builder) = state {
-        builder.reset(fields, layout)?;
-    } else {
-        *state = Some(TableBuilder::new(fields, layout)?);
-    }
-
-    Ok(state.as_mut().expect("a builder was started above"))
 }

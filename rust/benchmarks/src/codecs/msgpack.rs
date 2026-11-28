@@ -4,7 +4,7 @@ use std::fmt;
 use serde::Serialize;
 use serde::de::{self, Deserializer, SeqAccess, Visitor};
 
-use crate::codec::{Codec, DocumentWorkload, Error, Reused, Workload};
+use crate::codec::{Codec, DocumentWorkload, Error, Workload};
 use crate::string_workloads::{COUNT, Strings, StringsShape};
 use crate::workloads::{
     Document, DocumentShape, List, ListShape, Record, RecordShape, Sample, SampleShape, Shape,
@@ -161,83 +161,5 @@ impl<'de> Visitor<'de> for BorrowedStrings {
         }
 
         Ok(items)
-    }
-}
-
-/// rmp-serde's reused rows: one buffer, cleared for each value, which
-/// `encode::write_named()` and `write()` pack into, as they pack into any
-/// `Write`
-impl Reused<RecordShape> for RmpSerde {
-    type State = Vec<u8>;
-
-    fn serialize_reused<'s>(
-        self,
-        input: &Record<'_>,
-        buffer: &'s mut Vec<u8>,
-    ) -> Result<&'s [u8], Error> {
-        buffer.clear();
-        rmp_serde::encode::write_named(buffer, input)?;
-
-        Ok(buffer)
-    }
-}
-
-impl Reused<DocumentShape> for RmpSerde {
-    type State = Vec<u8>;
-
-    fn serialize_reused<'s>(
-        self,
-        input: &Document<'_>,
-        buffer: &'s mut Vec<u8>,
-    ) -> Result<&'s [u8], Error> {
-        buffer.clear();
-        rmp_serde::encode::write_named(buffer, input)?;
-
-        Ok(buffer)
-    }
-}
-
-impl Reused<ListShape> for RmpSerde {
-    type State = Vec<u8>;
-
-    fn serialize_reused<'s>(
-        self,
-        input: &List,
-        buffer: &'s mut Vec<u8>,
-    ) -> Result<&'s [u8], Error> {
-        buffer.clear();
-        rmp_serde::encode::write_named(buffer, input)?;
-
-        Ok(buffer)
-    }
-}
-
-impl Reused<StructsShape> for RmpSerde {
-    type State = Vec<u8>;
-
-    fn serialize_reused<'s>(
-        self,
-        input: &List,
-        buffer: &'s mut Vec<u8>,
-    ) -> Result<&'s [u8], Error> {
-        buffer.clear();
-        rmp_serde::encode::write(buffer, input)?;
-
-        Ok(buffer)
-    }
-}
-
-impl Reused<SampleShape> for RmpSerde {
-    type State = Vec<u8>;
-
-    fn serialize_reused<'s>(
-        self,
-        input: &Sample,
-        buffer: &'s mut Vec<u8>,
-    ) -> Result<&'s [u8], Error> {
-        buffer.clear();
-        rmp_serde::encode::write_named(buffer, input)?;
-
-        Ok(buffer)
     }
 }

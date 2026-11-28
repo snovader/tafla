@@ -180,32 +180,6 @@ code does with a `TableSizer`.
 A field that FlatBuffers or protobuf bytes leave out reads as `None`, which
 their codecs return as an error, since every workload has it.
 
-### Reused rows
-
-The groups named `serialize, reused` time the write rows again, with each
-crate reusing what its documentation shows a caller reuse between writes, and
-taking a view of the bytes, which each call consumes, with `black_box()`,
-before the next. They're an experiment, apart from the other rows, which
-write into new bytes in each call. Before timing, each codec writes a value
-twice into the same state, which must give the bytes that it writes into new
-ones, and read back the value, as `tests/round_trip.rs` checks too.
-
-- **tafla** resets one `TableBuilder` with `reset()` for each table, in the
-  buffer of the one before, and lends the table with `finish()`.
-- **FlatBuffers** resets one `FlatBufferBuilder` with `reset()`, as its
-  documentation recommends for a builder used repeatedly, and lends the
-  message with `finished_data()`.
-- **prost** builds the message from the input as before, and encodes it with
-  `Message::encode()` into one `Vec`, cleared for each message.
-- **rmp-serde** packs into one `Vec`, cleared for each value, with
-  `encode::write_named()` or `write()`.
-- **rkyv** archives into one `AlignedVec`, cleared for each archive, with
-  `to_bytes_in()` through a `&mut`, as rkyv's own test of a reusable writer
-  does. Its arena is a thread's own in every row already.
-- **tafla-gen**'s code, and the fixed-size record's array, which tafla's
-  codec and `to_le_bytes` write, have no reuse in their documentation, and
-  are timed as in the other rows, named `(stateless)`.
-
 ## Method
 
 Criterion 0.8.2 times each benchmark in a loop of its own, after a warm-up of

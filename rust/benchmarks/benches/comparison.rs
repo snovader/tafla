@@ -8,8 +8,8 @@ use std::time::Duration;
 use criterion::measurement::WallTime;
 use criterion::{BenchmarkGroup, Criterion, criterion_group, criterion_main};
 use tafla_benchmarks::check;
-use tafla_benchmarks::codec::{DocumentWorkload, Error, Reused, Workload};
-use tafla_benchmarks::codecs::{FlatBuffers, LeBytes, Prost, Rkyv, RmpSerde, Tafla, TaflaGen};
+use tafla_benchmarks::codec::{DocumentWorkload, Error, Workload};
+use tafla_benchmarks::codecs::LeBytes;
 use tafla_benchmarks::item_access::{self, ItemAccess, ItemBytes};
 use tafla_benchmarks::sized_items;
 use tafla_benchmarks::workloads::{
@@ -34,7 +34,7 @@ criterion_group! {
         .measurement_time(Duration::from_secs(1))
         .sample_size(50)
         .nresamples(1000);
-    targets = record, documents, list, structs, item_access, sized_items, sample, reused
+    targets = record, documents, list, structs, item_access, sized_items, sample
 }
 
 criterion_main!(comparison);
@@ -158,92 +158,6 @@ fn sample(criterion: &mut Criterion) {
     group(criterion, "fixed-size record: deserialize", |group| {
         for_each_codec!(|codec| deserialize::<SampleShape, _>(group, codec, &SAMPLE));
         deserialize::<SampleShape, _>(group, LeBytes, &SAMPLE);
-    });
-}
-
-/// The write rows again, with each codec reusing what its documentation shows
-/// a caller reuse, a builder or a buffer, and taking a view of the bytes,
-/// which each call consumes before the next. A codec whose documentation
-/// shows none writes as in the other rows, and is named as stateless: tafla-gen's
-/// code, and the fixed-size record's array, which tafla's codec and
-/// `to_le_bytes` write.
-fn reused(criterion: &mut Criterion) {
-    group(criterion, "record: serialize, reused", |group| {
-        reused_rows::<RecordShape>(group, &RECORD);
-    });
-    for rows in DOCUMENT_ROWS {
-        let document = workloads::document(rows);
-        let name = format!("document of {} rows", thousands(rows));
-
-        group(criterion, &format!("{name}: serialize, reused"), |group| {
-            reused_rows::<DocumentShape>(group, &document);
-        });
-    }
-
-    let list = workloads::list(LIST_ITEMS);
-    group(
-        criterion,
-        &format!("vector of {LIST_ITEMS} nested tables: serialize, reused"),
-        |group| reused_rows::<ListShape>(group, &list),
-    );
-    group(
-        criterion,
-        &format!("array of {LIST_ITEMS} structs: serialize, reused"),
-        |group| reused_rows::<StructsShape>(group, &list),
-    );
-
-    group(criterion, "fixed-size record: serialize, reused", |group| {
-        stateless::<SampleShape, _>(group, Tafla, &SAMPLE);
-        stateless::<SampleShape, _>(group, TaflaGen, &SAMPLE);
-        serialize_reused::<SampleShape, _>(group, FlatBuffers, &SAMPLE);
-        serialize_reused::<SampleShape, _>(group, Prost, &SAMPLE);
-        serialize_reused::<SampleShape, _>(group, RmpSerde, &SAMPLE);
-        serialize_reused::<SampleShape, _>(group, Rkyv, &SAMPLE);
-        stateless::<SampleShape, _>(group, LeBytes, &SAMPLE);
-    });
-}
-
-/// Adds every codec's reused row of a shape that tafla's codec writes with a
-/// builder, in the order of the other rows
-fn reused_rows<S: Shape>(group: &mut Group<'_>, input: &S::Value<'_>)
-where
-    Tafla: Reused<S>,
-    TaflaGen: Workload<S>,
-    FlatBuffers: Reused<S>,
-    Prost: Reused<S>,
-    RmpSerde: Reused<S>,
-    Rkyv: Reused<S>,
-{
-    serialize_reused::<S, _>(group, Tafla, input);
-    stateless::<S, _>(group, TaflaGen, input);
-    serialize_reused::<S, _>(group, FlatBuffers, input);
-    serialize_reused::<S, _>(group, Prost, input);
-    serialize_reused::<S, _>(group, RmpSerde, input);
-    serialize_reused::<S, _>(group, Rkyv, input);
-}
-
-/// Times writing `input` into the state that the codec reuses, whose bytes
-/// each call lends and consumes before the next
-fn serialize_reused<S: Shape, C: Reused<S>>(group: &mut Group<'_>, codec: C, input: &S::Value<'_>) {
-    checked(check::reused::<S, C>(codec, input));
-
-    group.bench_function(C::NAME, |bencher| {
-        let mut state = C::State::default();
-        bencher.iter(|| {
-            let bytes = codec.serialize_reused(black_box(input), &mut state);
-            black_box(&bytes);
-            bytes.is_ok()
-        });
-    });
-}
-
-/// Times a codec without a reuse idiom as the other rows time it, named as
-/// stateless
-fn stateless<S: Shape, C: Workload<S>>(group: &mut Group<'_>, codec: C, input: &S::Value<'_>) {
-    checked(check::round_trip::<S, C>(codec, input));
-
-    group.bench_function(format!("{} (stateless)", C::NAME), |bencher| {
-        bencher.iter(|| codec.serialize(black_box(input)));
     });
 }
 

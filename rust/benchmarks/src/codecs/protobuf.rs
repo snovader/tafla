@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use prost::Message;
 
-use crate::codec::{Codec, DocumentWorkload, Error, Reused, Workload};
+use crate::codec::{Codec, DocumentWorkload, Error, Workload};
 use crate::string_workloads::{COUNT, Strings, StringsShape};
 use crate::workloads::{
     Document, DocumentShape, Item, List, ListShape, Record, RecordShape, Sample, SampleShape,
@@ -354,109 +354,4 @@ const fn triple_message(item: &Item) -> messages::Triple {
         first: item.first,
         second: item.second,
     }
-}
-
-/// prost's reused rows: one buffer, cleared for each message, which
-/// `Message::encode()` writes into, as it writes into any `BufMut`. The
-/// message is still built from the input in each call.
-impl Reused<RecordShape> for Prost {
-    type State = Vec<u8>;
-
-    fn serialize_reused<'s>(
-        self,
-        input: &Record<'_>,
-        buffer: &'s mut Vec<u8>,
-    ) -> Result<&'s [u8], Error> {
-        let message = messages::Record {
-            x: input.x,
-            y: input.y,
-            id: input.id,
-            name: input.name.to_string(),
-        };
-
-        encode_into(&message, buffer)
-    }
-}
-
-impl Reused<DocumentShape> for Prost {
-    type State = Vec<u8>;
-
-    fn serialize_reused<'s>(
-        self,
-        input: &Document<'_>,
-        buffer: &'s mut Vec<u8>,
-    ) -> Result<&'s [u8], Error> {
-        let columns = messages::Columns {
-            base: input.base,
-            keys: input.keys.to_vec(),
-            a: input.a.to_vec(),
-            b: input.b.to_vec(),
-        };
-        let message = messages::Document {
-            x: input.x,
-            y: input.y,
-            name: input.name.to_string(),
-            columns: Some(columns),
-        };
-
-        encode_into(&message, buffer)
-    }
-}
-
-impl Reused<ListShape> for Prost {
-    type State = Vec<u8>;
-
-    fn serialize_reused<'s>(
-        self,
-        input: &List,
-        buffer: &'s mut Vec<u8>,
-    ) -> Result<&'s [u8], Error> {
-        let message = messages::List {
-            items: input.items.iter().map(item_message).collect(),
-        };
-
-        encode_into(&message, buffer)
-    }
-}
-
-impl Reused<StructsShape> for Prost {
-    type State = Vec<u8>;
-
-    fn serialize_reused<'s>(
-        self,
-        input: &List,
-        buffer: &'s mut Vec<u8>,
-    ) -> Result<&'s [u8], Error> {
-        let message = messages::Triples {
-            items: input.items.iter().map(triple_message).collect(),
-        };
-
-        encode_into(&message, buffer)
-    }
-}
-
-impl Reused<SampleShape> for Prost {
-    type State = Vec<u8>;
-
-    fn serialize_reused<'s>(
-        self,
-        input: &Sample,
-        buffer: &'s mut Vec<u8>,
-    ) -> Result<&'s [u8], Error> {
-        let message = messages::Sample {
-            key: input.key,
-            a: input.a,
-            b: input.b,
-        };
-
-        encode_into(&message, buffer)
-    }
-}
-
-/// Encodes `message` into `buffer`, cleared, and lends its bytes
-fn encode_into<'s>(message: &impl Message, buffer: &'s mut Vec<u8>) -> Result<&'s [u8], Error> {
-    buffer.clear();
-    message.encode(buffer)?;
-
-    Ok(buffer)
 }
