@@ -4,7 +4,7 @@
 //! skips or corrupts part of the work. The benchmarks run the checks before
 //! timing, and the tests run them for every codec.
 
-use crate::codec::{DocumentWorkload, Error, Workload};
+use crate::codec::{DocumentWorkload, Error, Reused, Workload};
 use crate::workloads::{Document, Shape, sum_column};
 
 /// Checks that `codec` reads `input` back from the bytes it wrote, and wrote
@@ -48,4 +48,31 @@ pub fn sum_a<C: DocumentWorkload>(codec: C, input: &Document<'_>) -> Result<(), 
     } else {
         Err(format!("{} summed column a to {sum}, not {expected}", C::NAME).into())
     }
+}
+
+/// Checks that `codec`, writing `input` twice into the same state, writes
+/// the bytes that it writes into new ones each time, and reads `input` back
+/// from them
+///
+/// # Errors
+///
+/// The codec's error, or an error that names the codec and the workload when
+/// it writes other bytes or reads back other values.
+pub fn reused<S: Shape, C: Reused<S>>(codec: C, input: &S::Value<'_>) -> Result<(), Error> {
+    let fresh = codec.serialize(input)?;
+    let mut state = C::State::default();
+    for _ in 0..2 {
+        let bytes = codec.serialize_reused(input, &mut state)?;
+        if bytes != fresh.as_ref() {
+            let (codec, shape) = (C::NAME, S::NAME);
+            return Err(format!("{codec} wrote other bytes of the {shape} into its state").into());
+        }
+        let output = codec.deserialize(bytes)?;
+        if !S::same(&output, input) {
+            let (codec, shape) = (C::NAME, S::NAME);
+            return Err(format!("{codec} didn't read back the {shape} from its state").into());
+        }
+    }
+
+    Ok(())
 }

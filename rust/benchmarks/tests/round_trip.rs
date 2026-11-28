@@ -3,7 +3,7 @@
 
 use tafla_benchmarks::check;
 use tafla_benchmarks::codec::{Error, Workload};
-use tafla_benchmarks::codecs::{LeBytes, Tafla, TaflaGen};
+use tafla_benchmarks::codecs::{FlatBuffers, LeBytes, Prost, Rkyv, RmpSerde, Tafla, TaflaGen};
 use tafla_benchmarks::item_access::{self, ItemBytes};
 use tafla_benchmarks::sized_items;
 use tafla_benchmarks::string_workloads::{StringsShape, string_workloads};
@@ -59,6 +59,29 @@ fn every_codec_reads_back_the_array_of_structs() -> Result<(), Error> {
 fn every_codec_reads_back_the_fixed_size_record() -> Result<(), Error> {
     for_each_codec!(|codec| check::round_trip::<SampleShape, _>(codec, &SAMPLE)?);
     check::round_trip::<SampleShape, _>(LeBytes, &SAMPLE)
+}
+
+/// The codecs that reuse a builder or a buffer write what they write into
+/// new bytes, again into the same state, and read it back, for every shape
+/// of the reused rows
+#[test]
+fn every_reusing_codec_writes_the_same_bytes_into_its_state() -> Result<(), Error> {
+    let list = workloads::list(LIST_ITEMS);
+    macro_rules! each {
+        ($($codec:expr),*) => {$(
+            check::reused::<RecordShape, _>($codec, &RECORD)?;
+            for rows in DOCUMENT_ROWS {
+                check::reused::<DocumentShape, _>($codec, &workloads::document(rows))?;
+            }
+            check::reused::<ListShape, _>($codec, &list)?;
+            check::reused::<StructsShape, _>($codec, &list)?;
+        )*};
+    }
+    each!(Tafla, FlatBuffers, Prost, RmpSerde, Rkyv);
+    check::reused::<SampleShape, _>(FlatBuffers, &SAMPLE)?;
+    check::reused::<SampleShape, _>(Prost, &SAMPLE)?;
+    check::reused::<SampleShape, _>(RmpSerde, &SAMPLE)?;
+    check::reused::<SampleShape, _>(Rkyv, &SAMPLE)
 }
 
 #[test]

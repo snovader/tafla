@@ -21,7 +21,7 @@ use std::borrow::Cow;
 
 use flatbuffers::{FlatBufferBuilder, Vector};
 
-use crate::codec::{Codec, DocumentWorkload, Error, Workload};
+use crate::codec::{Codec, DocumentWorkload, Error, Reused, Workload};
 use crate::string_workloads::{COUNT, Strings, StringsShape};
 use crate::workloads::{
     Document, DocumentShape, Item, List, ListShape, Record, RecordShape, Sample, SampleShape,
@@ -318,4 +318,133 @@ fn create_item<'a>(
 
 fn triple(item: &Item) -> generated::Triple {
     generated::Triple::new(item.value, item.first, item.second)
+}
+
+/// The reused rows of `FlatBuffers`: one builder, which `reset()` empties for each
+/// message, as its documentation recommends for a builder used repeatedly,
+/// and whose `finished_data()` lends the message
+impl Reused<RecordShape> for FlatBuffers {
+    type State = FlatBufferBuilder<'static>;
+
+    fn serialize_reused<'s>(
+        self,
+        input: &Record<'_>,
+        builder: &'s mut FlatBufferBuilder<'static>,
+    ) -> Result<&'s [u8], Error> {
+        builder.reset();
+        let name = builder.create_string(&input.name);
+
+        let args = generated::RecordArgs {
+            x: input.x,
+            y: input.y,
+            id: input.id,
+            name: Some(name),
+        };
+        let record = generated::Record::create(builder, &args);
+        builder.finish(record, None);
+
+        Ok(builder.finished_data())
+    }
+}
+
+impl Reused<DocumentShape> for FlatBuffers {
+    type State = FlatBufferBuilder<'static>;
+
+    fn serialize_reused<'s>(
+        self,
+        input: &Document<'_>,
+        builder: &'s mut FlatBufferBuilder<'static>,
+    ) -> Result<&'s [u8], Error> {
+        builder.reset();
+        let keys = builder.create_vector(&input.keys);
+        let a = builder.create_vector(&input.a);
+        let b = builder.create_vector(&input.b);
+
+        let columns_args = generated::ColumnsArgs {
+            base: input.base,
+            keys: Some(keys),
+            a: Some(a),
+            b: Some(b),
+        };
+        let columns = generated::Columns::create(builder, &columns_args);
+        let name = builder.create_string(&input.name);
+
+        let args = generated::DocumentArgs {
+            x: input.x,
+            y: input.y,
+            name: Some(name),
+            columns: Some(columns),
+        };
+        let document = generated::Document::create(builder, &args);
+        builder.finish(document, None);
+
+        Ok(builder.finished_data())
+    }
+}
+
+impl Reused<ListShape> for FlatBuffers {
+    type State = FlatBufferBuilder<'static>;
+
+    fn serialize_reused<'s>(
+        self,
+        input: &List,
+        builder: &'s mut FlatBufferBuilder<'static>,
+    ) -> Result<&'s [u8], Error> {
+        builder.reset();
+
+        let offsets: Vec<_> = input
+            .items
+            .iter()
+            .map(|item| create_item(builder, item))
+            .collect();
+        let items = builder.create_vector(&offsets);
+
+        let args = generated::ListArgs { items: Some(items) };
+        let list = generated::List::create(builder, &args);
+        builder.finish(list, None);
+
+        Ok(builder.finished_data())
+    }
+}
+
+impl Reused<StructsShape> for FlatBuffers {
+    type State = FlatBufferBuilder<'static>;
+
+    fn serialize_reused<'s>(
+        self,
+        input: &List,
+        builder: &'s mut FlatBufferBuilder<'static>,
+    ) -> Result<&'s [u8], Error> {
+        builder.reset();
+        let structs: Vec<_> = input.items.iter().map(triple).collect();
+        let items = builder.create_vector(&structs);
+
+        let args = generated::TriplesArgs { items: Some(items) };
+        let triples = generated::Triples::create(builder, &args);
+        builder.finish(triples, None);
+
+        Ok(builder.finished_data())
+    }
+}
+
+impl Reused<SampleShape> for FlatBuffers {
+    type State = FlatBufferBuilder<'static>;
+
+    fn serialize_reused<'s>(
+        self,
+        input: &Sample,
+        builder: &'s mut FlatBufferBuilder<'static>,
+    ) -> Result<&'s [u8], Error> {
+        builder.reset();
+
+        let args = generated::SampleArgs {
+            key: input.key,
+            a: input.a,
+            b: input.b,
+        };
+        let sample = generated::Sample::create(builder, &args);
+        builder.finish(sample, None);
+
+        Ok(builder.finished_data())
+    }
 }

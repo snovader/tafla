@@ -4,7 +4,7 @@ use rkyv::api::high::to_bytes_in;
 use rkyv::rancor;
 use rkyv::util::AlignedVec;
 
-use crate::codec::{Codec, DocumentWorkload, Error, Workload};
+use crate::codec::{Codec, DocumentWorkload, Error, Reused, Workload};
 use crate::string_workloads::{ArchivedStrings, Strings, StringsShape};
 use crate::workloads::{
     ArchivedDocument, ArchivedList, ArchivedRecord, ArchivedSample, Document, DocumentShape, Item,
@@ -163,4 +163,83 @@ fn read_list(bytes: &[u8]) -> Result<List, Error> {
         .collect();
 
     Ok(List { items })
+}
+
+/// rkyv's reused rows: one `AlignedVec`, cleared for each archive, which
+/// `to_bytes_in()` writes into through a `&mut`, as rkyv's own test of a
+/// reusable writer does. `to_bytes_in()` reuses rkyv's arena, a thread's
+/// own, in every call, the stateless rows' too.
+impl Reused<RecordShape> for Rkyv {
+    type State = AlignedVec;
+
+    fn serialize_reused<'s>(
+        self,
+        input: &Record<'_>,
+        bytes: &'s mut AlignedVec,
+    ) -> Result<&'s [u8], Error> {
+        bytes.clear();
+        to_bytes_in::<_, rancor::Error>(input, &mut *bytes)?;
+
+        Ok(bytes)
+    }
+}
+
+impl Reused<DocumentShape> for Rkyv {
+    type State = AlignedVec;
+
+    fn serialize_reused<'s>(
+        self,
+        input: &Document<'_>,
+        bytes: &'s mut AlignedVec,
+    ) -> Result<&'s [u8], Error> {
+        bytes.clear();
+        to_bytes_in::<_, rancor::Error>(input, &mut *bytes)?;
+
+        Ok(bytes)
+    }
+}
+
+impl Reused<ListShape> for Rkyv {
+    type State = AlignedVec;
+
+    fn serialize_reused<'s>(
+        self,
+        input: &List,
+        bytes: &'s mut AlignedVec,
+    ) -> Result<&'s [u8], Error> {
+        bytes.clear();
+        to_bytes_in::<_, rancor::Error>(input, &mut *bytes)?;
+
+        Ok(bytes)
+    }
+}
+
+impl Reused<StructsShape> for Rkyv {
+    type State = AlignedVec;
+
+    fn serialize_reused<'s>(
+        self,
+        input: &List,
+        bytes: &'s mut AlignedVec,
+    ) -> Result<&'s [u8], Error> {
+        bytes.clear();
+        to_bytes_in::<_, rancor::Error>(input, &mut *bytes)?;
+
+        Ok(bytes)
+    }
+}
+
+impl Reused<SampleShape> for Rkyv {
+    type State = AlignedVec;
+
+    fn serialize_reused<'s>(
+        self,
+        input: &Sample,
+        bytes: &'s mut AlignedVec,
+    ) -> Result<&'s [u8], Error> {
+        bytes.clear();
+        to_bytes_in::<_, rancor::Error>(input, &mut *bytes)?;
+
+        Ok(bytes)
+    }
 }
