@@ -121,10 +121,10 @@ which covers the whole format, byte for byte.
   keep the values. Elsewhere the getters return a span of a copy, as the
   section on byte orders describes.
 - **Bools are copied.** An array of bools is a `uint8` array of 1 and 0,
-  which `SetBoolArray()` writes from a span of bools, and `GetBoolArray()`
-  reads into a new `bool[]`, true where a byte isn't 0, since a .NET bool of
-  a byte other than 1 or 0 misbehaves. `GetUInt8Array()` reads its bytes in
-  place.
+  which `SetBoolArray()` writes from a span of bools, as 1 for a bool that
+  unsafe code makes of another byte too, and `GetBoolArray()` reads into a
+  new `bool[]`, true where a byte isn't 0, since a .NET bool of a byte other
+  than 1 or 0 misbehaves. `GetUInt8Array()` reads its bytes in place.
 - **Structs and vector items share the bytes too.** `GetStruct()` and
   `GetStructArray()` return a `ReadOnlySpan<byte>` of the structs, whose
   scalars `BinaryPrimitives` reads at their offsets. A `Vector` and its

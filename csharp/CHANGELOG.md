@@ -59,8 +59,9 @@ The first release.
   header, without a sizer and a writer.
 - Arrays of bools, stored as `uint8` arrays of 1 and 0:
   `TableBuilder.SetBoolArray()`, `TableSizer.AddBoolArray()`,
-  `TableWriter.SetBoolArray()` and `TableReader.GetBoolArray()`, which reads
-  them into a new `bool[]`, true where a byte isn't 0.
+  `TableWriter.SetBoolArray()`, which writes a bool that unsafe code makes of
+  another byte as 1 too, and `TableReader.GetBoolArray()`, which reads them
+  into a new `bool[]`, true where a byte isn't 0.
 - A public `DecodeException.OutOfRange()`, beside `UnsupportedVersion()`,
   with which code that reads bytes without a `TableReader`, such as the
   structs that tafla-gen generates, fails as the runtime's reads do.

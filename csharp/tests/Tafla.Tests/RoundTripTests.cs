@@ -225,6 +225,38 @@ public class RoundTripTests
             Assert.All(MemoryMarshal.AsBytes(bools.AsSpan()).ToArray(), value => Assert.InRange(value, 0, 1));
         });
 
+    /// <summary>
+    /// A bool that unsafe code makes of a byte other than 1 or 0 is written as 1, by a builder and a
+    /// writer, at lengths that they write one byte at a time, and 16 at a time, with a last 16 that
+    /// overlap those before them or not
+    /// </summary>
+    [Theory]
+    [InlineData(5)]
+    [InlineData(16)]
+    [InlineData(32)]
+    [InlineData(37)]
+    public void WritesEachBoolOfAnyByteAs1Or0(int length)
+    {
+        byte[] pattern = [2, 0x80, 0xff, 0, 1];
+        var bytes = Enumerable.Range(0, length).Select(index => pattern[index % pattern.Length]).ToArray();
+        var bools = MemoryMarshal.Cast<byte, bool>(bytes);
+        var expected = bytes.Select(value => value == 0 ? (byte)0 : (byte)1).ToArray();
+
+        var builder = new TableBuilder(1);
+        builder.SetBoolArray(bools);
+
+        var sizer = new TableSizer(1);
+        sizer.AddBoolArray(length);
+        var writer = sizer.CreateWriter();
+        writer.SetBoolArray(0, bools);
+
+        foreach (var table in new[] { builder.ToArray(), writer.Bytes })
+        {
+            var reader = new TableReader(table);
+            Assert.Equal(expected, reader.GetUInt8Array(reader.RootOffset(0)).ToArray());
+        }
+    }
+
     /// <summary>Strings outside the Basic Multilingual Plane are their UTF-8, of four bytes a character, from their surrogate pairs</summary>
     [Fact]
     public void RoundTripsStringsOutsideTheBasicMultilingualPlane()

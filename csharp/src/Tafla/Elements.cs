@@ -63,20 +63,19 @@ internal static class Elements
 
     /// <summary>
     /// Writes bools as bytes, 1 for true and 0 for false, into <paramref name="destination"/>, which is
-    /// as long. It relies on each bool being the byte 1 or 0, as C# makes it, and copies their bytes
-    /// at once, which took 13 ns to write 1,000 bools, where a loop that converts each took 490 ns, in
-    /// .NET 10 on an Apple M2 Pro. A bool of another byte, which only unsafe code or interop makes, is
-    /// written as that byte, which readers read as true.
+    /// as long. A .NET bool that unsafe code or interop makes can hold a byte other than 1 or 0, so
+    /// each byte written is the least of the bool's byte and 1, as <see cref="ToBoolBytes"/> converts
+    /// them, which took 19 ns to write 1,000 bools, where a copy of their bytes took 13 ns and a
+    /// loop that converts each 490 ns, in .NET 10 on an Apple M2 Pro.
     /// </summary>
     internal static void WriteBools(ReadOnlySpan<bool> values, Span<byte> destination) =>
-        MemoryMarshal.AsBytes(values).CopyTo(destination);
+        ToBoolBytes(MemoryMarshal.AsBytes(values), destination);
 
     /// <summary>
     /// Reads bytes into new bools, each true where its byte isn't 0. The bytes are never viewed as
     /// bools, since a .NET bool of a byte other than 1 or 0 misbehaves: the bools' own bytes are
-    /// written instead, each the least of its byte and 1, 16 at a time where the host compares
-    /// vectors, which took 57 ns to read 1,000 bools, their new array included, where a loop took
-    /// 350 ns, in .NET 10 on an Apple M2 Pro.
+    /// written instead, as <see cref="ToBoolBytes"/> converts them, which took 57 ns to read 1,000
+    /// bools, their new array included, where a loop took 350 ns, in .NET 10 on an Apple M2 Pro.
     /// </summary>
     internal static bool[] ReadBools(ReadOnlySpan<byte> bytes)
     {
@@ -86,19 +85,29 @@ internal static class Elements
         }
 
         var bools = new bool[bytes.Length];
+        ToBoolBytes(bytes, MemoryMarshal.AsBytes(bools.AsSpan()));
+
+        return bools;
+    }
+
+    /// <summary>
+    /// Writes each byte of <paramref name="bytes"/> into <paramref name="destination"/>, which is as
+    /// long, as the byte of a bool: 0 for 0 and 1 for any other byte, the least of the byte and 1. It
+    /// takes 16 bytes at a time where the host compares vectors.
+    /// </summary>
+    private static void ToBoolBytes(ReadOnlySpan<byte> bytes, Span<byte> destination)
+    {
         if (!Vector128.IsHardwareAccelerated || bytes.Length < Vector128<byte>.Count)
         {
-            for (var index = 0; index < bools.Length; index++)
+            for (var index = 0; index < bytes.Length; index++)
             {
-                bools[index] = bytes[index] != 0;
+                destination[index] = Math.Min(bytes[index], (byte)1);
             }
 
-            return bools;
+            return;
         }
 
-        // The least of a byte and 1 is 0 for 0 and 1 for any other byte
         var one = Vector128<byte>.One;
-        var destination = MemoryMarshal.AsBytes(bools.AsSpan());
         var vectors = MemoryMarshal.Cast<byte, Vector128<byte>>(bytes);
         var results = MemoryMarshal.Cast<byte, Vector128<byte>>(destination);
         for (var index = 0; index < vectors.Length; index++)
@@ -109,8 +118,6 @@ internal static class Elements
         // The last 16 bytes, which overlap those before them unless the length is a multiple of 16
         var last = bytes.Length - Vector128<byte>.Count;
         Vector128.Min(Vector128.Create(bytes[last..]), one).CopyTo(destination[last..]);
-
-        return bools;
     }
 
     /// <summary>
