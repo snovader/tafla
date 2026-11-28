@@ -1,0 +1,37 @@
+// The hooks of a builder that takes the caller's bytes, writing each table
+// with a builder of its own.
+package template
+
+import (
+	"errors"
+
+	tafla "github.com/snovader/tafla/go"
+	"github.com/snovader/tafla/go/benchmarks/workloads"
+)
+
+// roomyDocument writes the document into bytes with room for its table, of
+// room bytes, as SerializeDocument writes it
+func roomyDocument(document workloads.Document, room int) ([]byte, error) {
+	var builder tafla.TableBuilder
+	if err := builder.Reset(make([]byte, 0, room), 4, documentLayout); err != nil {
+		return nil, err
+	}
+	err := errors.Join(
+		builder.SetFloat64(document.X),
+		builder.SetFloat64(document.Y),
+		builder.SetString(document.Name),
+		builder.SetTableFunc(4, func(columns tafla.Item) error {
+			return errors.Join(
+				columns.SetInt64(document.Base),
+				columns.SetUint32Array(document.Keys),
+				columns.SetFloat32Array(document.A),
+				columns.SetFloat32Array(document.B),
+			)
+		}),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return FINISH((&builder))
+}

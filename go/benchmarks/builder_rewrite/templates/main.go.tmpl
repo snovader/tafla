@@ -1,0 +1,170 @@
+// Command builder-timing times TableBuilders interleaved with the
+// comparison's harness: main's, #216's and this branch's, with variants of
+// the last, on the comparison's rows and on shapes that it doesn't time.
+// Every builder must write each row's bytes as main's does, twice in a row,
+// before it's timed.
+package main
+
+import (
+	"bytes"
+	"flag"
+	"fmt"
+	"os"
+	"os/exec"
+	"regexp"
+	"runtime"
+	"time"
+
+	"github.com/snovader/tafla/go/benchmarks/harness"
+// IMPORTS
+)
+
+var (
+	sinkBytes []byte
+	sinkErr   error
+)
+
+type row struct {
+	Name string
+	Call func() ([]byte, error)
+}
+
+type builder struct {
+	name string
+	rows func() []row
+}
+
+// rowsOf converts a package's rows, which are of its own type
+func rowsOf[R any](rows []R, convert func(R) row) []row {
+	converted := make([]row, len(rows))
+	for index, r := range rows {
+		converted[index] = convert(r)
+	}
+	return converted
+}
+
+func builders() []builder {
+	return []builder{
+// BUILDERS
+	}
+}
+
+type timedRow struct {
+	name     string
+	variants []harness.Variant
+}
+
+func main() {
+	rounds := flag.Int("rounds", 20, "the timed rounds of each row")
+	warmup := flag.Int("warmup", 3, "the warm-up rounds of each row")
+	sample := flag.Duration("sample", 10*time.Millisecond, "the time of a round of a variant")
+	only := flag.String("rows", "", "a pattern of the rows to time")
+	variants := flag.String("variants", "", "a pattern of the variants to time, besides main")
+	rotate := flag.Int("rotate", 0, "rotates the variants' order by this many places")
+	checkOnly := flag.Bool("check", false, "checks every builder's bytes, without timing them")
+	flag.Parse()
+	options := harness.Options{Rounds: *rounds, WarmupRounds: *warmup, SampleTime: *sample}
+
+	rows, err := timedRows(builders(), regexp.MustCompile(*only), regexp.MustCompile(*variants), *rotate)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if *checkOnly {
+		fmt.Printf("%d rows: every builder wrote main's bytes\n", len(rows))
+		return
+	}
+
+	fmt.Printf("%s on %s/%s, %d CPUs\n", runtime.Version(), runtime.GOOS, runtime.GOARCH, runtime.NumCPU())
+	fmt.Printf("Start: %s", uptime())
+	started := time.Now()
+	for _, row := range rows {
+		for _, m := range harness.Measure(row.variants, options) {
+			fmt.Printf("ROW\t%s\t%s\t%.3f\t%.3f\t%.0f\t%.2f\n", row.name, m.Name, m.Fastest, m.Median, m.Bytes, m.Allocations)
+		}
+	}
+	fmt.Printf("End: %s", uptime())
+	fmt.Printf("Took %s, %d rounds of %s after %d warm-up rounds\n",
+		time.Since(started).Round(time.Second), options.Rounds, options.SampleTime, options.WarmupRounds)
+	runtime.KeepAlive(sinkBytes)
+	runtime.KeepAlive(sinkErr)
+}
+
+// timedRows returns each row with its variants, main's first, of the
+// builders whose names match, in the order of the builders rotated by
+// rotate, once each has written main's bytes twice
+func timedRows(builders []builder, only, variants *regexp.Regexp, rotate int) ([]timedRow, error) {
+	var rows []timedRow
+	index := map[string]int{}
+	expected := map[string][]byte{}
+
+	for at, builder := range builders {
+		if at > 0 && !variants.MatchString(builder.name) {
+			continue
+		}
+		for _, r := range builder.rows() {
+			if !only.MatchString(r.Name) {
+				continue
+			}
+			if err := check(builder.name, r, expected); err != nil {
+				return nil, err
+			}
+
+			position, ok := index[r.Name]
+			if !ok {
+				if at > 0 {
+					return nil, fmt.Errorf("%s: %s isn't a row of main's", builder.name, r.Name)
+				}
+				position = len(rows)
+				index[r.Name] = position
+				rows = append(rows, timedRow{name: r.Name})
+			}
+			call := r.Call
+			rows[position].variants = append(rows[position].variants, harness.Variant{Name: builder.name, Loop: func(n int) {
+				for range n {
+					sinkBytes, sinkErr = call()
+				}
+			}})
+		}
+	}
+
+	for index := range rows {
+		variants := rows[index].variants
+		shift := rotate % len(variants)
+		rows[index].variants = append(variants[shift:len(variants):len(variants)], variants[:shift]...)
+	}
+	return rows, nil
+}
+
+// check checks that a row's call writes main's bytes, which main's own
+// call sets, twice in a row
+func check(name string, r row, expected map[string][]byte) error {
+	var written [2][]byte
+	for at := range written {
+		table, err := r.Call()
+		if err != nil {
+			return fmt.Errorf("%s, %s: %w", name, r.Name, err)
+		}
+		written[at] = bytes.Clone(table)
+	}
+	if !bytes.Equal(written[0], written[1]) {
+		return fmt.Errorf("%s, %s: wrote other bytes the second time", name, r.Name)
+	}
+
+	if bytes, ok := expected[r.Name]; !ok {
+		expected[r.Name] = written[0]
+	} else if !equal(bytes, written[0]) {
+		return fmt.Errorf("%s, %s: wrote other bytes than main", name, r.Name)
+	}
+	return nil
+}
+
+func equal(a, b []byte) bool { return bytes.Equal(a, b) }
+
+func uptime() string {
+	output, err := exec.Command("sysctl", "-n", "vm.loadavg").Output()
+	if err != nil {
+		return err.Error() + "\n"
+	}
+	return string(output)
+}

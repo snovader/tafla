@@ -1,0 +1,16 @@
+// A prototype of a builder allocated with its first bytes, as main's is
+// allocated with its first fields: NewTableBuilder takes one allocation of
+// both, rather than a builder on the stack, or on the heap where a function
+// it's given to or a slice keeps it, and its bytes.
+package template
+
+// builderWith is a builder and the bytes that it starts with
+type builderWith struct {
+	builder TableBuilder
+	first   [firstCapacity]byte
+}
+
+func NewTableBuilder(fields int, layout TableLayout) (*TableBuilder, error) {
+	with := new(builderWith)
+	return with.builder.reset(with.first[:0], fields, layout)
+}
