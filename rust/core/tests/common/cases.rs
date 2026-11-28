@@ -58,6 +58,7 @@ fn field_of(field: &Value) -> Field {
         "uint64[]" => Field::U64Array(elements(value, parse)),
         "float32[]" => Field::F32Array(elements(value, float32)),
         "float64[]" => Field::F64Array(elements(value, float64)),
+        "bool[]" => Field::BoolArray(elements(value, |value| value.as_bool().unwrap())),
         "string" => Field::String(value.as_str().unwrap().to_owned()),
         "struct" => Field::Struct(elements(&field["fields"], field_of)),
         "struct[]" => {
@@ -81,6 +82,9 @@ fn field_of(field: &Value) -> Field {
                 .map(nested_of)
                 .collect(),
         ),
+        "string[]" => Field::StringVector(elements(value, |string| {
+            string.as_str().unwrap().to_owned()
+        })),
         other => panic!("Unknown type {other}"),
     }
 }

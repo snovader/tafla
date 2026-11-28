@@ -1,3 +1,0 @@
-message Names {
-    names: [string];
-}

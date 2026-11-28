@@ -110,6 +110,10 @@ final class GeneratedDescriptions {
         return new ArrayField(ScalarType.FLOAT64, ScalarType.fromDoubles(values));
     }
 
+    static BoolArrayField boolArray(boolean[] values) {
+        return new BoolArrayField(values);
+    }
+
     static StringField string(String value) {
         return new StringField(value);
     }
@@ -154,6 +158,10 @@ final class GeneratedDescriptions {
 
     static VectorField vector(List<NestedTable> items) {
         return new VectorField(items);
+    }
+
+    static StringVectorField stringVector(List<String> values) {
+        return new StringVectorField(values);
     }
 
     private static TableDescription tableOf(FieldDescription... fields) {

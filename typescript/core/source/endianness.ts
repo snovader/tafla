@@ -1,5 +1,6 @@
+import { SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64 } from './constants.ts';
 import { toUint8Array } from './converters.ts';
-import type { TypedArrayConstructor } from './types.ts';
+import type { TypedArray, TypedArrayConstructor } from './types.ts';
 
 /**
  * Copies `length` elements from `byteOffset` in `buffer` into a new array,
@@ -14,11 +15,13 @@ export function byteOrderSwapped<T extends TypedArrayConstructor>(
 ): InstanceType<T> {
     const elementSize = TypedArray.BYTES_PER_ELEMENT;
     const source = new Uint8Array(buffer, byteOffset, length * elementSize);
-    const swapped = new TypedArray(length);
+    // The constructor returns any, from which InstanceType<T> infers the array
+    // oxlint-disable-next-line typescript/no-unsafe-assignment
+    const swapped: TypedArray = new TypedArray(length);
 
     byteOrderSwap(source, toUint8Array(swapped), elementSize);
 
-    return swapped;
+    return swapped as InstanceType<T>;
 }
 
 /**
@@ -33,19 +36,19 @@ export function byteOrderSwap(
     elementSize: number
 ): void {
     switch (elementSize) {
-        case 1:
+        case SIZEOF_8:
             destination.set(source);
             break;
 
-        case 2:
+        case SIZEOF_16:
             swap2(source, destination);
             break;
 
-        case 4:
+        case SIZEOF_32:
             swap4(source, destination);
             break;
 
-        case 8:
+        case SIZEOF_64:
             swap8(source, destination);
             break;
 
@@ -57,7 +60,7 @@ export function byteOrderSwap(
 function swap2(input: Uint8Array, output: Uint8Array): void {
     const swap = crateSwapper(input, output);
 
-    for (let i = 0; i < input.length; i += 2) {
+    for (let i = 0; i < input.length; i += SIZEOF_16) {
         swap(i, i + 1);
     }
 }
@@ -65,7 +68,7 @@ function swap2(input: Uint8Array, output: Uint8Array): void {
 function swap4(input: Uint8Array, output: Uint8Array): void {
     const swap = crateSwapper(input, output);
 
-    for (let i = 0; i < input.length; i += 4) {
+    for (let i = 0; i < input.length; i += SIZEOF_32) {
         swap(i, i + 3);
         swap(i + 1, i + 2);
     }
@@ -74,7 +77,7 @@ function swap4(input: Uint8Array, output: Uint8Array): void {
 function swap8(input: Uint8Array, output: Uint8Array): void {
     const swap = crateSwapper(input, output);
 
-    for (let i = 0; i < input.length; i += 8) {
+    for (let i = 0; i < input.length; i += SIZEOF_64) {
         swap(i, i + 7);
         swap(i + 1, i + 6);
         swap(i + 2, i + 5);

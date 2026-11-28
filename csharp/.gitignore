@@ -1,0 +1,4 @@
+# The build's output, which Directory.Build.props puts here
+/artifacts/
+bin/
+obj/

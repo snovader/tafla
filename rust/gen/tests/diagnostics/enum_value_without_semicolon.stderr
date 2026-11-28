@@ -1,0 +1,5 @@
+error: expected `;`, found `green`
+ --> enum_value_without_semicolon.tafla:3:5
+  |
+3 |     green = 1;
+  |     ^^^^^

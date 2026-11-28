@@ -1,4 +1,4 @@
-import { expect } from 'vitest';
+import { expect } from 'hypotes';
 import { DecodeError } from 'tafla';
 
 /**

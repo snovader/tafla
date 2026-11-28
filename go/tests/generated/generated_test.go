@@ -15,6 +15,7 @@ import (
 	"math"
 	"os"
 	"reflect"
+	"slices"
 	"testing"
 	"unsafe"
 
@@ -100,6 +101,7 @@ var messages = []message{
 	versioned[shapes.Document, shapes.DocumentFields](
 		"shapes.Document", tafla.Uint32, true, 1, shapes.NewDocument, shapes.DocumentVersionOf),
 	unversioned[shapes.ItemList, shapes.ItemListFields]("shapes.ItemList", tafla.Uint32, false, shapes.NewItemList),
+	unversioned[shapes.Task, shapes.TaskFields]("shapes.Task", tafla.Uint32, false, shapes.NewTask),
 
 	unversioned[layouts.Uint8Offsets, layouts.Uint8OffsetsFields](
 		"layouts.Uint8Offsets", tafla.Uint8, false, layouts.NewUint8Offsets),
@@ -137,6 +139,11 @@ var messages = []message{
 	unversioned[alltypes.Nested, alltypes.NestedFields]("all_types.Nested", tafla.Uint32, false, alltypes.NewNested),
 	unversioned[alltypes.Reserved, alltypes.ReservedFields]("all_types.Reserved", tafla.Uint32, false, alltypes.NewReserved),
 	unversioned[alltypes.Structs, alltypes.StructsFields]("all_types.Structs", tafla.Uint32, false, alltypes.NewStructs),
+	unversioned[alltypes.Enums, alltypes.EnumsFields]("all_types.Enums", tafla.Uint32, false, alltypes.NewEnums),
+	unversioned[alltypes.StringVectors, alltypes.StringVectorsFields](
+		"all_types.StringVectors", tafla.Uint32, false, alltypes.NewStringVectors),
+	unversioned[alltypes.NarrowStringVectors, alltypes.NarrowStringVectorsFields](
+		"all_types.NarrowStringVectors", tafla.Uint16, false, alltypes.NewNarrowStringVectors),
 
 	// Fixed fields, which the generated code lays out itself. Overflow, which
 	// is always too long, has a test of its own.
@@ -163,10 +170,13 @@ var structs = []struct {
 	read reflect.Value
 }{
 	{"shapes.Sample", reflect.TypeFor[shapes.Sample](), 12, reflect.ValueOf(shapes.ReadSample)},
+	{"shapes.Step", reflect.TypeFor[shapes.Step](), 7, reflect.ValueOf(shapes.ReadStep)},
 	{"all_types.Segment", reflect.TypeFor[alltypes.Segment](), 16, reflect.ValueOf(alltypes.ReadSegment)},
 	{"all_types.Point", reflect.TypeFor[alltypes.Point](), 8, reflect.ValueOf(alltypes.ReadPoint)},
 	{"all_types.Packed", reflect.TypeFor[alltypes.Packed](), 43, reflect.ValueOf(alltypes.ReadPacked)},
 	{"all_types.Documented", reflect.TypeFor[alltypes.Documented](), 7, reflect.ValueOf(alltypes.ReadDocumented)},
+	{"all_types.Mark", reflect.TypeFor[alltypes.Mark](), 24, reflect.ValueOf(alltypes.ReadMark)},
+	{"all_types.Turn", reflect.TypeFor[alltypes.Turn](), 9, reflect.ValueOf(alltypes.ReadTurn)},
 	{"fixed_fields.Vec2", reflect.TypeFor[fixedfields.Vec2](), 8, reflect.ValueOf(fixedfields.ReadVec2)},
 	{"fixed_fields.Quad", reflect.TypeFor[fixedfields.Quad](), 64, reflect.ValueOf(fixedfields.ReadQuad)},
 	{"fixed_fields.Block", reflect.TypeFor[fixedfields.Block](), 256, reflect.ValueOf(fixedfields.ReadBlock)},
@@ -491,6 +501,23 @@ func TestACorruptItemFailsWhenItsReadRatherThanWhenTheGetterIsCalled(t *testing.
 	}
 	if len(errs) != 2 || errs[0] != nil || !sameError(errs[1], expected) {
 		t.Fatalf("iterated with %v rather than nil and %v", errs, expected)
+	}
+}
+
+// An array of bools is written as bytes of 1 and 0, which its getter returns
+// in place, and which Fields() reads as new bools, true where a byte isn't 0
+func TestAnArrayOfBoolsIsReadAsItsBytesInPlaceAndAsBoolsByFields(t *testing.T) {
+	written := must(alltypes.ArraysFields{Bool: []bool{true, false, true}}.MarshalBinary())
+	message := alltypes.NewArrays(written)
+
+	inPlace := must(message.Bool())
+	if !bytes.Equal(inPlace, []byte{1, 0, 1}) || !within(inPlace, written) {
+		t.Fatalf("read % x, within the bytes: %v", inPlace, within(inPlace, written))
+	}
+
+	inPlace[0], inPlace[1] = 0x80, 2
+	if read := must(message.Fields()).Bool; !slices.Equal(read, []bool{true, true, true}) {
+		t.Fatalf("read %v", read)
 	}
 }
 

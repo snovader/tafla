@@ -14,7 +14,6 @@ import java.util.function.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class TableBuilderTest {
-    private static final TableLayout SIZED = TableLayout.builder().sized(true).build();
 
     // Tables of up to 64 KiB, so fewer of them
     @Property(tries = 250)
@@ -54,7 +53,7 @@ public class TableBuilderTest {
         // The longest table reads back, and the rejected field left no trace in it
         var bytes = builder.bytes();
         assertArrayEquals(Tables.build(longestTable).bytes(), bytes);
-        assertEquals(longestTable, TableReader.strict(bytes, table.layout()).readTable(longestTable));
+        assertEquals(longestTable, DescriptionReader.strict(bytes, table.layout()).readTable(longestTable));
     }
 
     @Provide
@@ -66,11 +65,14 @@ public class TableBuilderTest {
     enum GrowingField {
         INT8_ARRAY,
         FLOAT64_ARRAY,
+        BOOL_ARRAY,
         STRING,
         STRUCT_ARRAY,
         NESTED_TABLE,
         VECTOR_ITEMS,
-        VECTOR_ITEM;
+        VECTOR_ITEM,
+        STRING_VECTOR_ITEMS,
+        STRING_VECTOR_STRING;
 
         /** The scalars of the structs of {@link #STRUCT_ARRAY}: 3 bytes, aligned to 2 */
         private static final List<ScalarType> STRUCT = List.of(ScalarType.UINT16, ScalarType.UINT8);
@@ -88,7 +90,7 @@ public class TableBuilderTest {
                 case FLOAT64_ARRAY -> Double.BYTES;
                 case STRUCT_ARRAY -> StructBytes.size(STRUCT);
                 // Each item's end
-                case VECTOR_ITEMS -> offsetType.size();
+                case VECTOR_ITEMS, STRING_VECTOR_ITEMS -> offsetType.size();
                 default -> Byte.BYTES;
             };
         }
@@ -98,11 +100,14 @@ public class TableBuilderTest {
             return switch (this) {
                 case INT8_ARRAY -> new ArrayField(ScalarType.INT8, new long[length]);
                 case FLOAT64_ARRAY -> new ArrayField(ScalarType.FLOAT64, new long[length]);
+                case BOOL_ARRAY -> new BoolArrayField(new boolean[length]);
                 case STRING -> new StringField("a".repeat(length));
                 case STRUCT_ARRAY -> new StructArrayField(STRUCT, Collections.nCopies(length, List.of(1L, 2L)));
                 case NESTED_TABLE -> new TableField(from, tableOfBytes(length), OptionalInt.empty());
                 case VECTOR_ITEMS -> new VectorField(Collections.nCopies(length, new NestedTable(from, EMPTY)));
                 case VECTOR_ITEM -> new VectorField(List.of(new NestedTable(from, tableOfBytes(length))));
+                case STRING_VECTOR_ITEMS -> new StringVectorField(Collections.nCopies(length, ""));
+                case STRING_VECTOR_STRING -> new StringVectorField(List.of("a".repeat(length)));
             };
         }
 
@@ -206,7 +211,7 @@ public class TableBuilderTest {
         Statistics.coverage(coverage -> coverage.check("a run of 64 bytes or more").percentage(p -> p > 30));
 
         var bytes = Tables.build(table).bytes();
-        assertEquals(table, TableReader.strict(bytes, table.layout()).readTable(table));
+        assertEquals(table, DescriptionReader.strict(bytes, table.layout()).readTable(table));
 
         var inPlace = Tables.nestedInPlace(table);
         var written = Tables.write(inPlace);
@@ -220,7 +225,12 @@ public class TableBuilderTest {
         for (var field : table.fields()) {
             longest = Math.max(longest, switch (field) {
                 case ArrayField array -> (long) array.values().length * array.type().size();
+                case BoolArrayField array -> array.values().length;
                 case StringField string -> string.value().getBytes(StandardCharsets.UTF_8).length;
+                case StringVectorField vector -> vector.values().stream()
+                    .mapToLong(string -> string.getBytes(StandardCharsets.UTF_8).length)
+                    .max()
+                    .orElse(0);
                 case StructArrayField array -> (long) array.items().size() * StructBytes.size(array.fields());
                 case TableField nested -> longestRun(nested.table());
                 case VectorField vector -> vector.items().stream().mapToLong(item -> longestRun(item.table())).max().orElse(0);
@@ -529,11 +539,11 @@ public class TableBuilderTest {
             });
         });
 
-        var buffer = new ByteBuffer(builder.bytes());
-        var vector = buffer.rootOffset(0);
-        assertEquals(count, buffer.getVectorLength(vector));
-        var first = buffer.fieldOffset(buffer.getVectorOffset(vector, 0), 0);
-        assertArrayEquals(bytes, buffer.getInt8Array(buffer.fieldOffset(first, 7)));
+        var reader = new TableReader(builder.bytes());
+        var vector = reader.rootOffset(0);
+        assertEquals(count, reader.getVectorLength(vector));
+        var first = reader.fieldOffset(reader.getVectorOffset(vector, 0), 0);
+        assertArrayEquals(bytes, reader.getInt8Array(reader.fieldOffset(first, 7)));
     }
 
     /**
@@ -558,8 +568,8 @@ public class TableBuilderTest {
 
         parent.setTable(builder);
         parent.setVector(List.of(builder));
-        var buffer = new ByteBuffer(parent.bytes());
-        assertArrayEquals(new byte[][] {builder.bytes()}, buffer.getVector(buffer.rootOffset(1)));
+        var reader = new TableReader(parent.bytes());
+        assertArrayEquals(new byte[][] {builder.bytes()}, reader.getVector(reader.rootOffset(1)));
     }
 
     /**
@@ -737,11 +747,11 @@ public class TableBuilderTest {
         assertArrayEquals(fromBytes, fresh);
         assertArrayEquals(fromBytes, fromWritten);
 
-        var buffer = new ByteBuffer(fromBytes, layout);
-        var nested = buffer.rootOffset(1);
+        var reader = new TableReader(fromBytes, layout);
+        var nested = reader.rootOffset(1);
         assertEquals(0, nested % 8);
         assertArrayEquals(bytes, Arrays.copyOfRange(fromBytes, nested, nested + bytes.length));
-        assertArrayEquals(new byte[][] {bytes, bytes}, buffer.getVector(buffer.rootOffset(2)));
+        assertArrayEquals(new byte[][] {bytes, bytes}, reader.getVector(reader.rootOffset(2)));
     }
 
     @Provide
@@ -794,12 +804,15 @@ public class TableBuilderTest {
         var layout = versioned(offsetType);
         var max = offsetType.maxValue();
 
-        var buffer = new ByteBuffer(new TableBuilder(0, layout, max).bytes(), layout);
-        assertEquals(max, buffer.getVersion());
+        // A reader reads a table of any version, whatever its layout's
+        var reader = new TableReader(new TableBuilder(0, layout.withVersion(max)).bytes(), layout);
+        assertEquals(max, reader.getVersion());
 
-        var exception = assertThrows(IllegalArgumentException.class, () -> new TableBuilder(0, layout, max + 1));
+        var exception = assertThrows(IllegalArgumentException.class, () -> layout.withVersion(max + 1));
         assertEquals(String.format("Version %d doesn't fit in a %s slot", max + 1, offsetType), exception.getMessage());
-        assertThrows(IllegalArgumentException.class, () -> new TableBuilder(0, layout, -1));
+        var options = TableLayout.builder().offsetType(offsetType).version(max + 1);
+        assertEquals(exception.getMessage(), assertThrows(IllegalArgumentException.class, options::build).getMessage());
+        assertThrows(IllegalArgumentException.class, () -> layout.withVersion(-1));
     }
 
     @Property(generation = GenerationMode.EXHAUSTIVE)
@@ -834,10 +847,10 @@ public class TableBuilderTest {
 
         // The count goes at 12, after the uint8 at 8 and 3 bytes of padding, so that the structs
         // start at 16
-        var buffer = new ByteBuffer(builder.bytes());
-        assertEquals(12, buffer.rootOffset(1));
-        assertEquals(2, buffer.getUint32(12));
-        assertEquals(16, buffer.getStructArray(12, 8).remaining());
+        var reader = new TableReader(builder.bytes());
+        assertEquals(12, reader.rootOffset(1));
+        assertEquals(2, reader.getUint32(12));
+        assertEquals(16, reader.getStructArray(12, 8).remaining());
     }
 
     @Example
@@ -859,7 +872,7 @@ public class TableBuilderTest {
         parent.setTable(nested);
 
         // After the uint8 at 8, padded to 16
-        assertEquals(16, new ByteBuffer(parent.bytes()).rootOffset(1));
+        assertEquals(16, new TableReader(parent.bytes()).rootOffset(1));
     }
 
     @Example
@@ -902,24 +915,12 @@ public class TableBuilderTest {
     }
 
     @Example
-    void should_need_a_version_exactly_when_the_layout_has_a_slot_for_it() {
-        var exception = assertThrows(
-            IllegalArgumentException.class,
-            () -> new TableBuilder(1, versioned(OffsetType.UINT32))
-        );
-        assertEquals("A versioned layout needs a version", exception.getMessage());
-
-        exception = assertThrows(IllegalArgumentException.class, () -> new TableBuilder(1, SIZED, 1));
-        assertEquals("The layout has no version slot", exception.getMessage());
-    }
-
-    @Example
     void should_write_a_lone_surrogate_as_the_replacement_character() {
         var builder = new TableBuilder(1);
         builder.setString("a\uD800b\uDC00\uD83D\uDE00");
 
-        var buffer = new ByteBuffer(builder.bytes());
-        assertEquals("a\uFFFDb\uFFFD\uD83D\uDE00", buffer.getString(buffer.rootOffset(0)));
+        var reader = new TableReader(builder.bytes());
+        assertEquals("a\uFFFDb\uFFFD\uD83D\uDE00", reader.getString(reader.rootOffset(0)));
     }
 
     @Property
@@ -954,8 +955,8 @@ public class TableBuilderTest {
         assertThrows(IllegalArgumentException.class, () -> builder.setVector(vector));
 
         builder.setVector(new byte[][] {{1}});
-        var buffer = new ByteBuffer(builder.bytes());
-        assertArrayEquals(new byte[][] {{1}}, buffer.getVector(buffer.rootOffset(0)));
+        var reader = new TableReader(builder.bytes());
+        assertArrayEquals(new byte[][] {{1}}, reader.getVector(reader.rootOffset(0)));
     }
 
     @Example
@@ -967,7 +968,7 @@ public class TableBuilderTest {
         parent.setUint8((short) 1);
         parent.setTable(nested);
 
-        assertEquals(2 * Integer.BYTES + 1, new ByteBuffer(parent.bytes()).rootOffset(1));
+        assertEquals(2 * Integer.BYTES + 1, new TableReader(parent.bytes()).rootOffset(1));
     }
 
     @Example
@@ -984,10 +985,10 @@ public class TableBuilderTest {
         parent.setTable(nested);
         parent.setVector(List.of(nested));
 
-        var buffer = new ByteBuffer(parent.bytes());
-        var table = buffer.rootOffset(0);
-        assertEquals(2, buffer.getUint8(buffer.fieldOffset(table, 1)));
-        assertArrayEquals(new byte[][] {nested.bytes()}, buffer.getVector(buffer.rootOffset(1)));
+        var reader = new TableReader(parent.bytes());
+        var table = reader.rootOffset(0);
+        assertEquals(2, reader.getUint8(reader.fieldOffset(table, 1)));
+        assertArrayEquals(new byte[][] {nested.bytes()}, reader.getVector(reader.rootOffset(1)));
     }
 
     @Example
@@ -999,11 +1000,11 @@ public class TableBuilderTest {
         parent.setVector(items);
         items.add(new TableBuilder(0));
 
-        var buffer = new ByteBuffer(parent.bytes());
-        assertEquals(1, buffer.getVectorOffsets(buffer.rootOffset(0)).length);
+        var reader = new TableReader(parent.bytes());
+        assertEquals(1, reader.getVectorOffsets(reader.rootOffset(0)).length);
     }
 
     private static TableLayout versioned(OffsetType offsetType) {
-        return TableLayout.builder().versioned(true).offsetType(offsetType).build();
+        return TableLayout.builder().version(0).offsetType(offsetType).build();
     }
 }

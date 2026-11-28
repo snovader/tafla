@@ -1,5 +1,0 @@
-error: arrays of bools aren't supported
- --> array_of_bools.tafla:2:13
-  |
-2 |     flags: [bool];
-  |             ^^^^ use `[uint8]` of 0 and 1

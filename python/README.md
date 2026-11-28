@@ -5,6 +5,11 @@ Its `native/` holds the native implementation of the classes that generated
 code uses, a Rust crate that maturin builds into the module `tafla._native`
 with PyO3, on the Rust runtime in `rust/core`.
 
+`gen/` packages tafla-gen, the schema compiler in `rust/gen`, as the
+distribution `tafla-gen` on PyPI, whose wheels hold the command built for
+each platform. It has no Python, and isn't a member of this workspace; its
+[README](gen/README.md) describes it.
+
 `benchmarks/` compares tafla with FlatBuffers, protobuf, MessagePack and
 `struct` in pyperf benchmarks, on the same workloads as the TypeScript
 comparison. Its [README](benchmarks/README.md) describes them and has results.

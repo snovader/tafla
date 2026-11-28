@@ -1,14 +1,16 @@
 import { SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64 } from './constants.ts';
 import type { ElementSize, OffsetSize, OffsetType } from './types.ts';
 
-export interface TableLayoutOptions<Versioned extends boolean = boolean> {
+export interface TableLayoutOptions {
     /** Whether the header starts with the table's total byte length */
     sized?: boolean;
     /**
-     * Whether the header has a slot for a version, after the length when
-     * `sized`. Readers can check it before reading any field.
+     * The version that the header holds, after the length when `sized`,
+     * which gives it a slot for one: an integer that fits in the offset
+     * type. Writers write it, and readers can check the one that a table
+     * holds, with `TableReader.getVersion()`, before reading any field.
      */
-    versioned?: Versioned;
+    version?: number;
     /**
      * The offset type, the unsigned integer type of the header slots, field
      * offsets, counts, lengths and item ends, which limits the table's length:
@@ -28,122 +30,145 @@ const OFFSET_SIZES: Readonly<Record<OffsetType, OffsetSize>> = {
 /**
  * The header and offset type of a table. A format creates its layout once
  * and passes it to both the `TableBuilder` that writes the table and the
- * `ByteBuffer` that reads it, so that the two can't disagree. Nested tables
+ * `TableReader` that reads it, so that the two can't disagree. Nested tables
  * use {@link TableLayout.DEFAULT}.
  *
- * `Versioned` lets TypeScript require a version where a versioned table is
- * built.
+ * A layout with a version is the layout of that version of the format: its
+ * writers write the version, and its readers read tables of any version,
+ * so that an application can read a table's version before it chooses how
+ * to read the fields. The layouts of a format's versions should differ in
+ * the version only, as {@link TableLayout.withVersion} makes them.
  */
-export class TableLayout<Versioned extends boolean = boolean> {
+export class TableLayout {
     /** No header slots, and offsets and lengths of the offset type `uint32` */
-    static readonly DEFAULT: TableLayout<false> = new TableLayout(
-        false,
-        false,
-        'uint32'
-    );
+    static readonly DEFAULT = new TableLayout(false, undefined, 'uint32');
 
-    readonly #sized: boolean;
-    readonly #versioned: Versioned;
-    readonly #offsetType: OffsetType;
-    readonly #offsetSize: OffsetSize;
+    declare private readonly _sized: boolean;
+    declare private readonly _version: number | undefined;
+    declare private readonly _offsetType: OffsetType;
+    declare private readonly _offsetSize: OffsetSize;
+    declare private readonly _headerSize: number;
 
     private constructor(
         sized: boolean,
-        versioned: Versioned,
+        version: number | undefined,
         offsetType: OffsetType
     ) {
-        this.#sized = sized;
-        this.#versioned = versioned;
-        this.#offsetType = offsetType;
-        this.#offsetSize = OFFSET_SIZES[offsetType];
+        this._sized = sized;
+        this._version = version;
+        this._offsetType = offsetType;
+        this._offsetSize = OFFSET_SIZES[offsetType];
+        this._headerSize =
+            ((sized ? 1 : 0) + (version === undefined ? 0 : 1)) *
+            this._offsetSize;
     }
 
     /**
      * @throws {TypeError} If `options` has another option than `sized`,
-     * `versioned` and `offsetType`, such as a misspelled one.
+     * `version` and `offsetType`, such as a misspelled one.
      * @throws {RangeError} If `offsetType` isn't `'uint8'`, `'uint16'` or
-     * `'uint32'`.
+     * `'uint32'`, or `version` isn't an integer that fits in it.
      */
-    static create<Versioned extends boolean = false>({
+    static create({
         sized = false,
-        versioned = false as Versioned,
+        version,
         offsetType = 'uint32',
         ...others
-    }: TableLayoutOptions<Versioned> = {}): TableLayout<Versioned> {
+    }: TableLayoutOptions = {}): TableLayout {
         // An option that isn't read would leave its default in its place,
         // and readers of the intended layout would misread the table
         const [other] = Object.keys(others);
-        if (other !== undefined) {
+        if (other != null) {
             throw new TypeError(
-                `TableLayout.create() takes sized, versioned and offsetType, not ${other}`
+                `TableLayout.create() takes sized, version and offsetType, not ${other}`
             );
         }
 
         assertOffsetType(offsetType);
+        if (version != null && !fitsIn(version, OFFSET_SIZES[offsetType])) {
+            throw new RangeError(
+                `Version ${version} doesn't fit in a ${offsetType} slot`
+            );
+        }
 
-        return new TableLayout(sized, versioned, offsetType);
+        // A null version, as JavaScript may give, is a missing one too. The
+        // layout holds undefined for both, which its writers compare with.
+        return new TableLayout(sized, version ?? undefined, offsetType);
+    }
+
+    /**
+     * The layout with `version` as its version, for another version of the
+     * same format. A layout without a version gains the slot for one, so
+     * its header is a slot longer.
+     *
+     * @throws {RangeError} If `version` isn't an integer that fits in the
+     * offset type.
+     */
+    withVersion(version: number): TableLayout {
+        return TableLayout.create({
+            sized: this._sized,
+            version,
+            offsetType: this._offsetType
+        });
     }
 
     sized(): boolean {
-        return this.#sized;
+        return this._sized;
     }
 
-    versioned(): Versioned {
-        return this.#versioned;
+    /** Whether the header has a slot for a version */
+    versioned(): boolean {
+        return this._version !== undefined;
+    }
+
+    /** The version that writers write to the header, when it has a slot */
+    version(): number | undefined {
+        return this._version;
     }
 
     offsetType(): OffsetType {
-        return this.#offsetType;
+        return this._offsetType;
     }
 
     /** The offset size, the width in bytes of the offset type: 1, 2 or 4 */
     offsetSize(): OffsetSize {
-        return this.#offsetSize;
+        return this._offsetSize;
     }
 
     /** The byte length of the header slots before the field offsets */
     headerSize(): number {
-        return (
-            ((this.#sized ? 1 : 0) + (this.#versioned ? 1 : 0)) *
-            this.#offsetSize
-        );
+        return this._headerSize;
     }
 }
 
 /**
- * The byte length of the header of a table of `fields` fields in `layout`,
- * whose writer puts `version` in the header
+ * The byte length of the header of a table of `fields` fields in `layout`
  *
- * @throws {TypeError} If `version` is given for a layout without a version
- * slot, or missing for one with it.
- * @throws {RangeError} If `fields` isn't a non-negative integer, `version`
- * isn't an integer that fits in the layout's offset type, or the header
- * alone is longer than the layout addresses.
+ * It checks everything in one condition, and finds which check failed out
+ * of line, to keep the bytecode that V8 inlines into `TableWriter.tableBytes()`
+ * small: TurboFan inlines up to 920 bytes of it into a function, and the
+ * serializers that tafla-gen generates spend that on the table's checks,
+ * its fields' writes and its string.
+ *
+ * @throws {RangeError} If `fields` isn't a non-negative integer, or the
+ * header alone is longer than the layout addresses.
  */
-export function headerLength(
-    fields: number,
-    layout: TableLayout,
-    version: number | undefined
-): number {
-    assertCount(fields);
+export function headerLength(fields: number, layout: TableLayout): number {
     const size = layout.offsetSize();
-    const offsetType = layout.offsetType();
+    const length = layout.headerSize() + fields * size;
 
-    if (layout.versioned() !== (version !== undefined)) {
-        throw new TypeError(
-            layout.versioned()
-                ? 'A versioned layout needs a version'
-                : 'The layout has no version slot'
-        );
+    if (!(isCount(fields) && length <= maxLength(size))) {
+        throw headerError(fields, layout);
     }
 
-    if (version !== undefined && !fitsIn(version, size)) {
-        throw new RangeError(
-            `Version ${version} doesn't fit in a ${offsetType} slot`
-        );
-    }
+    return length;
+}
 
-    return fittedHeaderLength(layout.headerSize(), fields, layout);
+/** The error that `headerLength()` throws, for the first check that fails */
+function headerError(fields: number, layout: TableLayout): RangeError {
+    return isCount(fields)
+        ? headerLengthError(fields, layout)
+        : countError(fields);
 }
 
 /**
@@ -177,29 +202,26 @@ function fittedHeaderLength(
 
     const length = slots + fields * size;
     if (!(length <= maxLength(size))) {
-        throw new RangeError(
-            `A header of ${fields} fields doesn't fit in ${layout.offsetType()} offsets`
-        );
+        throw headerLengthError(fields, layout);
     }
 
     return length;
 }
 
+function headerLengthError(fields: number, layout: TableLayout): RangeError {
+    return new RangeError(
+        `A header of ${fields} fields doesn't fit in ${layout.offsetType()} offsets`
+    );
+}
+
 /**
  * The longest table that offsets of `size` bytes address, which is also the
- * largest number that they hold unsigned, without a power
+ * largest number that they hold unsigned, without a power: 0xff, 0xffff or
+ * 0xffff_ffff, the 32 set bits shifted right by those that `size` bytes
+ * don't hold. A `switch` takes three times the bytecode for V8 to inline.
  */
 export function maxLength(size: OffsetSize): number {
-    switch (size) {
-        case SIZEOF_8:
-            return 0xff;
-
-        case SIZEOF_16:
-            return 0xffff;
-
-        case SIZEOF_32:
-            return 0xffff_ffff;
-    }
+    return 0xffff_ffff >>> (32 - 8 * size);
 }
 
 /**
@@ -209,11 +231,19 @@ export function maxLength(size: OffsetSize): number {
  * @throws {RangeError} If it isn't.
  */
 export function assertCount(count: number): void {
-    if (!(Number.isSafeInteger(count) && count >= 0)) {
-        throw new RangeError(
-            `A count must be a non-negative integer, not ${count}`
-        );
+    if (!isCount(count)) {
+        throw countError(count);
     }
+}
+
+function isCount(count: number): boolean {
+    return Number.isSafeInteger(count) && count >= 0;
+}
+
+function countError(count: number): RangeError {
+    return new RangeError(
+        `A count must be a non-negative integer, not ${count}`
+    );
 }
 
 /**

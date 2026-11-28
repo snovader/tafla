@@ -9,7 +9,7 @@ intent, not a requirement to preserve every detail.
 - Give each function, class, and module a clear scope of responsibility. Keep
   layout, writing, reading, and code generation with their respective owners.
   For example, `TableLayout` describes a table's header and offset type,
-  `TableBuilder` writes tables, and `ByteBuffer` reads them. In the generator,
+  `TableBuilder` writes tables, and `TableReader` reads them. In the generator,
   the parser owns syntax, the checker owns a schema's rules, and each target
   owns its language's code.
 - Search for existing implementations and related abstractions before adding
@@ -47,12 +47,60 @@ intent, not a requirement to preserve every detail.
   constraints, algorithms, units, external behavior, or implementation tradeoffs.
   Document public contracts where callers need that information.
 
+## TypeScript idioms
+
+The shared lint configuration allows each of these, so that the code says
+what it means rather than what a rule asks for. The linter doesn't choose
+between them: the author does.
+
+- Check a nullable string, number or boolean by its truthiness, as
+  `if (value)`, rather than by `!== undefined` or `=== true`. Do so only
+  where '' and 0 are to be treated as missing too, or can't occur, as the
+  error of a file that tafla-gen's command couldn't write, which always
+  names the file. Otherwise compare: a table's version may be 0, and an
+  option of `TableLayout.create()` may be named ''.
+- Check for a missing value with `== null` or `!= null`, which match both
+  null and undefined. Compare strictly only where the two mean different
+  things, or where only one can occur and the code is measured, as below.
+- Write a default for a nullable value as `a ?? b`. Use `a || b` only where
+  '' or 0 is meant to be replaced too, and then say so.
+- Sort or reverse a copy that the function owns in place, with `.sort()` or
+  `.reverse()`. `toSorted()` and `toReversed()` are for an array that's
+  someone else's, or that is also read in its own order, as the test that
+  compares a vector's ends with themselves sorted.
+- Give a regular expression a `u` flag only where the pattern needs one: to
+  match by code point beyond the Basic Multilingual Plane, for `\p{…}`, or
+  for `\u{…}`, as the check of the bundle for characters outside Latin-1.
+- Index an array where the index is known to be in range, as
+  `fields[fields.length - 2]`. Use `.at()` where it may not be, and handle
+  the undefined.
+- In tests, give `vi.fn()` type arguments only when it has no
+  implementation to infer them from, and write asymmetric matchers, such as
+  `expect.objectContaining()`, in place, rather than through a variable
+  typed `unknown`.
+- Fix what the linter reports rather than suppressing it. Where the rewrite
+  that a rule asks for reads worse, keep the code, with a disable directive
+  that gives the reason. A directive that no longer suppresses anything is
+  itself an error.
+- These are choices of style, so they follow the rule for measured code:
+  change a comparison on a reader's or a builder's hot path, such as
+  `=== undefined` in `TableBuilder`, only with a benchmark that shows no
+  change. The bytecode that V8 inlines is counted in bytes there.
+
 ## Encapsulation and API design
 
 - Prefer private fields and method-style accessors, especially when access
   performs computation, validation, caching, or other logic. Use `readonly` where
   the field should not be reassigned. This preference can evolve when language
   features offer a compelling improvement.
+- In the TypeScript runtime, declare a class's fields as
+  `declare private readonly _name`, or `private _name = value` where a field
+  starts with a constant, and assign them in the constructor. V8 defines a
+  `#name` field, and any field declared without `declare`, as `undefined`
+  before the constructor assigns it, and then holds it as mutable and of any
+  type, which made reads up to 17% slower. Private methods stay `#name()`.
+  tafla-gen generates the same fields. Code that isn't measured, such as
+  `@tafla/gen` and the tests, keeps `#name` fields.
 - Make construction and conversion intentional, using named factories or
   conversion methods where they clarify semantics.
 - Make call sites understandable. Use options objects for related configuration
@@ -98,8 +146,8 @@ intent, not a requirement to preserve every detail.
   than edit it, as `rust/gen/README.md` describes; a check or test that it
   fails is a bug of the generator.
 - Keep the domain names the same in every language: table, field, layout,
-  offset type, offset size, vector, builder, and decode error. Make the syntax
-  idiomatic for each language.
+  offset type, offset size, vector, builder, reader, and decode error. Make
+  the syntax idiomatic for each language.
 - The runtimes depend only on their language's standard library, except for
   JSpecify's annotations in Java, and PyO3, which binds the Python runtime's
   native classes, written in Rust. PyO3 and the Rust runtime are built into
@@ -112,9 +160,9 @@ intent, not a requirement to preserve every detail.
 
 - Readers decode bytes from untrusted sources. Every read stays within the bytes
   it was given, and malformed input fails with the implementation's decode error
-  (`DecodeError`, or `DecodeException` in Java). It never fails with another
-  error, a crash, a panic, an out-of-bounds read, or an allocation out of
-  proportion to the input.
+  (`DecodeError`, or `DecodeException` in Java and C#). It never fails with
+  another error, a crash, a panic, an out-of-bounds read, or an allocation out
+  of proportion to the input.
 - Builders reject what they can't write, such as a table too long for its
   offset type, with a documented error, rather than writing a table that
   readers misread. Values converted to a field's type, such as numbers written
@@ -201,10 +249,21 @@ intent, not a requirement to preserve every detail.
 ## Formatting
 
 - Follow each language's formatter and compiler configurations, which live in
-  its directory. In TypeScript, Biome sets four-space indentation, single
+  its directory. In TypeScript, oxfmt sets four-space indentation, single
   quotes, semicolons, no trailing commas, and contextual line widths.
   Intentional whitespace and readable structure still require judgment after
   automatic formatting.
+- TypeScript's configurations extend the shared ones of `@snovader/tsconfig`
+  and `@snovader/oxc-config`, and keep only what is tafla's own: the paths
+  that the tools ignore, the name `tafla` that oxfmt sorts after other
+  packages, the `tafla-source` condition, and in `oxlint.config.ts`, the two
+  rules that tafla turns off, `unicorn/prefer-spread`, for `.slice()` of
+  typed arrays, and `unicorn/escape-case`, and the rules that the
+  FlatBuffers codec written in flatc's shape breaks. Each has its comment.
+  The shared base already allows the idioms above and turns off what tafla
+  used to turn off itself, such as `new Array(length)`, code units, and
+  awaits in loops, so don't repeat its rules here. Change a shared setting
+  in those packages, rather than overriding it here.
 
 ## Repository commands
 
@@ -212,3 +271,7 @@ intent, not a requirement to preserve every detail.
   language's toolchain. Run a language's checks from its directory; its README
   lists them, and `.github/workflows/<language>.yml` runs the same checks in CI.
 - A change to `conformance/` runs every language's tests.
+- Yarn installs a version of a package only a day after it's published.
+  `typescript/.yarnrc.yml` exempts `@snovader/*` and `hypotes`, the owner's
+  own packages, with `npmPreapprovedPackages`, so that a new shared
+  configuration or test runner installs on the day it's published.

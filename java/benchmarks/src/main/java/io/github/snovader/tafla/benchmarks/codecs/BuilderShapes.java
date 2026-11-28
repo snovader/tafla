@@ -20,8 +20,7 @@ public final class BuilderShapes {
     /** The depth of the chain of tables whose padding moves the tables in them */
     private static final int PADDED_CHAIN_DEPTH = 1000;
 
-    private static final TableLayout DOCUMENT_LAYOUT = TableLayout.builder().sized(true).versioned(true).build();
-    private static final int DOCUMENT_VERSION = 1;
+    private static final TableLayout DOCUMENT_LAYOUT = TableLayout.builder().sized(true).version(1).build();
 
     private static final byte[] INT8_100 = int8Array(100);
     private static final byte[] INT8_255 = int8Array(255);
@@ -281,7 +280,7 @@ public final class BuilderShapes {
             columns.setFloat32Array(input.a());
             columns.setFloat32Array(input.b());
 
-            var document = new TableBuilder(4, DOCUMENT_LAYOUT, DOCUMENT_VERSION);
+            var document = new TableBuilder(4, DOCUMENT_LAYOUT);
             document.setFloat64(input.x());
             document.setFloat64(input.y());
             document.setString(input.name());

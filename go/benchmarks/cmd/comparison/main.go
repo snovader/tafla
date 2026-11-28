@@ -11,10 +11,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"regexp"
 	"runtime"
-	"strings"
 	"time"
 
 	"github.com/snovader/tafla/go/benchmarks/codecs"
@@ -63,24 +61,24 @@ func main() {
 	}
 
 	fmt.Printf("%s on %s/%s, %d CPUs\n", runtime.Version(), runtime.GOOS, runtime.GOARCH, runtime.NumCPU())
-	fmt.Printf("Start: %s", uptime())
+	fmt.Printf("Start: %s", harness.Uptime())
 	started := time.Now()
 
-	var results []result
+	var results []harness.Result
 	for _, benchmark := range benchmarks {
 		if !selected.MatchString(benchmark.name) {
 			continue
 		}
 
 		measurements := harness.Measure(benchmark.variants, options)
-		results = append(results, result{benchmark.name, measurements})
-		fmt.Fprintf(os.Stderr, "%s: %s\n", benchmark.name, summary(measurements))
+		results = append(results, harness.Result{Name: benchmark.name, Measurements: measurements})
+		fmt.Fprintf(os.Stderr, "%s: %s\n", benchmark.name, harness.Summary(measurements))
 	}
 
-	fmt.Printf("End: %s", uptime())
+	fmt.Printf("End: %s", harness.Uptime())
 	fmt.Printf("Took %s, %d rounds of %s after %d warm-up rounds\n\n",
 		time.Since(started).Round(time.Second), options.Rounds, options.SampleTime, options.WarmupRounds)
-	report(results)
+	harness.Report(results)
 
 	keepResults()
 }
@@ -94,11 +92,6 @@ func keepResults() {
 	runtime.KeepAlive(sinkList)
 	runtime.KeepAlive(sinkSample)
 	runtime.KeepAlive(sinkFloat)
-}
-
-type result struct {
-	name         string
-	measurements []harness.Measurement
 }
 
 // benchmarks returns every benchmark, after checking that each codec reads
@@ -153,7 +146,7 @@ func recordBenchmarks(record workloads.Record) []benchmark {
 }
 
 func documentBenchmarks(document workloads.Document) []benchmark {
-	rows := fmt.Sprintf("document of %s rows", thousands(len(document.A)))
+	rows := fmt.Sprintf("document of %s rows", harness.Thousands(len(document.A)))
 	serialize := benchmark{name: rows + ": serialize"}
 	deserialize := benchmark{name: rows + ": deserialize"}
 	sum := benchmark{name: rows + ": sum a column per element"}
@@ -428,135 +421,4 @@ func roundTrip[T any](
 	}
 
 	return nil
-}
-
-// report prints the fastest call of each benchmark, and its ratio to the
-// first variant's, tafla's, and then the bytes and allocations of a call, as
-// tables of Markdown
-func report(results []result) {
-	columns := columnsOf(results)
-
-	fmt.Println("Fastest call in µs, and its ratio to tafla's:")
-	fmt.Println()
-	table(results, columns, func(measurement, first harness.Measurement) string {
-		ratio := ""
-		if measurement.Name != first.Name {
-			ratio = fmt.Sprintf(" (%s×)", significant(measurement.Fastest/first.Fastest))
-		}
-		return micros(measurement.Fastest) + ratio
-	})
-
-	fmt.Println()
-	fmt.Println("Median call's distance from the fastest:")
-	fmt.Println()
-	table(results, columns, func(measurement, _ harness.Measurement) string {
-		return fmt.Sprintf("%+.1f%%", 100*(measurement.Median/measurement.Fastest-1))
-	})
-
-	fmt.Println()
-	fmt.Println("Bytes allocated per call, and the allocations that ask for them:")
-	fmt.Println()
-	table(results, columns, func(measurement, _ harness.Measurement) string {
-		return fmt.Sprintf("%s (%s)", thousands(int(measurement.Bytes+0.5)), trimmed(measurement.Allocations))
-	})
-}
-
-// columnsOf returns the variants' names, in their first order, of the
-// benchmarks of codecs and of the ways of reading items apart
-func columnsOf(results []result) []string {
-	var columns []string
-	for _, result := range results {
-		for _, measurement := range result.measurements {
-			if !contains(columns, measurement.Name) {
-				columns = append(columns, measurement.Name)
-			}
-		}
-	}
-
-	return columns
-}
-
-func table(results []result, columns []string, cell func(measurement, first harness.Measurement) string) {
-	fmt.Printf("| Benchmark | %s |\n", strings.Join(columns, " | "))
-	fmt.Printf("| --- |%s\n", strings.Repeat(" ---: |", len(columns)))
-	for _, result := range results {
-		cells := make([]string, len(columns))
-		for index, column := range columns {
-			for _, measurement := range result.measurements {
-				if measurement.Name == column {
-					cells[index] = cell(measurement, result.measurements[0])
-				}
-			}
-		}
-		fmt.Printf("| %s | %s |\n", result.name, strings.Join(cells, " | "))
-	}
-}
-
-func summary(measurements []harness.Measurement) string {
-	parts := make([]string, len(measurements))
-	for index, measurement := range measurements {
-		parts[index] = fmt.Sprintf("%s %s µs", measurement.Name, micros(measurement.Fastest))
-	}
-
-	return strings.Join(parts, ", ")
-}
-
-// micros returns a time in nanoseconds in µs, to three significant digits,
-// or more integer digits
-func micros(nanoseconds float64) string {
-	return significant(nanoseconds / 1000)
-}
-
-func significant(value float64) string {
-	switch {
-	case value >= 100:
-		return fmt.Sprintf("%.1f", value)
-	case value >= 10:
-		return fmt.Sprintf("%.2f", value)
-	case value >= 1:
-		return fmt.Sprintf("%.3f", value)
-	case value >= 0.1:
-		return fmt.Sprintf("%.3f", value)
-	case value >= 0.01:
-		return fmt.Sprintf("%.4f", value)
-	default:
-		return fmt.Sprintf("%.5f", value)
-	}
-}
-
-func trimmed(value float64) string {
-	return strings.TrimSuffix(strings.TrimRight(fmt.Sprintf("%.2f", value), "0"), ".")
-}
-
-func thousands(value int) string {
-	digits := fmt.Sprint(value)
-	var grouped strings.Builder
-	for index, digit := range digits {
-		if index > 0 && (len(digits)-index)%3 == 0 {
-			grouped.WriteByte(',')
-		}
-		grouped.WriteRune(digit)
-	}
-
-	return grouped.String()
-}
-
-func contains(values []string, value string) bool {
-	for _, existing := range values {
-		if existing == value {
-			return true
-		}
-	}
-
-	return false
-}
-
-// uptime returns uptime's line, with the load averages
-func uptime() string {
-	output, err := exec.Command("uptime").Output()
-	if err != nil {
-		return err.Error() + "\n"
-	}
-
-	return string(output)
 }

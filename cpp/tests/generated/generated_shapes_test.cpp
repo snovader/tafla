@@ -148,6 +148,26 @@ RC_GTEST_PROP(GeneratedShapes, AnItemListIsWrittenFromAViewOfOtherItemsAsFromThe
     RC_ASSERT(written_into_any_bytes(converted, expected.span()));
 }
 
+/// A task's enums hold any integer of their types, most of which the schema
+/// doesn't name, and are written and read as those integers
+RC_GTEST_PROP(GeneratedShapes, ATaskOfAnyIntegersIsWrittenAsTableBuilderWritesItAndReadsBack, ()) {
+    const auto history = *values::arrays(values::integers<std::uint16_t>());
+    const auto name = *values::strings();
+    const shapes::TaskFields fields{
+        .priority = static_cast<shapes::Priority>(*values::integers<std::int8_t>()),
+        .history = history,
+        .step = {.state = static_cast<shapes::State>(*values::integers<std::uint16_t>()),
+                 .priority = static_cast<shapes::Priority>(*values::integers<std::int8_t>()),
+                 .seconds = *values::integers<std::uint32_t>()},
+        .name = name,
+    };
+
+    const auto bytes = fields.serialize();
+    RC_ASSERT(bytes == to_bytes(tables::describe(fields)));
+    RC_ASSERT(written_into_any_bytes(fields, bytes.span()));
+    RC_ASSERT(tables::read(shapes::Task(bytes)) == tables::describe(fields));
+}
+
 RC_GTEST_PROP(GeneratedShapes, ASampleIsWrittenLittleEndianAtItsOffsetsAndReadsBack, ()) {
     const shapes::Sample sample{
         .key = *values::integers<std::uint32_t>(),
@@ -202,6 +222,7 @@ RC_GTEST_PROP(GeneratedShapes, CorruptedTablesReadAsValuesOrDecodeErrors, ()) {
         static_cast<void>(try_read([&] { return tables::read(shapes::Point(bytes)); }));
         static_cast<void>(try_read([&] { return tables::read(shapes::Document(bytes)); }));
         static_cast<void>(try_read([&] { return tables::describe(shapes::Sample::read(bytes)); }));
+        static_cast<void>(try_read([&] { return tables::read(shapes::Task(bytes)); }));
     }
 
     for (const auto& bytes :
@@ -224,8 +245,8 @@ TEST(GeneratedShapes, AnItemIsReadInPlacePastItsEndWithinTheBytesOfItsItemList) 
 
     // The first item's offset of its value, at the start of the item, points
     // at the second item's value
-    const ByteBuffer buffer(bytes, TableLayout());
-    const auto vector = buffer.get_vector(buffer.root_offset(0));
+    const TableReader reader(bytes, TableLayout());
+    const auto vector = reader.get_vector(reader.root_offset(0));
     const auto first = static_cast<std::size_t>(vector.get(0).data() - bytes.data());
     const auto second = static_cast<std::size_t>(vector.get(1).data() - bytes.data());
     const auto value = second - first + 8;
@@ -249,8 +270,8 @@ TEST(GeneratedShapes, ACorruptItemFailsWhenItIsReadRatherThanWhenTheGetterIsCall
 
     // The last item's end, after the vector's count and the two ends before
     // it, lies past the bytes
-    const ByteBuffer buffer(bytes, TableLayout());
-    store_le(bytes.data() + buffer.root_offset(0) + 3 * 4, std::uint32_t{0xffff'ffff});
+    const TableReader reader(bytes, TableLayout());
+    store_le(bytes.data() + reader.root_offset(0) + 3 * 4, std::uint32_t{0xffff'ffff});
 
     const auto items = shapes::ItemList(bytes).items();
     ASSERT_EQ(items.size(), 3U);
@@ -340,7 +361,7 @@ TEST(GeneratedShapes, AGetterOfATableNestedPastTheBytesThrows) {
 
 /// A reader of a table nested in a field reads it from the table's start, so
 /// its decode errors report positions from there, as a vector item's do, and
-/// as a `ByteBuffer` of the table's bytes reports them
+/// as a `TableReader` of the table's bytes reports them
 TEST(GeneratedShapes, ATableNestedInAFieldReportsDecodeErrorsFromItsOwnStart) {
     const std::vector<std::uint32_t> keys{1, 2, 3};
     const std::vector<float> a{0.5F, 1.5F, 2.5F};
@@ -351,8 +372,8 @@ TEST(GeneratedShapes, ATableNestedInAFieldReportsDecodeErrorsFromItsOwnStart) {
 
     // Cut inside `b`, the last column, which the columns' offsets still find
     const auto truncated = bytes.span().first(bytes.size() - 2);
-    const auto columns = ByteBuffer(truncated, shapes::Document::LAYOUT).root_offset(3);
-    const ByteBuffer nested(truncated.subspan(columns), TableLayout());
+    const auto columns = TableReader(truncated, shapes::Document::LAYOUT).root_offset(3);
+    const TableReader nested(truncated.subspan(columns), TableLayout());
 
     const auto expected =
         decode_error_of([&] { static_cast<void>(nested.get_float32_array(nested.field_offset(0, 3))); });

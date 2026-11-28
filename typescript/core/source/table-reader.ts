@@ -1,0 +1,1172 @@
+import {
+    IS_LITTLE_ENDIAN,
+    SIZEOF_8,
+    SIZEOF_16,
+    SIZEOF_32,
+    SIZEOF_64
+} from './constants.ts';
+import { decode, decodeShortAscii, decodeShortUtf8 } from './encoding.ts';
+import { byteOrderSwapped } from './endianness.ts';
+import { outOfRange, DecodeError } from './errors.ts';
+import { TableLayout } from './layout.ts';
+import type { OffsetSize } from './types.ts';
+
+/**
+ * Reads a table within the supplied byte slice, in the table layout it was
+ * created with, whose multi-byte values are little-endian. Array reads may
+ * share the slice's storage when aligned; unaligned reads return a copy. On a
+ * big-endian host, arrays of multi-byte elements are always copies, converted
+ * to the host's byte order.
+ *
+ * Every read checks that it stays within the slice, even when the backing
+ * allocation has more bytes, and throws a {@link DecodeError} otherwise.
+ * Once the slice's buffer is detached, every read throws one, and so does
+ * every read of a slice of fixed length once its resizable buffer has shrunk
+ * below it. A slice made over a resizable buffer without a length tracks the
+ * buffer's length: once the buffer is resized, a read returns what the bytes
+ * then hold or throws a `DecodeError`, and never reads outside them.
+ *
+ * Tables are written with `TableBuilder`, whose `finalize()` returns a reader
+ * of its table, or with `TableSizer` and `TableWriter`.
+ */
+export class TableReader {
+    declare private readonly _bytes: Uint8Array;
+    declare private readonly _view: DataView;
+
+    declare private readonly _sized: boolean;
+    declare private readonly _versioned: boolean;
+    /** The offset size, the width of offsets, lengths and header slots */
+    declare private readonly _size: OffsetSize;
+    /** The byte length of the header slots before the root's field offsets */
+    declare private readonly _headerSize: number;
+
+    constructor(bytes: Uint8Array, layout: TableLayout = TableLayout.DEFAULT) {
+        this._bytes = bytes;
+        this._view = new DataView(
+            bytes.buffer,
+            bytes.byteOffset,
+            bytes.byteLength
+        );
+
+        this._sized = layout.sized();
+        this._versioned = layout.versioned();
+        this._size = layout.offsetSize();
+        this._headerSize = layout.headerSize();
+    }
+
+    bytes(): Uint8Array {
+        return this._bytes;
+    }
+
+    getSize(): number {
+        return this._sized ? this.#getSize(0) : this._bytes.length;
+    }
+
+    /**
+     * Returns the version that the table's header carries after its length.
+     * It's as wide as the header's other slots.
+     *
+     * @throws {TypeError} If the reader's layout isn't versioned.
+     */
+    getVersion(): number {
+        if (!this._versioned) {
+            throw new TypeError('The table has no version');
+        }
+
+        return this.#getSize(this._sized ? this._size : 0);
+    }
+
+    /** Returns the position of field `index` of the root table */
+    rootOffset(index: number): number {
+        return this.#getSize(this._headerSize + index * this._size);
+    }
+
+    /**
+     * Returns the position of field `index` of a nested table, which has no
+     * header and stores its field offsets from its own start.
+     *
+     * @param tablePosition - The nested table's position, which is the
+     * offset of the field that holds it.
+     */
+    fieldOffset(tablePosition: number, index: number): number {
+        // Reads the offset as #getSize() does, without a call of its own,
+        // which leaves more of V8's inlining budget to the getters that call
+        // it: see getVectorItemOffset()
+        const size = this._size;
+        const view = this._view;
+        const position = tablePosition + index * size;
+        try {
+            return (
+                tablePosition +
+                (size === SIZEOF_32
+                    ? view.getUint32(position, true)
+                    : readNarrowSize(view, position, size))
+            );
+        } catch {
+            throw readError(position, size, this._bytes);
+        }
+    }
+
+    // The scalar getters let the DataView check the range, which is free,
+    // and rethrow its error. A check of their own made reading 27,028 floats
+    // one at a time 2.7 times slower in d8 and Node. They build the error in
+    // readError(), out of their bytecode, which V8 inlines while it's small:
+    // see getVectorItemOffset().
+
+    getInt8(position: number): number {
+        try {
+            return this._view.getInt8(position);
+        } catch {
+            throw readError(position, SIZEOF_8, this._bytes);
+        }
+    }
+
+    getUint8(position: number): number {
+        try {
+            return this._view.getUint8(position);
+        } catch {
+            throw readError(position, SIZEOF_8, this._bytes);
+        }
+    }
+
+    getInt16(position: number): number {
+        try {
+            return this._view.getInt16(position, true);
+        } catch {
+            throw readError(position, SIZEOF_16, this._bytes);
+        }
+    }
+
+    getUint16(position: number): number {
+        try {
+            return this._view.getUint16(position, true);
+        } catch {
+            throw readError(position, SIZEOF_16, this._bytes);
+        }
+    }
+
+    getInt32(position: number): number {
+        try {
+            return this._view.getInt32(position, true);
+        } catch {
+            throw readError(position, SIZEOF_32, this._bytes);
+        }
+    }
+
+    getUint32(position: number): number {
+        try {
+            return this._view.getUint32(position, true);
+        } catch {
+            throw readError(position, SIZEOF_32, this._bytes);
+        }
+    }
+
+    getInt64(position: number): bigint {
+        try {
+            return this._view.getBigInt64(position, true);
+        } catch {
+            throw readError(position, SIZEOF_64, this._bytes);
+        }
+    }
+
+    getUint64(position: number): bigint {
+        try {
+            return this._view.getBigUint64(position, true);
+        } catch {
+            throw readError(position, SIZEOF_64, this._bytes);
+        }
+    }
+
+    getFloat32(position: number): number {
+        try {
+            return this._view.getFloat32(position, true);
+        } catch {
+            throw readError(position, SIZEOF_32, this._bytes);
+        }
+    }
+
+    getFloat64(position: number): number {
+        try {
+            return this._view.getFloat64(position, true);
+        } catch {
+            throw readError(position, SIZEOF_64, this._bytes);
+        }
+    }
+
+    // The array getters are written out per element type, as TableWriter's
+    // setters are. The elements are stored little-endian, so a big-endian
+    // host gets a copy in its own byte order; single bytes have no order to
+    // swap.
+
+    /**
+     * Reads the array at `position`, as a view of the buffer.
+     */
+    getInt8Array(position: number): Int8Array {
+        const length = this.#getSize(position);
+        const byteOffset = this.#arrayOffset(position, length);
+
+        return new Int8Array(this._view.buffer, byteOffset, length);
+    }
+
+    /**
+     * Reads the array at `position`, as a view of the buffer.
+     */
+    getUint8Array(position: number): Uint8Array {
+        const length = this.#getSize(position);
+        const byteOffset = this.#arrayOffset(position, length);
+
+        return new Uint8Array(this._view.buffer, byteOffset, length);
+    }
+
+    /**
+     * Reads the array at `position`: a view of the buffer when its elements
+     * are aligned, as TableBuilder aligns them, and otherwise a copy, as on
+     * a big-endian host.
+     */
+    getInt16Array(position: number): Int16Array {
+        const length = this.#getSize(position);
+        const byteLength = length * SIZEOF_16;
+        const byteOffset = this.#arrayOffset(position, byteLength);
+
+        if (!IS_LITTLE_ENDIAN) {
+            return byteOrderSwapped(
+                Int16Array,
+                this._view.buffer,
+                byteOffset,
+                length
+            );
+        }
+
+        return byteOffset % SIZEOF_16 === 0
+            ? new Int16Array(this._view.buffer, byteOffset, length)
+            : new Int16Array(this.#copy(byteOffset, byteLength));
+    }
+
+    /**
+     * Reads the array at `position`: a view of the buffer when its elements
+     * are aligned, as TableBuilder aligns them, and otherwise a copy, as on
+     * a big-endian host.
+     */
+    getUint16Array(position: number): Uint16Array {
+        const length = this.#getSize(position);
+        const byteLength = length * SIZEOF_16;
+        const byteOffset = this.#arrayOffset(position, byteLength);
+
+        if (!IS_LITTLE_ENDIAN) {
+            return byteOrderSwapped(
+                Uint16Array,
+                this._view.buffer,
+                byteOffset,
+                length
+            );
+        }
+
+        return byteOffset % SIZEOF_16 === 0
+            ? new Uint16Array(this._view.buffer, byteOffset, length)
+            : new Uint16Array(this.#copy(byteOffset, byteLength));
+    }
+
+    /**
+     * Reads the array at `position`: a view of the buffer when its elements
+     * are aligned, as TableBuilder aligns them, and otherwise a copy, as on
+     * a big-endian host.
+     */
+    getInt32Array(position: number): Int32Array {
+        const length = this.#getSize(position);
+        const byteLength = length * SIZEOF_32;
+        const byteOffset = this.#arrayOffset(position, byteLength);
+
+        if (!IS_LITTLE_ENDIAN) {
+            return byteOrderSwapped(
+                Int32Array,
+                this._view.buffer,
+                byteOffset,
+                length
+            );
+        }
+
+        return byteOffset % SIZEOF_32 === 0
+            ? new Int32Array(this._view.buffer, byteOffset, length)
+            : new Int32Array(this.#copy(byteOffset, byteLength));
+    }
+
+    /**
+     * Reads the array at `position`: a view of the buffer when its elements
+     * are aligned, as TableBuilder aligns them, and otherwise a copy, as on
+     * a big-endian host.
+     */
+    getUint32Array(position: number): Uint32Array {
+        const length = this.#getSize(position);
+        const byteLength = length * SIZEOF_32;
+        const byteOffset = this.#arrayOffset(position, byteLength);
+
+        if (!IS_LITTLE_ENDIAN) {
+            return byteOrderSwapped(
+                Uint32Array,
+                this._view.buffer,
+                byteOffset,
+                length
+            );
+        }
+
+        return byteOffset % SIZEOF_32 === 0
+            ? new Uint32Array(this._view.buffer, byteOffset, length)
+            : new Uint32Array(this.#copy(byteOffset, byteLength));
+    }
+
+    /**
+     * Reads the array at `position`: a view of the buffer when its elements
+     * are aligned, as TableBuilder aligns them, and otherwise a copy, as on
+     * a big-endian host.
+     */
+    getInt64Array(position: number): BigInt64Array {
+        const length = this.#getSize(position);
+        const byteLength = length * SIZEOF_64;
+        const byteOffset = this.#arrayOffset(position, byteLength);
+
+        if (!IS_LITTLE_ENDIAN) {
+            return byteOrderSwapped(
+                BigInt64Array,
+                this._view.buffer,
+                byteOffset,
+                length
+            );
+        }
+
+        return byteOffset % SIZEOF_64 === 0
+            ? new BigInt64Array(this._view.buffer, byteOffset, length)
+            : new BigInt64Array(this.#copy(byteOffset, byteLength));
+    }
+
+    /**
+     * Reads the array at `position`: a view of the buffer when its elements
+     * are aligned, as TableBuilder aligns them, and otherwise a copy, as on
+     * a big-endian host.
+     */
+    getUint64Array(position: number): BigUint64Array {
+        const length = this.#getSize(position);
+        const byteLength = length * SIZEOF_64;
+        const byteOffset = this.#arrayOffset(position, byteLength);
+
+        if (!IS_LITTLE_ENDIAN) {
+            return byteOrderSwapped(
+                BigUint64Array,
+                this._view.buffer,
+                byteOffset,
+                length
+            );
+        }
+
+        return byteOffset % SIZEOF_64 === 0
+            ? new BigUint64Array(this._view.buffer, byteOffset, length)
+            : new BigUint64Array(this.#copy(byteOffset, byteLength));
+    }
+
+    /**
+     * Reads the array at `position`: a view of the buffer when its elements
+     * are aligned, as TableBuilder aligns them, and otherwise a copy, as on
+     * a big-endian host.
+     */
+    getFloat32Array(position: number): Float32Array {
+        const length = this.#getSize(position);
+        const byteLength = length * SIZEOF_32;
+        const byteOffset = this.#arrayOffset(position, byteLength);
+
+        if (!IS_LITTLE_ENDIAN) {
+            return byteOrderSwapped(
+                Float32Array,
+                this._view.buffer,
+                byteOffset,
+                length
+            );
+        }
+
+        return byteOffset % SIZEOF_32 === 0
+            ? new Float32Array(this._view.buffer, byteOffset, length)
+            : new Float32Array(this.#copy(byteOffset, byteLength));
+    }
+
+    /**
+     * Reads the array at `position`: a view of the buffer when its elements
+     * are aligned, as TableBuilder aligns them, and otherwise a copy, as on
+     * a big-endian host.
+     */
+    getFloat64Array(position: number): Float64Array {
+        const length = this.#getSize(position);
+        const byteLength = length * SIZEOF_64;
+        const byteOffset = this.#arrayOffset(position, byteLength);
+
+        if (!IS_LITTLE_ENDIAN) {
+            return byteOrderSwapped(
+                Float64Array,
+                this._view.buffer,
+                byteOffset,
+                length
+            );
+        }
+
+        return byteOffset % SIZEOF_64 === 0
+            ? new Float64Array(this._view.buffer, byteOffset, length)
+            : new Float64Array(this.#copy(byteOffset, byteLength));
+    }
+
+    /**
+     * Reads the array of bools at `position`, a `uint8` array whose bytes
+     * are true when they aren't 0, into a new array. `getUint8Array()` reads
+     * the same bytes in place. A loop reads them, since `Array.from()` of
+     * the bytes with a function took 21 µs to read 1,000 bools, where the
+     * loop took 1.8 µs, in Node 26.
+     */
+    getBoolArray(position: number): boolean[] {
+        const length = this.#getSize(position);
+        this.#arrayOffset(position, length);
+
+        const bytes = this._bytes;
+        const start = position + this._size;
+        const bools = new Array<boolean>(length);
+        for (let i = 0; i < length; i++) {
+            bools[i] = bytes[start + i] !== 0;
+        }
+
+        return bools;
+    }
+
+    /**
+     * Checks that `byteLength` bytes of elements follow the length prefix at
+     * `position`.
+     *
+     * @returns The byte offset of the elements in the backing buffer.
+     */
+    #arrayOffset(position: number, byteLength: number): number {
+        this.#assertRange(position + this._size, byteLength);
+        return this._view.byteOffset + position + this._size;
+    }
+
+    /** A typed array can't start at an unaligned offset, so copy its bytes */
+    #copy(byteOffset: number, byteLength: number): ArrayBufferLike {
+        return this._view.buffer.slice(byteOffset, byteOffset + byteLength);
+    }
+
+    /**
+     * Returns a view of the `size` bytes of the struct at `position`, whose
+     * scalars lie at fixed offsets from its start
+     */
+    getStruct(position: number, size: number): Uint8Array {
+        this.#assertRange(position, size);
+        // A struct of no bytes passes the range check of a buffer that has
+        // lost the slice, which would then give an empty view or a TypeError
+        if (size === 0 && this.#lost()) {
+            throw outOfRange(position, size, 0);
+        }
+
+        return this._bytes.subarray(position, position + size);
+    }
+
+    /**
+     * Returns a view of the structs of the array at `position`, each of
+     * `size` bytes, one after another after the count. Their number is the
+     * view's length over `size`.
+     *
+     * @throws {RangeError} If `size` isn't a positive integer.
+     */
+    getStructArray(position: number, size: number): Uint8Array {
+        assertStructSize(size);
+
+        const count = this.#getSize(position);
+        const start = position + this._size;
+        this.#assertRange(start, count * size);
+
+        return this._bytes.subarray(start, start + count * size);
+    }
+
+    /** @throws {DecodeError} If the string isn't valid UTF-8. */
+    getString(position: number): string {
+        const length = this.#getSize(position);
+        const byteOffset = this.#arrayOffset(position, length);
+
+        // A short ASCII string of more than 8 bytes is read a byte at a
+        // time, within the range that #arrayOffset() checked, and any other
+        // out of line. The loop is a function of its own, and so is
+        // #decodeString(), so that this one takes 103 bytes of bytecode
+        // rather than 250. In Node 26 and 27, V8 inlines #getSize(),
+        // #arrayOffset() and the loop into it, and #decodeString() once a
+        // string has needed it: 316–323 of the 920 bytes that it inlines
+        // into a function. It leaves this one a call in a reader of other
+        // fields too, such as the comparison suite's record, which would
+        // pass the 920 bytes with it, as it did when the decoder's call was
+        // here.
+        const ascii = decodeShortAscii(
+            this._bytes,
+            position + this._size,
+            length
+        );
+        if (ascii !== undefined) {
+            return ascii;
+        }
+
+        return this.#decodeString(position, byteOffset, length);
+    }
+
+    /**
+     * `getString()` of a string that isn't short ASCII: a short one is still
+     * read a byte at a time, and any other by the fatal decoder, which also
+     * throws for a short one that isn't valid UTF-8
+     */
+    #decodeString(
+        position: number,
+        byteOffset: number,
+        length: number
+    ): string {
+        const short = decodeShortUtf8(
+            this._bytes,
+            position + this._size,
+            length
+        );
+        if (short !== undefined) {
+            return short;
+        }
+
+        const bytes = new Uint8Array(this._view.buffer, byteOffset, length);
+        try {
+            return decode(bytes);
+        } catch (error) {
+            throw new DecodeError(
+                `The string at ${position} isn't valid UTF-8`,
+                { cause: error }
+            );
+        }
+    }
+
+    /**
+     * Returns the number of items of the vector at `position`. Every item
+     * has an end, so a count that the bytes can't hold fails before anything
+     * is allocated for it.
+     *
+     * @throws {DecodeError} If the count or the ends after it don't lie within
+     * the bytes.
+     */
+    getVectorLength(position: number): number {
+        // Reads the count as #getSize() does, and checks its ends with one
+        // comparison rather than #assertRange(), so that V8 inlines it with
+        // the item reads: see getVectorItemOffset()
+        const size = this._size;
+        const view = this._view;
+        let count: number;
+        try {
+            count =
+                size === SIZEOF_32
+                    ? view.getUint32(position, true)
+                    : readNarrowSize(view, position, size);
+        } catch {
+            throw readError(position, size, this._bytes);
+        }
+
+        if (!(position + (count + 1) * size <= this._bytes.length)) {
+            throw readError(position + size, count * size, this._bytes);
+        }
+
+        return count;
+    }
+
+    /**
+     * Returns the position of item `index` of the vector at `position`. It's
+     * read from the ends of that item and the one before it, without reading
+     * any other item.
+     *
+     * @throws {DecodeError} If the count or the ends after it don't lie within
+     * the bytes, which is checked before `index`, or the item doesn't.
+     * @throws {RangeError} If the vector has no item `index`.
+     */
+    getVectorOffset(position: number, index: number): number {
+        return this.getVectorItemOffset(
+            position,
+            this.getVectorLength(position),
+            index
+        );
+    }
+
+    /**
+     * Returns the position of item `index` of the vector at `position`, as
+     * `getVectorOffset()` does, from the vector's `count` that the caller has
+     * already read with `getVectorLength()`, so that reading many items, as
+     * a view of the vector does, reads and checks the count once.
+     *
+     * The count must be the vector's: another count reads other bytes as the
+     * item's ends, which, as corrupted ends do, give a position within the
+     * bytes or throw a `DecodeError`.
+     *
+     * @throws {RangeError} If `index` isn't an integer in [0, `count`).
+     * @throws {DecodeError} If the item's ends or the item don't lie within
+     * the bytes, or the item ends before it starts.
+     */
+    getVectorItemOffset(
+        position: number,
+        count: number,
+        index: number
+    ): number {
+        // V8 inlines calls into an optimized function until the bytecode
+        // inlined into it reaches a budget, 920 bytes in V8 15, and counts a
+        // call as its own bytecode and what its optimized code inlined. A
+        // view's get(i) and the getters of the item it returns share that
+        // budget, so this body keeps every failure out of line: it reads the
+        // item's ends in one try, and #itemError() finds which check failed.
+        // It takes 219 bytes and, in a process of uint32 offsets, inlines
+        // nothing more, where reading the ends through #getSize() and
+        // #itemOffset() took 189 and inlined 452. A loop that sums the items
+        // of a vector through get(i) then inlines every read, and the
+        // comparison suite's view summed 100 nested tables in 0.91 µs rather
+        // than 1.85 in Node 27.
+        //
+        // An index that equals its unsigned 32-bit conversion is an integer
+        // in [0, 2^32), which holds every count. A vector's position, as
+        // rootOffset() and fieldOffset() find it, its count and the ends are
+        // integers, so the item lies within the bytes when it ends there.
+        if (index >>> 0 === index && index < count) {
+            const size = this._size;
+            const view = this._view;
+            const startPosition = position + index * size;
+            const endPosition = startPosition + size;
+            try {
+                const start =
+                    index === 0
+                        ? (count + 1) * size
+                        : size === SIZEOF_32
+                          ? view.getUint32(startPosition, true)
+                          : readNarrowSize(view, startPosition, size);
+                const end =
+                    size === SIZEOF_32
+                        ? view.getUint32(endPosition, true)
+                        : readNarrowSize(view, endPosition, size);
+
+                if (start <= end && position + end <= this._bytes.length) {
+                    return position + start;
+                }
+            } catch {
+                // #itemError() reads the ends again, and throws their error
+            }
+        }
+
+        throw this.#itemError(position, count, index);
+    }
+
+    /**
+     * Returns the position of every item of the vector at `position`, as
+     * `getVectorOffset()` finds each.
+     *
+     * The positions are numbers, as `getVectorOffset()` returns, rather than
+     * a `Uint32Array`: a vector in a larger buffer, such as one of many
+     * tables stored one after another, can lie past 4 GiB, although its
+     * items' offsets from it fit in 32 bits.
+     *
+     * @throws {DecodeError} If the count, the ends or the items don't lie
+     * within the bytes, or an item ends before it starts.
+     */
+    getVectorOffsets(position: number): number[] {
+        // Checking the ends bounds the count before allocating for it
+        const count = this.getVectorLength(position);
+        // Filling an array of the count's length reads as fast as a
+        // Uint32Array, where push() and a Float64Array measured slower
+        const offsets = new Array<number>(count);
+
+        let start = (count + 1) * this._size;
+        for (let i = 0; i < count; i++) {
+            const end = this.#getSize(position + (i + 1) * this._size);
+            offsets[i] = this.#itemOffset(position, start, end);
+            start = end;
+        }
+
+        return offsets;
+    }
+
+    getVector(position: number): Uint8Array[] {
+        const count = this.getVectorLength(position);
+        const vector = new Array<Uint8Array>(count);
+
+        let start = (count + 1) * this._size;
+        for (let i = 0; i < count; i++) {
+            const end = this.#getSize(position + (i + 1) * this._size);
+            const offset = this.#itemOffset(position, start, end);
+            vector[i] = this._bytes.subarray(offset, offset + end - start);
+            start = end;
+        }
+
+        return vector;
+    }
+
+    /**
+     * Reads every string of the vector of strings at `position`, in order.
+     *
+     * A vector of strings is laid out as a vector of tables is: its count,
+     * the end of each string from the vector's position, and then the
+     * strings' UTF-8, one after another, so the ends are read and checked
+     * as `getVector()` reads a vector's.
+     *
+     * The strings lie one after another, so they're read in chunks, as
+     * `#readChunk()` describes: a string of ASCII and the strings after it,
+     * up to {@link MAX_STRING_RUN} bytes, are decoded as one run, which is
+     * sliced at their ends. Each string reads as reading it on its own with
+     * `getStringVectorItem()` would, and a string that wouldn't read throws.
+     * A string of more than 12 characters sliced from a run keeps the run
+     * alive while it's held, as V8 slices strings, which is why a run is
+     * bounded.
+     *
+     * In Node 26, it read lists of 10 to 10,000 strings of ASCII in
+     * 0.23–0.84 times the time that `StringVector.get()` took to read them a
+     * string at a time, lists with a string outside ASCII in every tenth in
+     * 0.75–0.76 times from 100 strings and 1.10 for 10, and lists outside
+     * ASCII in 0.94–1.00 times: `yarn bench:lists`, which
+     * `benchmarks/README.md` describes.
+     *
+     * @throws {DecodeError} If the count, the ends or the strings don't lie
+     * within the bytes, a string ends before it starts, or one isn't valid
+     * UTF-8.
+     */
+    getStringVector(position: number): string[] {
+        // Checking the ends bounds the count before allocating for it
+        const count = this.getVectorLength(position);
+        const strings = new Array<string>(count);
+
+        let index = 0;
+        let start = (count + 1) * this._size;
+        while (index < count) {
+            index = this.#readChunk(position, count, index, start, strings);
+            start = this.#getSize(position + index * this._size);
+        }
+
+        return strings;
+    }
+
+    /**
+     * Reads a chunk of the vector of strings at `position`, from string
+     * `first`, which starts at `start`, into `strings`, and returns the index
+     * of the string after it.
+     *
+     * Strings are read on their own until two in a row are ASCII. The
+     * strings after those are decoded in runs of at most
+     * {@link MAX_STRING_RUN} bytes, when a run is more than
+     * {@link MIN_STRING_RUN} bytes. A run of ASCII is sliced at every end,
+     * and the next run follows it at once, and any other run is sliced by
+     * `#sliceMixed()`, which ends the chunk. An end that lies before the end
+     * of the string before it, or past the bytes, ends the chunk before its
+     * string, which the next chunk reads on its own, and throws for.
+     */
+    #readChunk(
+        position: number,
+        count: number,
+        first: number,
+        start: number,
+        strings: string[]
+    ): number {
+        const size = this._size;
+
+        // Two strings of ASCII in a row, whose characters are a byte each,
+        // make the strings after them likely ASCII too. Reading the strings
+        // before them here, rather than in a chunk each, read lists outside
+        // ASCII in 0.94–1.00 times the time that reading each string took,
+        // rather than 1.01–1.05, in Node 26.
+        let index = first;
+        let end = start;
+        let ascii = 0;
+        while (ascii < 2) {
+            if (index === count) {
+                return index;
+            }
+
+            const next = this.#getSize(position + (index + 1) * size);
+            const string = this.#itemString(
+                this.#itemOffset(position, end, next),
+                next - end
+            );
+            strings[index] = string;
+            index++;
+
+            // Fewer characters than bytes, when any character isn't ASCII
+            ascii = string.length === next - end ? ascii + 1 : 0;
+            end = next;
+        }
+
+        for (;;) {
+            // The strings that the run holds, from `index` up to `last`
+            const runStart = end;
+            let last = index;
+            while (last < count) {
+                const next = this.#getSize(position + (last + 1) * size);
+                if (!(end <= next && next - runStart <= MAX_STRING_RUN)) {
+                    break;
+                }
+
+                end = next;
+                last++;
+            }
+            if (
+                !(end - runStart > MIN_STRING_RUN) ||
+                !(position + end <= this._bytes.length)
+            ) {
+                return index;
+            }
+
+            const run = this.#decodeRun(position + runStart, end - runStart);
+            if (run === undefined) {
+                // Not valid UTF-8, which reading each string finds
+                return index;
+            }
+
+            // As many characters as bytes, when every character is ASCII
+            if (run.length !== end - runStart) {
+                return this.#sliceMixed(
+                    position,
+                    index,
+                    last,
+                    runStart,
+                    run,
+                    strings
+                );
+            }
+
+            this.#sliceAscii(position, index, last, runStart, run, strings);
+            if (last === count) {
+                return last;
+            }
+            index = last;
+        }
+    }
+
+    /**
+     * Reads strings `first` to `last - 1` of the vector of strings at
+     * `position`, which start at `start` and are decoded as `run`, a run of
+     * ASCII, into `strings`, by slicing it at their ends
+     */
+    #sliceAscii(
+        position: number,
+        first: number,
+        last: number,
+        start: number,
+        run: string,
+        strings: string[]
+    ): void {
+        let from = start;
+        for (let i = first; i < last; i++) {
+            const end = this.#getSize(position + (i + 1) * this._size);
+            strings[i] = run.slice(from - start, end - start);
+            from = end;
+        }
+    }
+
+    /**
+     * Reads strings `first` to `last - 1` of the vector of strings at
+     * `position`, which start at `start` and are decoded as `run`, a run
+     * with characters outside ASCII, into `strings`, and returns the index of
+     * the string after the last that it read.
+     *
+     * A string whose characters in the run are all ASCII is sliced from it,
+     * since its bytes are then those characters, a byte each. Any other
+     * string is read on its own, which checks it as UTF-8 and gives the
+     * length of its characters in the run, so that the strings after it are
+     * found there too. Two strings in a row read on their own end the
+     * strings that it reads, which spares the rest of a list outside ASCII
+     * the search of the run.
+     */
+    #sliceMixed(
+        position: number,
+        first: number,
+        last: number,
+        start: number,
+        run: string,
+        strings: string[]
+    ): number {
+        // The bytes of the strings read so far, less their characters
+        let wide = 0;
+        let nonAscii = nonAsciiFrom(run, 0);
+        let alone = false;
+
+        let from = start;
+        for (let i = first; i < last; i++) {
+            const end = this.#getSize(position + (i + 1) * this._size);
+            const length = end - from;
+            const at = from - start - wide;
+
+            if (at + length <= nonAscii) {
+                strings[i] = run.slice(at, at + length);
+                alone = false;
+            } else {
+                if (alone) {
+                    return i;
+                }
+
+                const string = this.#itemString(position + from, length);
+                strings[i] = string;
+                wide += length - string.length;
+                nonAscii = nonAsciiFrom(run, at + string.length);
+                alone = true;
+            }
+
+            from = end;
+        }
+
+        return last;
+    }
+
+    /**
+     * Decodes the `length` bytes of UTF-8 at `start`, which lie within the
+     * bytes, as one string, or returns `undefined` when they aren't valid
+     * UTF-8
+     */
+    #decodeRun(start: number, length: number): string | undefined {
+        const bytes = new Uint8Array(
+            this._view.buffer,
+            this._view.byteOffset + start,
+            length
+        );
+        try {
+            return decode(bytes);
+        } catch {
+            return undefined;
+        }
+    }
+
+    /**
+     * Reads string `index` of the vector of strings at `position`, from its
+     * end and the end of the string before it, without reading any other
+     * string. It takes the vector's `count`, which the caller has read with
+     * `getVectorLength()`, as `getVectorItemOffset()` does, so that reading
+     * many strings, as a `StringVector` does, reads and checks it once.
+     *
+     * @throws {RangeError} If `index` isn't an integer in [0, `count`).
+     * @throws {DecodeError} If the string's ends or the string don't lie
+     * within the bytes, it ends before it starts, or it isn't valid UTF-8.
+     */
+    getStringVectorItem(
+        position: number,
+        count: number,
+        index: number
+    ): string {
+        const start = this.getVectorItemOffset(position, count, index);
+        // The end that getVectorItemOffset() read, and checked against the
+        // start and the bytes
+        const end =
+            position + this.#getSize(position + (index + 1) * this._size);
+
+        return this.#itemString(start, end - start);
+    }
+
+    /**
+     * Reads the `length` bytes of UTF-8 at `start`, which lie within the
+     * bytes, as `getString()` reads a string's after its count: short ASCII
+     * a byte at a time, and any other out of line
+     */
+    #itemString(start: number, length: number): string {
+        const ascii = decodeShortAscii(this._bytes, start, length);
+        if (ascii !== undefined) {
+            return ascii;
+        }
+
+        return this.#decodeItem(start, length);
+    }
+
+    /** `#itemString()` of a string that isn't short ASCII */
+    #decodeItem(start: number, length: number): string {
+        const short = decodeShortUtf8(this._bytes, start, length);
+        if (short !== undefined) {
+            return short;
+        }
+
+        const bytes = new Uint8Array(
+            this._view.buffer,
+            this._view.byteOffset + start,
+            length
+        );
+        try {
+            return decode(bytes);
+        } catch (error) {
+            throw new DecodeError(`The string at ${start} isn't valid UTF-8`, {
+                cause: error
+            });
+        }
+    }
+
+    /**
+     * Checks that a vector item, from `start` to `end` from the vector's
+     * position, starts no later than it ends and lies within the bytes. The
+     * vector's position and the ends are integers, as in
+     * getVectorItemOffset(), so the item lies within the bytes when it ends
+     * there.
+     *
+     * @returns The item's position.
+     */
+    #itemOffset(position: number, start: number, end: number): number {
+        if (start > end || position + end > this._bytes.length) {
+            throw itemRangeError(position, start, end, this._bytes.length);
+        }
+
+        return position + start;
+    }
+
+    /**
+     * Finds why `getVectorItemOffset()` couldn't read item `index`, by its
+     * checks one at a time, and returns the error to throw. An end that can't
+     * be read throws its `DecodeError` from here.
+     */
+    #itemError(position: number, count: number, index: number): Error {
+        if (!(index >>> 0 === index && index < count)) {
+            return new RangeError(
+                `Item ${index} is outside the vector of ${count} at ${position}`
+            );
+        }
+
+        const start =
+            index === 0
+                ? (count + 1) * this._size
+                : this.#getSize(position + index * this._size);
+        const end = this.#getSize(position + (index + 1) * this._size);
+
+        return itemRangeError(position, start, end, this._bytes.length);
+    }
+
+    #assertRange(position: number, byteLength: number): void {
+        const available = this.#byteLength();
+        if (
+            !Number.isSafeInteger(position) ||
+            position < 0 ||
+            !Number.isSafeInteger(byteLength) ||
+            byteLength < 0 ||
+            position > available - byteLength
+        ) {
+            throw outOfRange(position, byteLength, available);
+        }
+    }
+
+    /**
+     * The number of bytes that reads may use: the slice's length, which is
+     * 0 once its buffer is detached or has shrunk below it. A view that
+     * tracks a resizable buffer's length follows the buffer, where the
+     * DataView keeps the slice's length when the reader was made.
+     *
+     * The DataView's `byteLength` getter, which throws in those cases, took
+     * 3-4 ns a read against 1 ns for the Uint8Array's length. Reading the
+     * vector of 100 nested tables of the comparison suite took 1.33 µs
+     * rather than 1.64 µs in Node 27, and 1.32 µs rather than 1.63 µs in
+     * Node 26. d8 15.7 took 1.31-1.33 µs with the DataView's, and 2-4% longer
+     * with the Uint8Array's.
+     */
+    #byteLength(): number {
+        return this._bytes.length;
+    }
+
+    /**
+     * Whether the buffer is detached or has shrunk below the slice, when
+     * DataView throws a `TypeError` for its length
+     */
+    #lost(): boolean {
+        try {
+            void this._view.byteLength;
+            return false;
+        } catch {
+            return true;
+        }
+    }
+
+    /**
+     * Reads the offset, count, length or item end at `position`. A uint32 is
+     * read inline, and narrower ones by readNarrowSize(), which a process
+     * that reads only uint32 offsets never compiles into its reads.
+     *
+     * fieldOffset(), getVectorLength() and getVectorItemOffset() read their
+     * offsets as this does, for V8's inlining budget. A switch that called
+     * getUint8(), getUint16() or getUint32() took 133 bytes of bytecode at
+     * every read. A function of each offset size, which a reader held,
+     * took 69, but V8 inlines none of three functions called from one place:
+     * a process that had read all three offset types summed the vector of
+     * 100 nested tables in 2.90 µs, rather than 1.79 with the switch and 0.72
+     * as this reads.
+     */
+    #getSize(position: number): number {
+        const size = this._size;
+        const view = this._view;
+        try {
+            return size === SIZEOF_32
+                ? view.getUint32(position, true)
+                : readNarrowSize(view, position, size);
+        } catch {
+            throw readError(position, size, this._bytes);
+        }
+    }
+}
+
+/**
+ * The fewest bytes of strings after a chunk's first that `getStringVector()`
+ * decodes as one run: decoding takes about 85 ns a call, where a short string
+ * of ASCII takes 20–45 ns to read on its own
+ */
+const MIN_STRING_RUN = 32;
+
+/**
+ * The most bytes of a run of strings that `getStringVector()` decodes at
+ * once, which bounds what a string sliced from it keeps alive. In Node 26, a
+ * string kept from 10,000 strings of 256 characters of ASCII kept 23 KiB
+ * alive so, against 2.5 MB unbounded, and took 1.13 times as long to read
+ * as with runs of 64 KiB, which kept 67 KiB; strings of 8 and 16 characters
+ * took as long with either.
+ */
+const MAX_STRING_RUN = 16_384;
+
+/** A UTF-16 code unit outside ASCII */
+const NON_ASCII = /[\u0080-\uffff]/g;
+
+/**
+ * The index of the first code unit outside ASCII in `string` from `from`,
+ * or its length when there's none
+ */
+function nonAsciiFrom(string: string, from: number): number {
+    NON_ASCII.lastIndex = from;
+    const match = NON_ASCII.exec(string);
+
+    return match === null ? string.length : match.index;
+}
+
+/** Reads an offset of a layout whose offsets are narrower than uint32's */
+function readNarrowSize(
+    view: DataView,
+    position: number,
+    size: OffsetSize
+): number {
+    return size === SIZEOF_16
+        ? view.getUint16(position, true)
+        : view.getUint8(position);
+}
+
+/**
+ * Builds the error of a read outside `bytes`. Its own function keeps it out
+ * of the getters' bytecode, which V8 inlines while it's small.
+ */
+function readError(
+    position: number,
+    byteLength: number,
+    bytes: Uint8Array
+): DecodeError {
+    return outOfRange(position, byteLength, bytes.length);
+}
+
+/**
+ * Builds the error of a vector item, from `start` to `end` from the vector's
+ * position, that ends before it starts or past the bytes
+ */
+function itemRangeError(
+    position: number,
+    start: number,
+    end: number,
+    available: number
+): DecodeError {
+    return start > end
+        ? new DecodeError(
+              `The vector item at ${position + start} ends before it starts, at ${position + end}`
+          )
+        : outOfRange(position + start, end - start, available);
+}
+
+export function assertStructSize(size: number): void {
+    if (!(Number.isInteger(size) && size > 0)) {
+        throw new RangeError(
+            `A struct's size must be a positive integer, not ${size}`
+        );
+    }
+}

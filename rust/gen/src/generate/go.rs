@@ -6,6 +6,11 @@
 //! offsets, which implement `encoding`'s binary marshaling interfaces. An
 //! array of a struct whose Go struct lies in memory as its bytes do is read
 //! in place too, where the bytes are aligned to it on a little-endian host.
+//! An enum is a defined type of its integer type, which holds any integer of
+//! that type, with a constant of the type for each of its values, named
+//! `<Enum><Value>`. A field of an enum is read and written as the enum's
+//! type, by a conversion that compiles to nothing, and an array of enums as
+//! an array of their integer type.
 //!
 //! Each schema generates a package of its own, in one file named after the
 //! package, so that a schema's file name can't make the file a test or
@@ -25,16 +30,17 @@
 //! Everything that a schema names is exported, in `PascalCase`, beside the
 //! functions and constants of messages, `New<Message>`, `<Message>VersionOf`
 //! and `<Message>FormatVersion`, and of structs, `Read<Struct>`, which the
-//! checker keeps declarations from taking. The generated code's own helpers
-//! are unexported methods, and each struct's `read<Struct>()`, which can't
-//! clash with them.
+//! checker keeps declarations from taking, as it keeps the constant of an
+//! enum's value from taking any name of the package. The generated code's
+//! own helpers are unexported methods, and each struct's `read<Struct>()`,
+//! which can't clash with them.
 
 use super::fixed::{FixedSizes, NESTED_OFFSET_SIZE, offset_size};
 use super::prose::indefinite_article;
 use super::writer::CodeWriter;
 use super::{GeneratedFile, Options};
 use crate::model::{
-    Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema,
+    Definition, Enum, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema,
     strongly_connected_components,
 };
 
@@ -133,6 +139,10 @@ pub fn generate(
     writer.blank();
     writer.line(format!("package {package}"));
     generator.imports(&mut writer, runtime);
+
+    for enumeration in &schema.enums {
+        enumeration_type(&mut writer, enumeration);
+    }
 
     for (index, definition) in schema.definitions.iter().enumerate() {
         match definition.kind {
@@ -418,7 +428,7 @@ impl<'a> Generator<'a> {
                 "func {name}VersionOf(bytes []byte) (uint32, error) {{"
             ));
             writer.line(format!(
-                "return tafla.NewByteBuffer(bytes, {name}{{}}.layout()).Version()"
+                "return tafla.NewTableReader(bytes, {name}{{}}.layout()).Version()"
             ));
             writer.close("}");
         } else {
@@ -441,7 +451,7 @@ impl<'a> Generator<'a> {
             article(name)
         )]));
         writer.open(format!("func ({name}) layout() tafla.TableLayout {{"));
-        writer.line(format!("return {}", layout_expression(layout)));
+        writer.line(format!("return {}", layout_expression(layout, name)));
         writer.close("}");
 
         self.getters(writer, definition, Some(layout));
@@ -467,7 +477,7 @@ impl<'a> Generator<'a> {
 
         for (index, field) in definition.fields.iter().enumerate() {
             let getter = exported(&field.name);
-            let value_type = self.value_type(field.field_type);
+            let value_type = self.value_type(field);
 
             writer.blank();
             writer.lines(&go_doc(&getter_docs(&getter, field)));
@@ -475,30 +485,41 @@ impl<'a> Generator<'a> {
                 "func ({READER} {name}) {getter}() ({value_type}, error) {{"
             ));
             let offset = field_offset(layout, index);
-            if reads_with_buffer(&offset, field.field_type) {
-                writer.line(buffer_line(layout));
+            if reads_with_reader(&offset, field.field_type) {
+                writer.line(reader_line(layout));
             }
-            find_field(writer, &offset, &zero_value(&value_type));
+            find_field(writer, &offset, &zero_value(field.field_type, &value_type));
 
             match field.field_type {
+                // A view, which reads each string when it's asked for
+                FieldType::StringVector => writer.line("return reader.GetStringVector(position)"),
                 FieldType::Scalar(Scalar::Bool) => {
-                    writer.line("value, err := buffer.GetUint8(position)");
+                    writer.line("value, err := reader.GetUint8(position)");
                     writer.line("return value != 0, err");
                 }
-                FieldType::Scalar(scalar) => {
-                    writer.line(format!("return buffer.Get{}(position)", method(scalar)));
-                }
+                FieldType::Scalar(scalar) => match self.enumeration(field) {
+                    Some(enumeration) => {
+                        writer.line(format!(
+                            "value, err := reader.Get{}(position)",
+                            method(scalar)
+                        ));
+                        writer.line(format!("return {}(value), err", enumeration.name));
+                    }
+                    None => writer.line(format!("return reader.Get{}(position)", method(scalar))),
+                },
+                // An array of bools is read as its bytes, as an array of
+                // uint8s, which `method()` names it by
                 FieldType::Array(scalar) => {
                     writer.line(format!(
-                        "return buffer.Get{}Array(position)",
+                        "return reader.Get{}Array(position)",
                         method(scalar)
                     ));
                 }
-                FieldType::String => writer.line("return buffer.GetString(position)"),
+                FieldType::String => writer.line("return reader.GetString(position)"),
                 FieldType::Struct(index) => {
                     let structure = self.schema.definition(index);
                     let size = structure.struct_layout().size;
-                    writer.line(format!("bytes, err := buffer.GetStruct(position, {size})"));
+                    writer.line(format!("bytes, err := reader.GetStruct(position, {size})"));
                     return_on_error(writer, &format!("{}{{}}", structure.name));
                     writer.line(format!("return read{}(bytes), nil", structure.name));
                 }
@@ -507,7 +528,7 @@ impl<'a> Generator<'a> {
                 FieldType::StructArray(index) => {
                     let size = self.schema.definition(index).struct_layout().size;
                     writer.line(format!(
-                        "bytes, err := buffer.GetStructArray(position, {size})"
+                        "bytes, err := reader.GetStructArray(position, {size})"
                     ));
                     writer.line(format!("return {value_type}{{bytes: bytes}}, err"));
                 }
@@ -518,7 +539,7 @@ impl<'a> Generator<'a> {
                     ));
                 }
                 FieldType::Vector(_) => {
-                    writer.line("vector, err := buffer.GetVector(position)");
+                    writer.line("vector, err := reader.GetVector(position)");
                     writer.line(format!("return {value_type}{{vector: vector}}, err"));
                 }
             }
@@ -540,11 +561,11 @@ impl<'a> Generator<'a> {
                 (
                     field.docs.as_slice(),
                     exported(&field.name),
-                    self.input_type(field.field_type),
+                    self.input_type(field),
                 )
             })
             .collect();
-        struct_fields(writer, &fields);
+        aligned_members(writer, &fields);
         writer.close("}");
 
         writer.blank();
@@ -679,10 +700,12 @@ impl<'a> Generator<'a> {
 
             match field.field_type {
                 FieldType::Scalar(scalar) => {
+                    let enumeration = self.enumeration(field);
                     if read {
-                        writer.line(format!("{member} = {}", read_scalar(scalar, offset)));
+                        let value = read_scalar(scalar, enumeration, offset);
+                        writer.line(format!("{member} = {value}"));
                     } else {
-                        put_scalar(writer, scalar, &member, "bytes", offset);
+                        put_scalar(writer, scalar, enumeration, &member, "bytes", offset);
                     }
                     offset += usize::from(scalar.size());
                 }
@@ -717,8 +740,7 @@ impl<'a> Generator<'a> {
         let fields_type = format!("{name}Fields");
         let zero = format!("{fields_type}{{}}");
 
-        writer.blank();
-        writer.lines(&prose(&[
+        let mut docs = vec![
             format!(
                 "Fields reads every field of {} at once, into the [{fields_type}]",
                 article(name)
@@ -727,8 +749,21 @@ impl<'a> Generator<'a> {
             "and the items of its vectors as their Fields() reads them. Its strings,".to_owned(),
             "and its arrays and arrays of structs as their Slice() returns them,".to_owned(),
             "share the bytes.".to_owned(),
-            format!("It fails with a {DECODE_ERROR} if a field lies outside the bytes."),
-        ]));
+        ];
+        // Whose getters return their bytes
+        if definition
+            .fields
+            .iter()
+            .any(|field| field.field_type == FieldType::Array(Scalar::Bool))
+        {
+            docs.push("Its arrays of bools are new bools, true where a byte isn't 0.".to_owned());
+        }
+        docs.push(format!(
+            "It fails with a {DECODE_ERROR} if a field lies outside the bytes."
+        ));
+
+        writer.blank();
+        writer.lines(&prose(&docs));
         writer.open(format!(
             "func ({READER} {name}) Fields() ({fields_type}, error) {{"
         ));
@@ -739,9 +774,9 @@ impl<'a> Generator<'a> {
             .fields
             .iter()
             .zip(&offsets)
-            .any(|(field, offset)| reads_with_buffer(offset, field.field_type))
+            .any(|(field, offset)| reads_with_reader(offset, field.field_type))
         {
-            writer.line(buffer_line(layout));
+            writer.line(reader_line(layout));
         }
         writer.line(format!("var fields {fields_type}"));
 
@@ -776,34 +811,52 @@ impl<'a> Generator<'a> {
         let member = format!("fields.{}", exported(&field.name));
 
         match field.field_type {
+            FieldType::StringVector => {
+                let local = format!("strings{index}");
+                declare_read(writer, &local, "reader.GetStringVector(position)", zero);
+                assign_read(writer, &member, &format!("{local}.Strings()"), zero);
+            }
             FieldType::Scalar(Scalar::Bool) => {
                 if !*declared_boolean {
                     writer.line("var boolean uint8");
                     *declared_boolean = true;
                 }
-                assign_read(writer, "boolean", "buffer.GetUint8(position)", zero);
+                assign_read(writer, "boolean", "reader.GetUint8(position)", zero);
                 writer.line(format!("{member} = boolean != 0"));
             }
             FieldType::Scalar(scalar) => {
-                let read = format!("buffer.Get{}(position)", method(scalar));
-                assign_read(writer, &member, &read, zero);
+                let read = format!("reader.Get{}(position)", method(scalar));
+                match self.enumeration(field) {
+                    // The getter returns the enum's integer type, which a
+                    // local holds until it's converted
+                    Some(enumeration) => {
+                        let local = format!("enum{index}");
+                        declare_read(writer, &local, &read, zero);
+                        writer.line(format!("{member} = {}({local})", enumeration.name));
+                    }
+                    None => assign_read(writer, &member, &read, zero),
+                }
             }
             FieldType::Array(Scalar::Uint8) => {
-                assign_read(writer, &member, "buffer.GetUint8Array(position)", zero);
+                assign_read(writer, &member, "reader.GetUint8Array(position)", zero);
+            }
+            // New bools, true where their bytes aren't 0
+            FieldType::Array(Scalar::Bool) => {
+                assign_read(writer, &member, "reader.GetBoolArray(position)", zero);
             }
             FieldType::Array(scalar) => {
                 let local = format!("array{index}");
-                let read = format!("buffer.Get{}Array(position)", method(scalar));
+                let read = format!("reader.Get{}Array(position)", method(scalar));
                 declare_read(writer, &local, &read, zero);
                 writer.line(format!("{member} = {local}.Slice()"));
             }
             FieldType::String => {
-                assign_read(writer, &member, "buffer.GetString(position)", zero);
+                assign_read(writer, &member, "reader.GetString(position)", zero);
             }
             FieldType::Struct(struct_index) => {
                 let size = self.schema.definition(struct_index).struct_layout().size;
                 let local = format!("struct{index}");
-                let read = format!("buffer.GetStruct(position, {size})");
+                let read = format!("reader.GetStruct(position, {size})");
                 declare_read(writer, &local, &read, zero);
                 let structure = &self.schema.definition(struct_index).name;
                 writer.line(format!("{member} = read{structure}({local})"));
@@ -812,7 +865,7 @@ impl<'a> Generator<'a> {
                 let structure = self.schema.definition(struct_index);
                 let size = structure.struct_layout().size;
                 let local = format!("structs{index}");
-                let read = format!("buffer.GetStructArray(position, {size})");
+                let read = format!("reader.GetStructArray(position, {size})");
                 declare_read(writer, &local, &read, zero);
                 writer.line(format!(
                     "{member} = {}Array{{bytes: {local}}}.Slice()",
@@ -832,7 +885,7 @@ impl<'a> Generator<'a> {
             FieldType::Vector(table_index) => {
                 let table = &self.schema.definition(table_index).name;
                 let local = format!("vector{index}");
-                declare_read(writer, &local, "buffer.GetVector(position)", zero);
+                declare_read(writer, &local, "reader.GetVector(position)", zero);
                 writer.line(format!(
                     "{member} = make([]{table}Fields, 0, {local}.Len())"
                 ));
@@ -870,11 +923,11 @@ impl<'a> Generator<'a> {
                 (
                     field.docs.as_slice(),
                     exported(&field.name),
-                    self.input_type(field.field_type),
+                    self.input_type(field),
                 )
             })
             .collect();
-        struct_fields(writer, &fields);
+        aligned_members(writer, &fields);
         writer.close("}");
 
         match definition.kind {
@@ -924,20 +977,14 @@ impl<'a> Generator<'a> {
         ));
         let plan = self.plan(definition);
         if plan.whole {
-            self.append_whole(writer, definition, layout, &plan);
+            self.append_whole(writer, definition, &plan);
             writer.close("}");
             return;
         }
 
-        if layout.version.is_some() {
-            writer.line(format!(
-                "sizer, err := tafla.NewVersionedTableSizer({fields}, {name}{{}}.layout(), {name}FormatVersion)"
-            ));
-        } else {
-            writer.line(format!(
-                "sizer, err := tafla.NewTableSizer({fields}, {name}{{}}.layout())"
-            ));
-        }
+        writer.line(format!(
+            "sizer, err := tafla.NewTableSizer({fields}, {name}{{}}.layout())"
+        ));
         return_on_error(writer, "nil");
         self.sizes(writer, definition, "&sizer");
         writer.blank();
@@ -952,13 +999,7 @@ impl<'a> Generator<'a> {
     /// The body of `AppendBinary()` of a message whose fields are all of fixed
     /// size but a string after them, which it lays out in the bytes that the
     /// runtime appends and writes the header of
-    fn append_whole(
-        &self,
-        writer: &mut CodeWriter,
-        definition: &Definition,
-        layout: Layout,
-        plan: &Plan,
-    ) {
+    fn append_whole(&self, writer: &mut CodeWriter, definition: &Definition, plan: &Plan) {
         let name = &definition.name;
         let fields = definition.fields.len();
         let string = definition.fields.get(plan.fixed);
@@ -974,15 +1015,9 @@ impl<'a> Generator<'a> {
             None => end.to_string(),
         };
         let table = if fields == 0 { "_" } else { "table" };
-        if layout.version.is_some() {
-            writer.line(format!(
-                "bytes, {table}, err := tafla.AppendVersionedTable(bytes, {fields}, {name}{{}}.layout(), {name}FormatVersion, {length})"
-            ));
-        } else {
-            writer.line(format!(
-                "bytes, {table}, err := tafla.AppendTable(bytes, {fields}, {name}{{}}.layout(), {length})"
-            ));
-        }
+        writer.line(format!(
+            "bytes, {table}, err := tafla.AppendTable(bytes, {fields}, {name}{{}}.layout(), {length})"
+        ));
         return_on_error(writer, "nil");
 
         if fields > 0 {
@@ -1076,7 +1111,10 @@ impl<'a> Generator<'a> {
         for (field, &position) in fields.iter().zip(&positions) {
             let member = format!("{FIELDS}.{}", exported(&field.name));
             match field.field_type {
-                FieldType::Scalar(scalar) => put_scalar(writer, scalar, &member, bytes, position),
+                FieldType::Scalar(scalar) => {
+                    let enumeration = self.enumeration(field);
+                    put_scalar(writer, scalar, enumeration, &member, bytes, position);
+                }
                 FieldType::Struct(_) | FieldType::Table(_) => {
                     writer.line(format!("{member}.put({})", at(bytes, position)));
                 }
@@ -1141,8 +1179,12 @@ impl<'a> Generator<'a> {
         for field in &definition.fields[plan.fixed..] {
             let value = format!("{FIELDS}.{}", exported(&field.name));
             match field.field_type {
+                FieldType::StringVector => writer.line(format!("sizer.AddStringVector({value})")),
                 FieldType::Scalar(scalar) => {
                     writer.line(format!("sizer.Add{}()", method(scalar.stored())));
+                }
+                FieldType::Array(Scalar::Bool) => {
+                    writer.line(format!("sizer.AddBoolArray(len({value}))"));
                 }
                 FieldType::Array(scalar) => {
                     writer.line(format!("sizer.Add{}Array(len({value}))", method(scalar)));
@@ -1200,6 +1242,9 @@ impl<'a> Generator<'a> {
         for (index, field) in definition.fields.iter().enumerate().skip(plan.fixed) {
             let value = format!("{FIELDS}.{}", exported(&field.name));
             match field.field_type {
+                FieldType::StringVector => {
+                    writer.line(format!("writer.SetStringVector({index}, {value})"));
+                }
                 FieldType::Scalar(Scalar::Bool) => {
                     if declared_boolean {
                         writer.line("boolean = 0");
@@ -1213,7 +1258,17 @@ impl<'a> Generator<'a> {
                     writer.line(format!("writer.SetUint8({index}, boolean)"));
                 }
                 FieldType::Scalar(scalar) => {
+                    // The setter takes an enum as its integer type
+                    let value = if field.enumeration.is_some() {
+                        format!("{}({value})", scalar_type(scalar))
+                    } else {
+                        value
+                    };
                     writer.line(format!("writer.Set{}({index}, {value})", method(scalar)));
+                }
+                // Bools, which the writer writes as bytes of 1 and 0
+                FieldType::Array(Scalar::Bool) => {
+                    writer.line(format!("writer.SetBoolArray({index}, {value})"));
                 }
                 FieldType::Array(scalar) => {
                     writer.line(format!(
@@ -1276,10 +1331,30 @@ impl<'a> Generator<'a> {
         }
     }
 
-    fn value_type(&self, field_type: FieldType) -> String {
-        match field_type {
-            FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
-            FieldType::Array(Scalar::Uint8) => "[]byte".to_owned(),
+    /// The enum of a scalar field or of an array's elements, if it has one
+    fn enumeration(&self, field: &Field) -> Option<&'a Enum> {
+        field
+            .enumeration
+            .map(|index| self.schema.enumeration(index))
+    }
+
+    /// The Go type of a scalar field: its enum, or the scalar's type
+    fn scalar_field_type(&self, field: &Field, scalar: Scalar) -> &'a str {
+        match self.enumeration(field) {
+            Some(enumeration) => &enumeration.name,
+            None => scalar_type(scalar),
+        }
+    }
+
+    /// The type that a field's getter returns. An array of enums is a view
+    /// of their integer type, as it lies in the bytes, and an array of bools
+    /// their bytes, which `GetUint8Array()` reads in place.
+    fn value_type(&self, field: &Field) -> String {
+        match field.field_type {
+            // A view of the strings, which reads each one when it's asked for
+            FieldType::StringVector => "tafla.StringVector".to_owned(),
+            FieldType::Scalar(scalar) => self.scalar_field_type(field, scalar).to_owned(),
+            FieldType::Array(Scalar::Uint8 | Scalar::Bool) => "[]byte".to_owned(),
             FieldType::Array(scalar) => format!("tafla.ArrayView[{}]", scalar_type(scalar)),
             FieldType::String => "string".to_owned(),
             FieldType::Struct(index) | FieldType::Table(index) => {
@@ -1290,9 +1365,13 @@ impl<'a> Generator<'a> {
         }
     }
 
-    fn input_type(&self, field_type: FieldType) -> String {
-        match field_type {
-            FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
+    /// The type of a field in the struct that writes it. An array of enums
+    /// is a slice of their integer type, which is written in bulk, and an
+    /// array of bools a slice of bools.
+    fn input_type(&self, field: &Field) -> String {
+        match field.field_type {
+            FieldType::StringVector => "[]string".to_owned(),
+            FieldType::Scalar(scalar) => self.scalar_field_type(field, scalar).to_owned(),
             FieldType::Array(Scalar::Uint8) => "[]byte".to_owned(),
             FieldType::Array(scalar) => format!("[]{}", scalar_type(scalar)),
             FieldType::String => "string".to_owned(),
@@ -1309,7 +1388,7 @@ impl<'a> Generator<'a> {
 /// an error. Uint32 offsets, which nested tables have, are read with the
 /// runtime's `Uint32FieldOffset()`, which inlines, from the slot that follows
 /// the table's position or the message's header, and other messages' with
-/// the buffer's `RootOffset()`.
+/// the reader's `RootOffset()`.
 fn field_offset(layout: Option<Layout>, index: usize) -> String {
     match layout {
         None => {
@@ -1325,25 +1404,25 @@ fn field_offset(layout: Option<Layout>, index: usize) -> String {
             let slot = (slots + index) * NESTED_OFFSET_SIZE;
             format!("tafla.Uint32FieldOffset({READER}.bytes, 0, {slot})")
         }
-        Some(_) => format!("buffer.RootOffset({index})"),
+        Some(_) => format!("reader.RootOffset({index})"),
     }
 }
 
-/// Whether reading a field, whose offset `offset` reads, takes a buffer: to
+/// Whether reading a field, whose offset `offset` reads, takes a reader: to
 /// read the offset, or the field's value, which every field has but a nested
 /// table
-fn reads_with_buffer(offset: &str, field_type: FieldType) -> bool {
-    offset.starts_with("buffer.") || !matches!(field_type, FieldType::Table(_))
+fn reads_with_reader(offset: &str, field_type: FieldType) -> bool {
+    offset.starts_with("reader.") || !matches!(field_type, FieldType::Table(_))
 }
 
-/// The line that creates the buffer that a message's or nested table's
+/// The line that creates the reader that a message's or nested table's
 /// fields are read with, in its layout, a constant, rather than one that the
 /// reader holds, so that its reads compile for that layout's offset type
 /// where they're inlined
-fn buffer_line(layout: Option<Layout>) -> String {
+fn reader_line(layout: Option<Layout>) -> String {
     match layout {
-        Some(_) => format!("buffer := tafla.NewByteBuffer({READER}.bytes, {READER}.layout())"),
-        None => format!("buffer := tafla.NewByteBuffer({READER}.bytes, tafla.TableLayout{{}})"),
+        Some(_) => format!("reader := tafla.NewTableReader({READER}.bytes, {READER}.layout())"),
+        None => format!("reader := tafla.NewTableReader({READER}.bytes, tafla.TableLayout{{}})"),
     }
 }
 
@@ -1398,7 +1477,11 @@ fn readable_whole(schema: &Schema) -> Vec<bool> {
                 | FieldType::Array(Scalar::Uint8)
                 | FieldType::Struct(_) => true,
                 FieldType::Table(nested) => allocates_nothing[nested],
-                FieldType::Array(_) | FieldType::StructArray(_) | FieldType::Vector(_) => false,
+                // A vector of strings allocates a slice of its strings
+                FieldType::Array(_)
+                | FieldType::StringVector
+                | FieldType::StructArray(_)
+                | FieldType::Vector(_) => false,
             });
         whole[index] = definition
             .fields
@@ -1479,8 +1562,9 @@ fn return_on_error(writer: &mut CodeWriter, zero: &str) {
 }
 
 /// The documentation of a field's getter: the field's own, and what the
-/// getter returns and when it fails. The getter of a vector or an array
-/// of structs returns a view, which reads each item when it's asked for.
+/// getter returns and when it fails. The getter of a vector, a vector of
+/// strings or an array of structs returns a view, which reads each item when
+/// it's asked for.
 fn getter_docs(getter: &str, field: &Field) -> Vec<String> {
     let (views, condition) = match field.field_type {
         FieldType::Vector(_) => (
@@ -1492,10 +1576,22 @@ fn getter_docs(getter: &str, field: &Field) -> Vec<String> {
             Some("the array's structs"),
             "if the field or its structs lie outside the bytes.",
         ),
+        FieldType::StringVector => (
+            Some("the vector's strings"),
+            "if the field, or the vector's count or the ends of its strings, lie outside \
+             the bytes. A string fails with one when it's read if it lies outside the bytes \
+             or isn't valid UTF-8.",
+        ),
         _ => (None, "if the field lies outside the bytes."),
     };
 
     let mut lines = field.docs.clone();
+    if field.field_type == FieldType::Array(Scalar::Bool) {
+        if !lines.is_empty() {
+            lines.push(String::new());
+        }
+        lines.push("A byte for each bool, which is true where it isn't 0".to_owned());
+    }
     if !lines.is_empty() {
         lines.push(String::new());
     }
@@ -1541,31 +1637,69 @@ fn wrap(text: &str) -> Vec<String> {
     lines
 }
 
-/// The fields of a struct, each after its documentation, which isn't
-/// reformatted, and aligned as gofmt aligns them: the types of consecutive
-/// fields start in one column, and a comment between two fields starts
-/// another run of them
-fn struct_fields(writer: &mut CodeWriter, fields: &[(&[String], String, String)]) {
+/// The fields of a struct or the constants of a block, each a name and what
+/// follows it, a field's type or a constant's type and value, after its
+/// documentation, which isn't reformatted, and aligned as gofmt aligns them:
+/// what follows the names of consecutive members starts in one column, and a
+/// comment between two members starts another run of them
+fn aligned_members(writer: &mut CodeWriter, members: &[(&[String], String, String)]) {
     let mut start = 0;
-    while start < fields.len() {
+    while start < members.len() {
         let mut end = start + 1;
-        while end < fields.len() && fields[end].0.is_empty() {
+        while end < members.len() && members[end].0.is_empty() {
             end += 1;
         }
-        let width = fields[start..end]
+        let width = members[start..end]
             .iter()
             .map(|(_, name, _)| name.len())
             .max()
             .unwrap_or(0);
 
-        for (docs, name, field_type) in &fields[start..end] {
+        for (docs, name, rest) in &members[start..end] {
             for line in *docs {
                 writer.line(format!("// {line}").trim_end());
             }
-            writer.line(format!("{name:width$} {field_type}"));
+            writer.line(format!("{name:width$} {rest}"));
         }
         start = end;
     }
+}
+
+/// An enum: a defined type of its integer type, so that a field of it holds
+/// any integer of that type, and a block of typed constants, one for each
+/// value that the schema names, `<Enum><Value>`, which no keyword of Go's
+/// can be. Each value is the schema's integer as it's written, since Go's
+/// constants hold every integer from an int64's least to a uint64's greatest.
+fn enumeration_type(writer: &mut CodeWriter, enumeration: &Enum) {
+    let name = &enumeration.name;
+    let underlying = scalar_type(enumeration.underlying);
+
+    writer.blank();
+    writer.lines(&go_doc(&enumeration.docs));
+    writer.line(format!("type {name} {underlying}"));
+
+    // Every constant has the enum's type, so their values align as their
+    // types do
+    let constants: Vec<(&[String], String, String)> = enumeration
+        .values
+        .iter()
+        .map(|value| {
+            (
+                value.docs.as_slice(),
+                format!("{name}{}", pascal_case(&value.name)),
+                format!("{name} = {}", value.value),
+            )
+        })
+        .collect();
+
+    writer.blank();
+    writer.lines(&prose(&[
+        format!("The values of [{name}] that the schema names. A field of it holds any"),
+        format!("{underlying}, whether it's one of them or not."),
+    ]));
+    writer.open("const (");
+    aligned_members(writer, &constants);
+    writer.close(")");
 }
 
 /// The view of a vector of a table, which reads each item when it's asked
@@ -1731,14 +1865,24 @@ fn struct_array_view(writer: &mut CodeWriter, definition: &Definition, lies_in_p
     writer.close("}");
 }
 
-/// The expression that reads a scalar at `offset` in `bytes`
-fn read_scalar(scalar: Scalar, offset: usize) -> String {
+/// The expression that reads a scalar at `offset` in `bytes`, as its
+/// `enumeration` when it has one, which the unsigned integer that holds its
+/// bits converts to as it converts to a signed integer
+fn read_scalar(scalar: Scalar, enumeration: Option<&Enum>, offset: usize) -> String {
     let at = if offset == 0 {
         "bytes".to_owned()
     } else {
         format!("bytes[{offset}:]")
     };
     let bits = |size: u8| format!("binary.LittleEndian.Uint{}({at})", 8 * size);
+
+    if let Some(enumeration) = enumeration {
+        let unsigned = match scalar.size() {
+            1 => format!("bytes[{offset}]"),
+            size => bits(size),
+        };
+        return format!("{}({unsigned})", enumeration.name);
+    }
 
     match scalar {
         Scalar::Bool => format!("bytes[{offset}] != 0"),
@@ -1753,8 +1897,17 @@ fn read_scalar(scalar: Scalar, offset: usize) -> String {
     }
 }
 
-/// The lines that write the scalar `member` at `offset` in the slice `bytes`
-fn put_scalar(writer: &mut CodeWriter, scalar: Scalar, member: &str, bytes: &str, offset: usize) {
+/// The lines that write the scalar `member` at `offset` in the slice `bytes`.
+/// A member of an `enumeration` is of the enum's type, which converts to the
+/// unsigned integer that holds its bits, as a signed integer does.
+fn put_scalar(
+    writer: &mut CodeWriter,
+    scalar: Scalar,
+    enumeration: Option<&Enum>,
+    member: &str,
+    bytes: &str,
+    offset: usize,
+) {
     let at = at(bytes, offset);
     let put =
         |size: u8, value: String| format!("binary.LittleEndian.PutUint{}({at}, {value})", 8 * size);
@@ -1766,14 +1919,21 @@ fn put_scalar(writer: &mut CodeWriter, scalar: Scalar, member: &str, bytes: &str
             writer.line(format!("{bytes}[{offset}] = 1"));
             writer.close("}");
         }
-        Scalar::Int8 => writer.line(format!("{bytes}[{offset}] = byte({member})")),
-        Scalar::Uint8 => writer.line(format!("{bytes}[{offset}] = {member}")),
-        Scalar::Int16 | Scalar::Int32 | Scalar::Int64 => {
+        Scalar::Uint8 if enumeration.is_none() => {
+            writer.line(format!("{bytes}[{offset}] = {member}"));
+        }
+        Scalar::Int8 | Scalar::Uint8 => writer.line(format!("{bytes}[{offset}] = byte({member})")),
+        Scalar::Uint16 | Scalar::Uint32 | Scalar::Uint64 if enumeration.is_none() => {
+            writer.line(put(scalar.size(), member.to_owned()));
+        }
+        Scalar::Int16
+        | Scalar::Uint16
+        | Scalar::Int32
+        | Scalar::Uint32
+        | Scalar::Int64
+        | Scalar::Uint64 => {
             let size = scalar.size();
             writer.line(put(size, format!("uint{}({member})", 8 * size)));
-        }
-        Scalar::Uint16 | Scalar::Uint32 | Scalar::Uint64 => {
-            writer.line(put(scalar.size(), member.to_owned()));
         }
         Scalar::Float32 => writer.line(put(4, format!("math.Float32bits({member})"))),
         Scalar::Float64 => writer.line(put(8, format!("math.Float64bits({member})"))),
@@ -1805,14 +1965,17 @@ fn at(bytes: &str, offset: usize) -> String {
     }
 }
 
-/// The layout of a message, as an expression of the runtime's
-fn layout_expression(layout: Layout) -> String {
+/// The layout of message `name`, as an expression of the runtime's, whose
+/// version is the message's `FormatVersion` constant
+fn layout_expression(layout: Layout, name: &str) -> String {
     let mut expression = "tafla.TableLayout{}".to_owned();
     if layout.sized {
         expression.push_str(".Sized()");
     }
     if layout.version.is_some() {
-        expression.push_str(".Versioned()");
+        expression.push_str(".WithVersion(");
+        expression.push_str(name);
+        expression.push_str("FormatVersion)");
     }
     match layout.offset_type {
         OffsetType::Uint8 => expression.push_str(".WithOffsetType(tafla.Uint8)"),
@@ -1822,14 +1985,20 @@ fn layout_expression(layout: Layout) -> String {
     expression
 }
 
-/// The zero value of a getter's type, which it returns with an error
-fn zero_value(value_type: &str) -> String {
-    match value_type {
-        "bool" => "false".to_owned(),
-        "string" => "\"\"".to_owned(),
-        _ if value_type.starts_with("[]") => "nil".to_owned(),
-        _ if Scalar::from_name(value_type).is_some() => "0".to_owned(),
-        _ => format!("{value_type}{{}}"),
+/// The zero value of the type that a field's getter returns, `value_type`,
+/// which it returns with an error. An enum's is its integer type's.
+fn zero_value(field_type: FieldType, value_type: &str) -> String {
+    match field_type {
+        FieldType::Scalar(Scalar::Bool) => "false".to_owned(),
+        FieldType::Scalar(_) => "0".to_owned(),
+        FieldType::String => "\"\"".to_owned(),
+        FieldType::Array(Scalar::Uint8 | Scalar::Bool) => "nil".to_owned(),
+        FieldType::Array(_)
+        | FieldType::StringVector
+        | FieldType::Struct(_)
+        | FieldType::StructArray(_)
+        | FieldType::Table(_)
+        | FieldType::Vector(_) => format!("{value_type}{{}}"),
     }
 }
 

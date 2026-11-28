@@ -15,6 +15,8 @@ pub enum TokenKind {
     Colon,
     Semicolon,
     Comma,
+    Equals,
+    Minus,
     End,
 }
 
@@ -70,6 +72,8 @@ pub fn tokenize(source: &str) -> Result<Vec<Token>, Diagnostic> {
             b':' => single(&mut index, TokenKind::Colon),
             b';' => single(&mut index, TokenKind::Semicolon),
             b',' => single(&mut index, TokenKind::Comma),
+            b'=' => single(&mut index, TokenKind::Equals),
+            b'-' => single(&mut index, TokenKind::Minus),
             b'0'..=b'9' => {
                 index += count_while(&bytes[index..], u8::is_ascii_digit);
                 TokenKind::Integer

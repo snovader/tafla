@@ -95,30 +95,30 @@ TEST(Compatibility, EveryKindOfField) {
 
     EXPECT_EQ(builder.to_bytes().to_vector(), kKinds);
 
-    const ByteBuffer buffer(kKinds, TableLayout());
-    const auto at = [&buffer](std::size_t index) { return buffer.root_offset(index); };
+    const TableReader reader(kKinds, TableLayout());
+    const auto at = [&reader](std::size_t index) { return reader.root_offset(index); };
 
-    EXPECT_EQ(buffer.get_int8(at(0)), std::numeric_limits<std::int8_t>::min());
-    EXPECT_EQ(buffer.get_uint8(at(1)), std::numeric_limits<std::uint8_t>::max());
-    EXPECT_EQ(buffer.get_int16(at(2)), std::numeric_limits<std::int16_t>::min());
-    EXPECT_EQ(buffer.get_uint16(at(3)), std::numeric_limits<std::uint16_t>::max());
-    EXPECT_EQ(buffer.get_int32(at(4)), std::numeric_limits<std::int32_t>::min());
-    EXPECT_EQ(buffer.get_uint32(at(5)), std::numeric_limits<std::uint32_t>::max());
-    EXPECT_EQ(buffer.get_int64(at(6)), std::numeric_limits<std::int64_t>::min());
-    EXPECT_EQ(buffer.get_uint64(at(7)), std::numeric_limits<std::uint64_t>::max());
-    EXPECT_EQ(buffer.get_float32(at(8)), 1.5F);
-    EXPECT_EQ(buffer.get_float64(at(9)), -2.25);
-    EXPECT_EQ(buffer.get_int8_array(at(10)).to_vector(), int8s);
-    EXPECT_EQ(vector_of(buffer.get_uint8_array(at(11))), uint8s);
-    EXPECT_EQ(buffer.get_int16_array(at(12)).to_vector(), int16s);
-    EXPECT_EQ(buffer.get_uint16_array(at(13)).to_vector(), uint16s);
-    EXPECT_EQ(buffer.get_int32_array(at(14)).to_vector(), int32s);
-    EXPECT_EQ(buffer.get_uint32_array(at(15)).to_vector(), uint32s);
-    EXPECT_EQ(buffer.get_int64_array(at(16)).to_vector(), int64s);
-    EXPECT_EQ(buffer.get_uint64_array(at(17)).to_vector(), uint64s);
+    EXPECT_EQ(reader.get_int8(at(0)), std::numeric_limits<std::int8_t>::min());
+    EXPECT_EQ(reader.get_uint8(at(1)), std::numeric_limits<std::uint8_t>::max());
+    EXPECT_EQ(reader.get_int16(at(2)), std::numeric_limits<std::int16_t>::min());
+    EXPECT_EQ(reader.get_uint16(at(3)), std::numeric_limits<std::uint16_t>::max());
+    EXPECT_EQ(reader.get_int32(at(4)), std::numeric_limits<std::int32_t>::min());
+    EXPECT_EQ(reader.get_uint32(at(5)), std::numeric_limits<std::uint32_t>::max());
+    EXPECT_EQ(reader.get_int64(at(6)), std::numeric_limits<std::int64_t>::min());
+    EXPECT_EQ(reader.get_uint64(at(7)), std::numeric_limits<std::uint64_t>::max());
+    EXPECT_EQ(reader.get_float32(at(8)), 1.5F);
+    EXPECT_EQ(reader.get_float64(at(9)), -2.25);
+    EXPECT_EQ(reader.get_int8_array(at(10)).to_vector(), int8s);
+    EXPECT_EQ(vector_of(reader.get_uint8_array(at(11))), uint8s);
+    EXPECT_EQ(reader.get_int16_array(at(12)).to_vector(), int16s);
+    EXPECT_EQ(reader.get_uint16_array(at(13)).to_vector(), uint16s);
+    EXPECT_EQ(reader.get_int32_array(at(14)).to_vector(), int32s);
+    EXPECT_EQ(reader.get_uint32_array(at(15)).to_vector(), uint32s);
+    EXPECT_EQ(reader.get_int64_array(at(16)).to_vector(), int64s);
+    EXPECT_EQ(reader.get_uint64_array(at(17)).to_vector(), uint64s);
 
     std::vector<std::uint32_t> bits;
-    for (float value : buffer.get_float32_array(at(18))) {
+    for (float value : reader.get_float32_array(at(18))) {
         bits.push_back(std::bit_cast<std::uint32_t>(value));
     }
     std::vector<std::uint32_t> expected;
@@ -127,20 +127,20 @@ TEST(Compatibility, EveryKindOfField) {
     }
     EXPECT_EQ(bits, expected);
 
-    EXPECT_EQ(buffer.get_float64_array(at(19)).to_vector(), float64s);
-    EXPECT_TRUE(buffer.get_float64_array(at(20)).empty());
-    EXPECT_EQ(buffer.get_string(at(21)), string);
-    EXPECT_EQ(buffer.get_string(at(22)), "");
+    EXPECT_EQ(reader.get_float64_array(at(19)).to_vector(), float64s);
+    EXPECT_TRUE(reader.get_float64_array(at(20)).empty());
+    EXPECT_EQ(reader.get_string(at(21)), string);
+    EXPECT_EQ(reader.get_string(at(22)), "");
 
     std::vector<std::vector<std::uint8_t>> read;
-    for (auto item : buffer.get_vector(at(23)).items()) {
+    for (auto item : reader.get_vector(at(23)).items()) {
         read.push_back(vector_of(item));
     }
     EXPECT_EQ(read, (std::vector<std::vector<std::uint8_t>>{first, second}));
 }
 
 TEST(Compatibility, VersionedDocumentWithNestedTables) {
-    constexpr auto layout = TableLayout().sized().versioned();
+    constexpr auto layout = TableLayout().sized().with_version(3);
     const std::vector<std::uint32_t> keys{0, 86'400, 172'800};
     const std::vector<float> values{21.75F, 18.5F, -3.25F};
     const std::vector<std::uint16_t> item_values{7, 8, 9};
@@ -155,7 +155,7 @@ TEST(Compatibility, VersionedDocumentWithNestedTables) {
     item.set_float32(0.5F);
     item.set_uint16_array(item_values);
 
-    TableBuilder document(5, layout, 3);
+    TableBuilder document(5, layout);
     document.set_float64(59.3293);
     document.set_string("Europe/Stockholm");
     document.set_table(std::move(columns));
@@ -167,21 +167,21 @@ TEST(Compatibility, VersionedDocumentWithNestedTables) {
 
     EXPECT_EQ(document.to_bytes().to_vector(), kDocument);
 
-    const ByteBuffer buffer(kDocument, layout);
-    EXPECT_EQ(buffer.size(), kDocument.size());
-    EXPECT_EQ(buffer.version(), 3U);
-    EXPECT_EQ(buffer.get_float64(buffer.root_offset(0)), 59.3293);
-    EXPECT_EQ(buffer.get_string(buffer.root_offset(1)), "Europe/Stockholm");
+    const TableReader reader(kDocument, layout);
+    EXPECT_EQ(reader.size(), kDocument.size());
+    EXPECT_EQ(reader.version(), 3U);
+    EXPECT_EQ(reader.get_float64(reader.root_offset(0)), 59.3293);
+    EXPECT_EQ(reader.get_string(reader.root_offset(1)), "Europe/Stockholm");
 
-    const auto position = buffer.root_offset(2);
-    EXPECT_EQ(buffer.get_int64(buffer.field_offset(position, 0)), -631'152'000);
-    EXPECT_EQ(buffer.get_uint32_array(buffer.field_offset(position, 1)).to_vector(), keys);
-    EXPECT_EQ(buffer.get_float32_array(buffer.field_offset(position, 2)).to_vector(), values);
-    EXPECT_EQ(buffer.get_int8(buffer.root_offset(3)), -5);
+    const auto position = reader.root_offset(2);
+    EXPECT_EQ(reader.get_int64(reader.field_offset(position, 0)), -631'152'000);
+    EXPECT_EQ(reader.get_uint32_array(reader.field_offset(position, 1)).to_vector(), keys);
+    EXPECT_EQ(reader.get_float32_array(reader.field_offset(position, 2)).to_vector(), values);
+    EXPECT_EQ(reader.get_int8(reader.root_offset(3)), -5);
 
-    const auto vector = buffer.get_vector(buffer.root_offset(4));
+    const auto vector = reader.get_vector(reader.root_offset(4));
     ASSERT_EQ(vector.size(), 2U);
-    const ByteBuffer first(vector.get(0), TableLayout());
+    const TableReader first(vector.get(0), TableLayout());
     EXPECT_EQ(first.get_float32(first.root_offset(0)), 0.5F);
     EXPECT_EQ(first.get_uint16_array(first.root_offset(1)).to_vector(), item_values);
     EXPECT_EQ(vector_of(vector.get(1)), bytes_item);
@@ -199,16 +199,16 @@ TEST(Compatibility, Uint8OffsetsWithATableNestedAsBytes) {
 
     EXPECT_EQ(small.to_bytes().to_vector(), kSmall);
 
-    const ByteBuffer buffer(kSmall, layout);
-    const auto position = buffer.root_offset(2);
+    const TableReader reader(kSmall, layout);
+    const auto position = reader.root_offset(2);
     EXPECT_EQ(position % alignment_bytes(Alignment::four), 0U);
-    EXPECT_EQ(buffer.get_string(buffer.root_offset(0)), "hi");
-    EXPECT_EQ(buffer.get_uint16_array(buffer.root_offset(1)).to_vector(), values);
+    EXPECT_EQ(reader.get_string(reader.root_offset(0)), "hi");
+    EXPECT_EQ(reader.get_uint16_array(reader.root_offset(1)).to_vector(), values);
     EXPECT_EQ(std::vector<std::uint8_t>(kSmall.begin() + static_cast<std::ptrdiff_t>(position), kSmall.end()), nested);
 }
 
 TEST(Compatibility, Uint16OffsetsWithVectorItemsOfOtherOffsetTypes) {
-    const auto layout = TableLayout().sized().with_offset_type(OffsetType::uint16).versioned();
+    const auto layout = TableLayout().sized().with_offset_type(OffsetType::uint16).with_version(513);
     const auto narrow_layout = TableLayout().with_offset_type(OffsetType::uint8);
     const std::vector<double> wide_values{1.25};
     const std::vector<float> values{1.0F, 2.0F};
@@ -218,7 +218,7 @@ TEST(Compatibility, Uint16OffsetsWithVectorItemsOfOtherOffsetTypes) {
     TableBuilder wide(1, TableLayout());
     wide.set_float64_array(wide_values);
 
-    TableBuilder medium(2, layout, 513);
+    TableBuilder medium(2, layout);
     medium.set_float32_array(values);
     std::vector<NestedTable> items;
     items.emplace_back(std::move(narrow));
@@ -227,14 +227,14 @@ TEST(Compatibility, Uint16OffsetsWithVectorItemsOfOtherOffsetTypes) {
 
     EXPECT_EQ(medium.to_bytes().to_vector(), kMedium);
 
-    const ByteBuffer buffer(kMedium, layout);
-    EXPECT_EQ(buffer.version(), 513U);
-    EXPECT_EQ(buffer.get_float32_array(buffer.root_offset(0)).to_vector(), values);
+    const TableReader reader(kMedium, layout);
+    EXPECT_EQ(reader.version(), 513U);
+    EXPECT_EQ(reader.get_float32_array(reader.root_offset(0)).to_vector(), values);
 
-    const auto vector = buffer.get_vector(buffer.root_offset(1));
+    const auto vector = reader.get_vector(reader.root_offset(1));
     ASSERT_EQ(vector.size(), 2U);
-    const ByteBuffer narrow_item(vector.get(0), narrow_layout);
-    const ByteBuffer wide_item(vector.get(1), TableLayout());
+    const TableReader narrow_item(vector.get(0), narrow_layout);
+    const TableReader wide_item(vector.get(1), TableLayout());
     EXPECT_EQ(narrow_item.get_uint8(narrow_item.root_offset(0)), 42);
     EXPECT_EQ(wide_item.get_float64_array(wide_item.root_offset(0)).to_vector(), wide_values);
 }

@@ -3,12 +3,14 @@
     "compilerOptions": {
         "outDir": ".cache/typescript/configs"
     },
-    "include": ["*.ts", "core/vitest.config.ts"],
+    "include": ["*.ts", "core/rolldown.config.ts"],
     "references": [
         { "path": "./benchmarks" },
         { "path": "./core" },
         { "path": "./core/test" },
         { "path": "./core/test/conformance" },
-        { "path": "./core/test/generated" }
+        { "path": "./core/test/generated" },
+        { "path": "./gen" },
+        { "path": "./gen/test" }
     ]
 }

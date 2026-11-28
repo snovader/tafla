@@ -12,11 +12,12 @@ import java.util.*;
  * {@link TableBuilder} writes it.
  *
  * <p>The fields are added in order, each with its type's method, which takes what decides its
- * length: nothing for a scalar, the count of an array, the string itself. A nested table is added
- * with {@link #addTable}, and a vector with {@link #addVector}, and the fields of each such table
- * then follow between {@link #startTable} and {@link #endTable}. The sizer pads arrays and nested
- * tables as {@code TableBuilder} does, so a writer that takes the same fields in the same order
- * writes each where the sizer counted it.</p>
+ * length: nothing for a scalar, the count of an array, the string itself, or the strings of a
+ * vector of strings. A nested table is added with {@link #addTable}, and a vector with
+ * {@link #addVector}, and the fields of each such table then follow between {@link #startTable}
+ * and {@link #endTable}. The sizer pads arrays and nested tables as {@code TableBuilder} does, so
+ * a writer that takes the same fields in the same order writes each where the sizer counted
+ * it.</p>
  *
  * {@snippet :
  * var sizer = new TableSizer(2);
@@ -35,7 +36,6 @@ import java.util.*;
  */
 public final class TableSizer {
     private final TableLayout layout;
-    private final long version;
     private final int fields;
     /** The offset size, the width in bytes of offsets, lengths and header slots */
     private final int offsetSize;
@@ -57,34 +57,17 @@ public final class TableSizer {
     }
 
     /**
-     * Sizes a table of a layout without a version, with the checks of {@link TableBuilder}'s
-     * constructor.
+     * Sizes a table of a layout, whose version the writer writes to the header when it has one,
+     * with the checks of {@link TableBuilder}'s constructor.
      *
      * @param fields the number of fields that the table holds
      * @param layout the table's header and offset type, which its readers must use too
-     * @throws IllegalArgumentException if the layout is versioned, the number of fields is
-     *     negative, or the header alone is longer than the layout addresses
+     * @throws IllegalArgumentException if the number of fields is negative, or the header alone is
+     *     longer than the layout addresses
      */
     public TableSizer(int fields, TableLayout layout) {
-        this(fields, layout, false, 0);
-    }
-
-    /**
-     * Sizes a table of a versioned layout, with the checks of {@link TableBuilder}'s constructor.
-     *
-     * @param version the version that the writer writes to the header
-     * @throws IllegalArgumentException if the layout isn't versioned, the version doesn't fit in
-     *     the layout's offset type, the number of fields is negative, or the header alone is longer
-     *     than the layout addresses
-     */
-    public TableSizer(int fields, TableLayout layout, long version) {
-        this(fields, layout, true, version);
-    }
-
-    private TableSizer(int fields, TableLayout layout, boolean versioned, long version) {
-        this.position = layout.headerLength(fields, versioned, version);
+        this.position = layout.headerLength(fields);
         this.layout = layout;
-        this.version = version;
         this.fields = fields;
         this.offsetSize = layout.offsetSize();
     }
@@ -114,7 +97,7 @@ public final class TableSizer {
     public TableWriter writer() {
         var length = byteLength();
 
-        return new TableWriter(new byte[length], length, fields, layout, version, encodedStrings());
+        return new TableWriter(new byte[length], length, fields, layout, encodedStrings());
     }
 
     /**
@@ -126,7 +109,7 @@ public final class TableSizer {
      *
      * <p>The caller owns the bytes, and the writer keeps them only until the table is written. The
      * table stays in them until they're written again, such as by the next table written into
-     * them, which also changes what a {@link ByteBuffer} or array view of them reads. To keep the
+     * them, which also changes what a {@link TableReader} or array view of them reads. To keep the
      * table, or to read exactly its bytes, copy them with
      * {@code Arrays.copyOf(bytes, writer.byteLength())}.</p>
      *
@@ -151,7 +134,7 @@ public final class TableSizer {
             );
         }
 
-        return new TableWriter(bytes, length, fields, layout, version, encodedStrings());
+        return new TableWriter(bytes, length, fields, layout, encodedStrings());
     }
 
     /** {@return the long strings that were added, in order, with their bytes} */
@@ -264,6 +247,11 @@ public final class TableSizer {
         addArray(count, Double.BYTES, Double.BYTES);
     }
 
+    /** Adds an array of {@code count} bools, a byte each, which needs no padding */
+    public void addBoolArray(int count) {
+        addArray(count, Byte.BYTES, Byte.BYTES);
+    }
+
     /**
      * Adds a string, as UTF-8 with lone surrogates replaced by U+FFFD. A long string is encoded
      * here, and its writer copies those bytes when it's given the same string.
@@ -274,12 +262,38 @@ public final class TableSizer {
             return;
         }
 
+        position += offsetSize + encode(string);
+    }
+
+    /**
+     * Adds a vector of strings: its count, the end of each string, and each string as UTF-8, with
+     * lone surrogates replaced by U+FFFD, one after another. Each string is counted or encoded as
+     * {@link #addString} counts or encodes a string, and its writer copies the long strings that
+     * were encoded here when it's given the same strings.
+     */
+    public void addStringVector(List<String> strings) {
+        var length = (strings.size() + 1L) * offsetSize;
+        for (var string : strings) {
+            length += string.length() < Utf8.SHORT_LENGTH ? Utf8.length(string) : encode(string);
+        }
+
+        position += length;
+    }
+
+    /**
+     * Encodes a string of at least {@link Utf8#SHORT_LENGTH} {@code char}s, which takes less time
+     * than counting its bytes a {@code char} at a time, and keeps its bytes for the writer to copy
+     *
+     * @return their length
+     */
+    private int encode(String string) {
         var utf8 = Utf8.encode(string);
         if (encodedStrings == null) {
             encodedStrings = new ArrayList<>();
         }
         encodedStrings.add(new EncodedString(string, utf8));
-        position += offsetSize + utf8.length;
+
+        return utf8.length;
     }
 
     /**
@@ -304,7 +318,7 @@ public final class TableSizer {
      *     the alignment isn't 1, 2, 4 or 8
      */
     public void addStructArray(int count, int size, int alignment) {
-        ByteBuffer.assertStructSize(size);
+        TableReader.assertStructSize(size);
         addArray(count, size, alignment);
     }
 

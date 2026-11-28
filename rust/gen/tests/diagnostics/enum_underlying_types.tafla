@@ -1,0 +1,25 @@
+enum Flag: bool {
+    off = 0;
+}
+
+enum Ratio: float32 {
+    none = 0;
+}
+
+enum Label: string {
+    empty = 0;
+}
+
+enum Wide: uint128 {
+    zero = 0;
+}
+
+enum Nested: Row {
+    zero = 0;
+}
+
+table Row {
+    /// A field of an enum without an integer type has no error of its own
+    flag: Flag;
+    ratios: [Ratio];
+}

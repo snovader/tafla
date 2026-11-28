@@ -35,16 +35,18 @@ public:
         /// The read of `byte_length()` bytes at `position()` would leave the
         /// `available()` bytes
         out_of_range,
-        /// The string at `position()` isn't valid UTF-8
+        /// The string at `position()` isn't valid UTF-8: a string field's
+        /// count, or the first byte of a string of a vector of strings,
+        /// which has no count
         invalid_utf8,
         /// The vector item at `position()` ends before it starts, at `end()`.
         /// An item starts where the item before it ends, and the first after
-        /// the ends.
+        /// the ends. So does a string of a vector of strings.
         item_ends_before_start,
         /// The header carries format `version()`, which the reader can't
-        /// read, since it reads version `supported()`. `ByteBuffer` doesn't
+        /// read, since it reads version `supported()`. `TableReader` doesn't
         /// compare versions: a reader throws this when
-        /// `ByteBuffer::version()` isn't its own.
+        /// `TableReader::version()` isn't its own.
         unsupported_version,
     };
 

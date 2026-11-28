@@ -1,4 +1,4 @@
-// Reads tables with `ByteBuffer` as their descriptions set them out, and
+// Reads tables with `TableReader` as their descriptions set them out, and
 // returns the descriptions with the values read in place of theirs, so that
 // they equal the descriptions when the bytes hold the described values.
 //
@@ -30,7 +30,7 @@ namespace tafla::test {
 /// Thrown when bytes read otherwise than the runtime's reads would: a sized
 /// table's size isn't its length, a vector holds another number of items
 /// than described, or finding an item from its ends finds another than
-/// iterating does
+/// iterating does, or than reading every string of a vector of strings
 class ReadMismatch : public std::runtime_error {
 public:
     using std::runtime_error::runtime_error;

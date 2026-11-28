@@ -3,6 +3,7 @@ use std::borrow::Cow;
 use prost::Message;
 
 use crate::codec::{Codec, DocumentWorkload, Error, Workload};
+use crate::string_workloads::{COUNT, Strings, StringsShape};
 use crate::workloads::{
     Document, DocumentShape, Item, List, ListShape, Record, RecordShape, Sample, SampleShape,
     StructsShape, sum_column,
@@ -43,6 +44,8 @@ use crate::workloads::{
 /// message Triples { repeated Triple items = 1; }
 ///
 /// message Sample { uint32 key = 1; float a = 2; float b = 3; }
+///
+/// message Strings { repeated string items = 1; }
 /// ```
 pub mod messages {
     #[derive(Clone, PartialEq, ::prost::Message)]
@@ -128,6 +131,12 @@ pub mod messages {
         #[prost(float, tag = "3")]
         pub b: f32,
     }
+
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+    pub struct Strings {
+        #[prost(string, repeated, tag = "1")]
+        pub items: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    }
 }
 
 /// prost's messages, used as its documentation shows: built from the input
@@ -139,6 +148,10 @@ pub mod messages {
 /// reading one copies them out of the bytes. A nested message that the bytes
 /// leave out reads as `None`, which is an error here, since every workload
 /// has them.
+///
+/// The strings comparison's table is a repeated string. `decode()` copies
+/// each string into a `String` that it allocates and checks its UTF-8 with
+/// `str::from_utf8()`, and the codec moves them out of the message.
 #[derive(Clone, Copy, Debug)]
 pub struct Prost;
 
@@ -294,6 +307,31 @@ impl Workload<SampleShape> for Prost {
             key: message.key,
             a: message.a,
             b: message.b,
+        })
+    }
+}
+
+impl Workload<StringsShape> for Prost {
+    type Bytes = Vec<u8>;
+
+    fn serialize(self, input: &Strings<'_>) -> Result<Vec<u8>, Error> {
+        let message = messages::Strings {
+            items: input.items.iter().map(ToString::to_string).collect(),
+        };
+
+        Ok(message.encode_to_vec())
+    }
+
+    fn deserialize(self, bytes: &[u8]) -> Result<Strings<'_>, Error> {
+        let message = messages::Strings::decode(bytes)?;
+        let length = message.items.len();
+        let items: [String; COUNT] = message
+            .items
+            .try_into()
+            .map_err(|_| format!("The message has {length} strings, not {COUNT}"))?;
+
+        Ok(Strings {
+            items: items.map(Cow::Owned),
         })
     }
 }

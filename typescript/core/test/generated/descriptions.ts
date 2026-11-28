@@ -1,10 +1,10 @@
 import {
+    toJsonNumber,
     type FieldDescription,
     type JsonNumber,
     type LayoutDescription,
     type ScalarType,
-    type TableDescription,
-    toJsonNumber
+    type TableDescription
 } from '../conformance/description.ts';
 
 // The fields of generated messages and tables in the conformance suite's
@@ -35,6 +35,10 @@ export function array(
     values: ArrayLike<number> | ArrayLike<bigint>
 ): FieldDescription {
     return { type: `${type}[]`, value: Array.from(values, jsonOf) };
+}
+
+export function boolArray(values: readonly boolean[]): FieldDescription {
+    return { type: 'bool[]', value: [...values] };
 }
 
 export function string(value: string): FieldDescription {
@@ -89,9 +93,7 @@ export function message(
     fields: FieldDescription[],
     version?: number
 ): TableDescription {
-    return version === undefined
-        ? { layout, fields }
-        : { layout, version, fields };
+    return version == null ? { layout, fields } : { layout, version, fields };
 }
 
 function jsonOf(value: number | bigint): JsonNumber {

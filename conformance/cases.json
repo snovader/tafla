@@ -75,6 +75,20 @@
             }
         },
         {
+            "name": "bool-arrays",
+            "description": "Arrays of bools, a byte each, 1 for true and 0 for false, which need no padding: of five, empty, and of one after a uint8. bool-array-nonzero changes the bytes of the first.",
+            "file": "valid/bool-arrays.bin",
+            "table": {
+                "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
+                "fields": [
+                    { "type": "bool[]", "value": [true, false, true, true, false] },
+                    { "type": "bool[]", "value": [] },
+                    { "type": "uint8", "value": 7 },
+                    { "type": "bool[]", "value": [true] }
+                ]
+            }
+        },
+        {
             "name": "integer-arrays",
             "description": "An array of every integer type, of its extremes, -1, 0, 1 and a value of distinct bytes",
             "file": "valid/integer-arrays.bin",
@@ -1321,6 +1335,80 @@
                 "version": 258,
                 "fields": []
             }
+        },
+        {
+            "name": "string-vectors",
+            "description": "A vector of strings that are empty, of one to four bytes a character and with a leading U+FEFF, an empty vector, a vector of three empty strings, a uint8 after them, which shows that nothing is padded, and a vector of strings in a nested table and in a vector item",
+            "file": "valid/string-vectors.bin",
+            "table": {
+                "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
+                "fields": [
+                    { "type": "string[]", "value": ["", "a", "G\u00f6teborg", "\u6771\u4eac", "\ud83c\udf0d", "\ufeffStockholm", ""] },
+                    { "type": "string[]", "value": [] },
+                    { "type": "string[]", "value": ["", "", ""] },
+                    { "type": "uint8", "value": 7 },
+                    {
+                        "type": "table",
+                        "from": "builder",
+                        "table": {
+                            "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
+                            "fields": [
+                                { "type": "uint16", "value": 1 },
+                                { "type": "string[]", "value": ["inner", "\u6771\u4eac"] }
+                            ]
+                        }
+                    },
+                    {
+                        "type": "vector",
+                        "items": [
+                            {
+                                "from": "builder",
+                                "table": {
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
+                                    "fields": [
+                                        { "type": "string[]", "value": ["item", ""] }
+                                    ]
+                                }
+                            },
+                            {
+                                "from": "bytes",
+                                "table": {
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
+                                    "fields": [
+                                        { "type": "string[]", "value": [] },
+                                        { "type": "string", "value": "after" }
+                                    ]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "name": "string-vector-offset-type-uint8-full",
+            "description": "A table of 255 bytes, the longest that uint8 offsets address: a vector of seven strings whose ends are a byte each, the last four of 128 and more",
+            "file": "valid/string-vector-offset-type-uint8-full.bin",
+            "table": {
+                "layout": { "sized": false, "versioned": false, "offsetType": "uint8" },
+                "fields": [
+                    { "type": "string[]", "value": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "ccccccccccccccccccccccccccccccccccc", "ddddddddddddddddddddddddddddddddddd", "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "fffffffffffffffffffffffffffffffffff", "gggggggggggggggggggggggggggggggggggg"] }
+                ]
+            }
+        },
+        {
+            "name": "string-vector-offset-type-uint16",
+            "description": "uint16 offsets, counts and ends after size and version slots, with a vector of strings between a uint8 and a string",
+            "file": "valid/string-vector-offset-type-uint16.bin",
+            "table": {
+                "layout": { "sized": true, "versioned": true, "offsetType": "uint16" },
+                "version": 258,
+                "fields": [
+                    { "type": "uint8", "value": 7 },
+                    { "type": "string[]", "value": ["one", "", "Z\u00fcrich, \u6771\u4eac and \ud83c\udf0d"] },
+                    { "type": "string", "value": "after" }
+                ]
+            }
         }
     ],
     "equivalent": [
@@ -1330,6 +1418,13 @@
             "file": "equivalent/bool-nonzero.bin",
             "case": "bools",
             "corruption": { "kind": "overwrite", "at": 18, "bytes": [2, 128] }
+        },
+        {
+            "name": "bool-array-nonzero",
+            "description": "The bytes of the first array of bool-arrays are 2, 0, 0x80, 0xff and 0, whose bytes other than 0 read as true, like 1",
+            "file": "equivalent/bool-array-nonzero.bin",
+            "case": "bool-arrays",
+            "corruption": { "kind": "overwrite", "at": 20, "bytes": [2, 0, 128, 255] }
         }
     ],
     "invalid": [
@@ -1380,6 +1475,14 @@
             "case": "float-arrays",
             "corruption": { "kind": "overwrite", "at": 52, "bytes": [10, 0, 0, 0] },
             "field": 1
+        },
+        {
+            "name": "bool-array-length-past-end",
+            "description": "The count of the last array of bools counts one bool more than the table holds",
+            "file": "invalid/bool-array-length-past-end.bin",
+            "case": "bool-arrays",
+            "corruption": { "kind": "overwrite", "at": 30, "bytes": [2, 0, 0, 0] },
+            "field": 3
         },
         {
             "name": "array-length-max",
@@ -1484,6 +1587,94 @@
             "case": "nested-tables",
             "corruption": { "kind": "overwrite", "at": 56, "bytes": [255, 255, 255, 255] },
             "field": 1
+        },
+        {
+            "name": "truncated-string-vector-ends",
+            "description": "Cut inside the end of the last string of the first vector of strings",
+            "file": "invalid/truncated-string-vector-ends.bin",
+            "case": "string-vectors",
+            "corruption": { "kind": "truncate", "length": 54 },
+            "field": 0
+        },
+        {
+            "name": "truncated-string-vector",
+            "description": "string-vector-offset-type-uint8-full without its last byte, the last of its last string",
+            "file": "invalid/truncated-string-vector.bin",
+            "case": "string-vector-offset-type-uint8-full",
+            "corruption": { "kind": "truncate", "length": 254 },
+            "field": 0
+        },
+        {
+            "name": "string-vector-count-past-end",
+            "description": "The count of the first vector of strings counts more strings than the table has bytes for their ends",
+            "file": "invalid/string-vector-count-past-end.bin",
+            "case": "string-vectors",
+            "corruption": { "kind": "overwrite", "at": 24, "bytes": [195, 0, 0, 0] },
+            "field": 0
+        },
+        {
+            "name": "string-vector-count-max",
+            "description": "The count of the vector of three empty strings is 2^32 - 1, which a reader must not allocate for",
+            "file": "invalid/string-vector-count-max.bin",
+            "case": "string-vectors",
+            "corruption": { "kind": "overwrite", "at": 92, "bytes": [255, 255, 255, 255] },
+            "field": 2
+        },
+        {
+            "name": "string-vector-end-past-end",
+            "description": "The end of the last string of the first vector of strings is one byte past the end of the table",
+            "file": "invalid/string-vector-end-past-end.bin",
+            "case": "string-vectors",
+            "corruption": { "kind": "overwrite", "at": 52, "bytes": [172, 0, 0, 0] },
+            "field": 0
+        },
+        {
+            "name": "string-vector-end-max",
+            "description": "The end of the second string of the first vector of strings is 2^32 - 1",
+            "file": "invalid/string-vector-end-max.bin",
+            "case": "string-vectors",
+            "corruption": { "kind": "overwrite", "at": 32, "bytes": [255, 255, 255, 255] },
+            "field": 0
+        },
+        {
+            "name": "string-vector-item-ends-before-start",
+            "description": "The end of the third string of the first vector of strings is that of the first, so that it ends before it starts",
+            "file": "invalid/string-vector-item-ends-before-start.bin",
+            "case": "string-vectors",
+            "corruption": { "kind": "overwrite", "at": 36, "bytes": [32, 0, 0, 0] },
+            "field": 0
+        },
+        {
+            "name": "string-vector-end-splits-character",
+            "description": "The end of the fourth string of the first vector of strings is a byte less, within its last character, so that neither it nor the next string is valid UTF-8",
+            "file": "invalid/string-vector-end-splits-character.bin",
+            "case": "string-vectors",
+            "corruption": { "kind": "overwrite", "at": 40, "bytes": [47, 0, 0, 0] },
+            "field": 0
+        },
+        {
+            "name": "string-vector-invalid-utf8-continuation",
+            "description": "The second string of the first vector of strings is a continuation byte, 0x80",
+            "file": "invalid/string-vector-invalid-utf8-continuation.bin",
+            "case": "string-vectors",
+            "corruption": { "kind": "overwrite", "at": 56, "bytes": [128] },
+            "field": 0
+        },
+        {
+            "name": "string-vector-invalid-utf8-overlong",
+            "description": "The fourth string of the first vector of strings starts with an overlong encoding of U+0000, 0xe0 0x80 0x80",
+            "file": "invalid/string-vector-invalid-utf8-overlong.bin",
+            "case": "string-vectors",
+            "corruption": { "kind": "overwrite", "at": 66, "bytes": [224, 128, 128] },
+            "field": 0
+        },
+        {
+            "name": "string-vector-invalid-utf8-surrogate",
+            "description": "The fourth string of the first vector of strings starts with the surrogate U+D800, 0xed 0xa0 0x80",
+            "file": "invalid/string-vector-invalid-utf8-surrogate.bin",
+            "case": "string-vectors",
+            "corruption": { "kind": "overwrite", "at": 66, "bytes": [237, 160, 128] },
+            "field": 0
         }
     ]
 }

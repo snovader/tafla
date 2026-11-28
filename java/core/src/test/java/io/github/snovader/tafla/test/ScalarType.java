@@ -14,7 +14,7 @@ import java.util.*;
  * name as {@code cases.json} does, such as {@code "uint16"} and {@code "uint16[]"}.
  *
  * <p>Descriptions hold every value as a {@code long}: an integer as its value, a {@code uint64} as
- * its bits, as {@link ByteBuffer} reads it, and a float as its raw bits, a float32's as an
+ * its bits, as {@link TableReader} reads it, and a float as its raw bits, a float32's as an
  * {@code int} widened to a {@code long}. Comparing values then compares floats by their bits,
  * telling -0.0 from 0.0, and NaN from any other value, NaNs included.</p>
  */
@@ -166,49 +166,49 @@ enum ScalarType {
         }
     }
 
-    long read(ByteBuffer buffer, int position) {
+    long read(TableReader reader, int position) {
         return switch (this) {
-            case INT8 -> buffer.getInt8(position);
-            case UINT8 -> buffer.getUint8(position);
-            case INT16 -> buffer.getInt16(position);
-            case UINT16 -> buffer.getUint16(position);
-            case INT32 -> buffer.getInt32(position);
-            case UINT32 -> buffer.getUint32(position);
-            case INT64 -> buffer.getInt64(position);
-            case UINT64 -> buffer.getUint64(position);
-            case FLOAT32 -> Float.floatToRawIntBits(buffer.getFloat32(position));
-            case FLOAT64 -> Double.doubleToRawLongBits(buffer.getFloat64(position));
+            case INT8 -> reader.getInt8(position);
+            case UINT8 -> reader.getUint8(position);
+            case INT16 -> reader.getInt16(position);
+            case UINT16 -> reader.getUint16(position);
+            case INT32 -> reader.getInt32(position);
+            case UINT32 -> reader.getUint32(position);
+            case INT64 -> reader.getInt64(position);
+            case UINT64 -> reader.getUint64(position);
+            case FLOAT32 -> Float.floatToRawIntBits(reader.getFloat32(position));
+            case FLOAT64 -> Double.doubleToRawLongBits(reader.getFloat64(position));
         };
     }
 
-    long[] readArray(ByteBuffer buffer, int position) {
+    long[] readArray(TableReader reader, int position) {
         return switch (this) {
-            case INT8 -> fromBytes(buffer.getInt8Array(position));
-            case UINT8 -> fromShorts(buffer.getUint8Array(position));
-            case INT16 -> fromShorts(buffer.getInt16Array(position));
-            case UINT16 -> fromInts(buffer.getUint16Array(position));
-            case INT32 -> fromInts(buffer.getInt32Array(position));
-            case UINT32 -> buffer.getUint32Array(position);
-            case INT64 -> buffer.getInt64Array(position);
-            case UINT64 -> buffer.getUint64Array(position);
-            case FLOAT32 -> fromFloats(buffer.getFloat32Array(position));
-            case FLOAT64 -> fromDoubles(buffer.getFloat64Array(position));
+            case INT8 -> fromBytes(reader.getInt8Array(position));
+            case UINT8 -> fromShorts(reader.getUint8Array(position));
+            case INT16 -> fromShorts(reader.getInt16Array(position));
+            case UINT16 -> fromInts(reader.getUint16Array(position));
+            case INT32 -> fromInts(reader.getInt32Array(position));
+            case UINT32 -> reader.getUint32Array(position);
+            case INT64 -> reader.getInt64Array(position);
+            case UINT64 -> reader.getUint64Array(position);
+            case FLOAT32 -> fromFloats(reader.getFloat32Array(position));
+            case FLOAT64 -> fromDoubles(reader.getFloat64Array(position));
         };
     }
 
     /** Reads an array through its view getter, with unsigned elements widened as the array getters do */
-    long[] readArrayView(ByteBuffer buffer, int position) {
+    long[] readArrayView(TableReader reader, int position) {
         return switch (this) {
-            case INT8 -> fromBytes(toArray(buffer.getInt8ArrayView(position)));
-            case UINT8 -> lowBits(fromBytes(toArray(buffer.getUint8ArrayView(position))));
-            case INT16 -> fromShorts(toArray(buffer.getInt16ArrayView(position)));
-            case UINT16 -> lowBits(fromShorts(toArray(buffer.getUint16ArrayView(position))));
-            case INT32 -> fromInts(toArray(buffer.getInt32ArrayView(position)));
-            case UINT32 -> lowBits(fromInts(toArray(buffer.getUint32ArrayView(position))));
-            case INT64 -> toArray(buffer.getInt64ArrayView(position));
-            case UINT64 -> toArray(buffer.getUint64ArrayView(position));
-            case FLOAT32 -> fromFloats(toArray(buffer.getFloat32ArrayView(position)));
-            case FLOAT64 -> fromDoubles(toArray(buffer.getFloat64ArrayView(position)));
+            case INT8 -> fromBytes(toArray(reader.getInt8ArrayView(position)));
+            case UINT8 -> lowBits(fromBytes(toArray(reader.getUint8ArrayView(position))));
+            case INT16 -> fromShorts(toArray(reader.getInt16ArrayView(position)));
+            case UINT16 -> lowBits(fromShorts(toArray(reader.getUint16ArrayView(position))));
+            case INT32 -> fromInts(toArray(reader.getInt32ArrayView(position)));
+            case UINT32 -> lowBits(fromInts(toArray(reader.getUint32ArrayView(position))));
+            case INT64 -> toArray(reader.getInt64ArrayView(position));
+            case UINT64 -> toArray(reader.getUint64ArrayView(position));
+            case FLOAT32 -> fromFloats(toArray(reader.getFloat32ArrayView(position)));
+            case FLOAT64 -> fromDoubles(toArray(reader.getFloat64ArrayView(position)));
         };
     }
 

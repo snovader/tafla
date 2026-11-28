@@ -30,12 +30,7 @@ final class Tables {
 
     /** {@return a builder of the table's layout and version, of {@code fields} fields, none set yet} */
     static TableBuilder createBuilder(TableDescription table, int fields) {
-        var layout = table.layout().tableLayout();
-        var version = table.version();
-
-        return version.isPresent()
-            ? new TableBuilder(fields, layout, version.getAsLong())
-            : new TableBuilder(fields, layout);
+        return new TableBuilder(fields, table.writtenLayout());
     }
 
     /** Sets the field on the builder with the setter of its type, building a nested table first */
@@ -44,6 +39,7 @@ final class Tables {
             case ScalarField scalar -> scalar.type().set(builder, scalar.value());
             case BoolField bool -> builder.setUint8(bool.uint8());
             case ArrayField array -> array.type().setArray(builder, array.values());
+            case BoolArrayField array -> builder.setBoolArray(array.values());
             case StringField string -> builder.setString(string.value());
             case StructField struct -> builder.setStruct(StructBytes.pack(struct.types(), List.of(struct.values())));
             case StructArrayField array -> builder.setStructArray(
@@ -53,6 +49,7 @@ final class Tables {
             );
             case TableField table -> setTable(builder, table);
             case VectorField vector -> setVector(builder, vector.items());
+            case StringVectorField vector -> builder.setStringVector(vector.values());
         }
     }
 
@@ -105,12 +102,7 @@ final class Tables {
     /** {@return a sizer of the table's layout and version, with all its fields added} */
     static TableSizer size(TableDescription table) {
         var fields = table.fields().size();
-        var layout = table.layout().tableLayout();
-        var version = table.version();
-
-        var sizer = version.isPresent()
-            ? new TableSizer(fields, layout, version.getAsLong())
-            : new TableSizer(fields, layout);
+        var sizer = new TableSizer(fields, table.writtenLayout());
         for (var field : table.fields()) {
             addField(sizer, field);
         }
@@ -179,6 +171,7 @@ final class Tables {
             case ScalarField scalar -> scalar.type().add(sizer);
             case BoolField ignored -> sizer.addUint8();
             case ArrayField array -> array.type().addArray(sizer, array.values().length);
+            case BoolArrayField array -> sizer.addBoolArray(array.values().length);
             case StringField string -> sizer.addString(string.value());
             case StructField struct -> sizer.addStruct(StructBytes.size(struct.types()));
             case StructArrayField array -> sizer.addStructArray(
@@ -196,6 +189,7 @@ final class Tables {
                     addNested(sizer, item.table());
                 }
             }
+            case StringVectorField vector -> sizer.addStringVector(vector.values());
         }
     }
 
@@ -220,6 +214,7 @@ final class Tables {
             case ScalarField scalar -> scalar.type().set(writer, index, scalar.value());
             case BoolField bool -> writer.setUint8(index, bool.uint8());
             case ArrayField array -> array.type().setArray(writer, index, array.values());
+            case BoolArrayField array -> writer.setBoolArray(index, array.values());
             case StringField string -> writer.setString(index, string.value());
             case StructField struct -> writer.setStruct(index, StructBytes.pack(struct.types(), List.of(struct.values())));
             case StructArrayField array -> writer.setStructArray(
@@ -233,6 +228,7 @@ final class Tables {
                 writeNested(writer, table.table(), indices);
             }
             case VectorField vector -> writeVector(writer, index, vector.items(), indices);
+            case StringVectorField vector -> writer.setStringVector(index, vector.values());
         }
     }
 
@@ -283,7 +279,7 @@ final class Tables {
     /**
      * {@return the alignment of an array's elements from the start of its table}: the size of a
      * scalar array's elements, or of the largest scalar of an array's structs, and nothing for a
-     * field of any other type
+     * field of any other type, such as an array of bools, which isn't padded
      */
     static OptionalInt arrayAlignment(FieldDescription field) {
         return switch (field) {

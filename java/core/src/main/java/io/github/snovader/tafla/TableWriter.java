@@ -62,7 +62,6 @@ public final class TableWriter {
         int length,
         int fields,
         TableLayout layout,
-        long version,
         List<TableSizer.EncodedString> encodedStrings
     ) {
         this.bytes = bytes;
@@ -80,7 +79,7 @@ public final class TableWriter {
         }
 
         if (layout.versioned()) {
-            setLength(slot, version);
+            setLength(slot, layout.headerVersion());
         }
     }
 
@@ -259,6 +258,16 @@ public final class TableWriter {
     }
 
     /**
+     * Writes an array of bools as a {@code uint8} array, 1 for each true value and 0 for each false
+     * one
+     */
+    public void setBoolArray(int index, boolean[] values) {
+        startArray(index, values.length, Byte.BYTES);
+        Elements.setBool(bytes, position, values);
+        position += values.length * Byte.BYTES;
+    }
+
+    /**
      * Writes {@code string} as UTF-8, with lone surrogates replaced by U+FFFD. A long string is
      * copied from the bytes that the sizer encoded, if it's the string that the sizer added.
      */
@@ -283,6 +292,33 @@ public final class TableWriter {
         System.arraycopy(utf8, 0, bytes, position + offsetSize, utf8.length);
         setLength(position, utf8.length);
         position += offsetSize + utf8.length;
+    }
+
+    /**
+     * Writes a vector of strings: its count, the end of each string, counted from the vector's
+     * position, and then each string as UTF-8, with lone surrogates replaced by U+FFFD, one after
+     * another, as {@link #setVector} writes a vector whose items are the strings' bytes. A long
+     * string is copied from the bytes that the sizer encoded, as {@link #setString} copies one, if
+     * it's the string that the sizer added.
+     */
+    public void setStringVector(int index, List<String> strings) {
+        var vector = setVector(index, strings.size());
+
+        var item = 0;
+        for (var string : strings) {
+            if (string.length() < Utf8.SHORT_LENGTH) {
+                position += Utf8.encodeInto(string, bytes, position);
+            } else {
+                writeUtf8(encodingOf(string));
+            }
+            setItemEnd(vector, item++);
+        }
+    }
+
+    /** Copies a string's UTF-8 bytes to the position, without a count, as a string of a vector */
+    private void writeUtf8(byte[] utf8) {
+        System.arraycopy(utf8, 0, bytes, position, utf8.length);
+        position += utf8.length;
     }
 
     /**
@@ -320,7 +356,7 @@ public final class TableWriter {
      *     number of structs
      */
     static int structCount(int byteLength, int size) {
-        ByteBuffer.assertStructSize(size);
+        TableReader.assertStructSize(size);
         if (byteLength % size != 0) {
             throw new IllegalArgumentException(
                 String.format("%d bytes aren't a whole number of %d-byte structs", byteLength, size)
