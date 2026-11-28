@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from functools import partial
-from typing import ClassVar, Literal, cast, overload, override
+from operator import index
+from typing import ClassVar, override
 
 from .types import ElementSize, OffsetSize, OffsetType
 
@@ -13,32 +14,47 @@ OFFSET_SIZES: dict[OffsetType, OffsetSize] = {
 
 # The offset type of each offset size, which errors name. TableWriter looks it
 # up when it raises, since storing the offset type made its constructor 22 ns,
-# or 6%, slower; TableBuilder and ByteBuffer keep their layout.
+# or 6%, slower; TableBuilder and TableReader keep their layout.
 OFFSET_TYPES: dict[OffsetSize, OffsetType] = {
     size: offset_type for offset_type, size in OFFSET_SIZES.items()
 }
 
 
-class TableLayout[Versioned: bool = bool]:
+# The longest table that offsets and lengths of each offset size address
+MAX_LENGTHS: dict[OffsetSize, int] = {
+    1: 0xFF,
+    2: 0xFFFF,
+    4: 0xFFFF_FFFF,
+}
+
+
+class TableLayout:
     """The header and offset type of a table. A format creates its layout once
     and passes it to both the ``TableBuilder`` that writes the table and the
-    ``ByteBuffer`` that reads it, so that the two can't disagree. Nested tables
+    ``TableReader`` that reads it, so that the two can't disagree. Nested tables
     use ``TableLayout.DEFAULT``.
 
     - ``sized``: whether the header starts with the table's total byte length.
-    - ``versioned``: whether the header has a slot for a version, after the
-      length when ``sized``. Readers can check it before reading any field.
+    - ``version``: the version that the header holds, after the length when
+      ``sized``, which gives it a slot for one: an integer that fits in the
+      offset type, or ``None``, the default, for a header without one. Writers
+      write it, and readers can check the one that a table holds, with
+      ``TableReader.get_version()``, before reading any field.
     - ``offset_type``: the offset type, the unsigned integer type of the header
       slots, field offsets, counts, lengths and item ends, which limits the
       table's length: ``"uint8"``, of offset size 1, for up to 255 bytes,
       ``"uint16"``, of 2, for 65,535 and ``"uint32"``, of 4, the default, for
       4 GiB.
 
-    ``Versioned`` lets type checkers require a version where a versioned table
-    is built.
+    A layout with a version is the layout of that version of the format, and
+    its readers read tables of any version, so that an application can read a
+    table's version before it chooses how to read the fields. The layouts of a
+    format's versions should differ in the version only, as ``with_version()``
+    makes them.
 
     Raises ``ValueError`` if ``offset_type`` isn't ``"uint8"``, ``"uint16"`` or
-    ``"uint32"``.
+    ``"uint32"``, or ``version`` doesn't fit in it, and ``TypeError`` if
+    ``version`` isn't an integer.
     """
 
     __slots__ = [
@@ -46,46 +62,17 @@ class TableLayout[Versioned: bool = bool]:
         "__offset_size",
         "__offset_type",
         "__sized",
-        "__versioned",
+        "__version",
     ]
 
-    DEFAULT: ClassVar[TableLayout[Literal[False]]]
+    DEFAULT: ClassVar[TableLayout]
     """No header slots, and offsets and lengths of the offset type ``uint32``"""
-
-    __versioned: Versioned
-
-    @overload
-    def __init__(
-        self: TableLayout[Literal[False]],
-        *,
-        sized: bool = False,
-        versioned: Literal[False] = False,
-        offset_type: OffsetType = "uint32",
-    ) -> None: ...
-
-    @overload
-    def __init__(
-        self: TableLayout[Literal[True]],
-        *,
-        sized: bool = False,
-        versioned: Literal[True],
-        offset_type: OffsetType = "uint32",
-    ) -> None: ...
-
-    @overload
-    def __init__(
-        self: TableLayout[bool],
-        *,
-        sized: bool = False,
-        versioned: bool,
-        offset_type: OffsetType = "uint32",
-    ) -> None: ...
 
     def __init__(
         self,
         *,
         sized: bool = False,
-        versioned: bool = False,
+        version: int | None = None,
         offset_type: OffsetType = "uint32",
     ) -> None:
         # The isinstance() check keeps an unhashable value from raising
@@ -96,11 +83,20 @@ class TableLayout[Versioned: bool = bool]:
         if offset_size is None:
             raise ValueError(f"{offset_type!r} isn't an offset type")
 
+        if version is not None:
+            # An int, or an object with __index__(), as the native class and
+            # struct take one: a float would pass the comparison
+            version = index(version)
+            if not 0 <= version <= MAX_LENGTHS[offset_size]:
+                raise ValueError(
+                    f"Version {version} doesn't fit in a {offset_type} slot"
+                )
+
         self.__sized = sized
-        self.__versioned = cast(Versioned, versioned)
+        self.__version = version
         self.__offset_type: OffsetType = offset_type
         self.__offset_size: OffsetSize = offset_size
-        header_slots = (1 if sized else 0) + (1 if versioned else 0)
+        header_slots = (1 if sized else 0) + (0 if version is None else 1)
         self.__header_size = header_slots * offset_size
 
     @override
@@ -110,7 +106,7 @@ class TableLayout[Versioned: bool = bool]:
         arguments = partial(
             TableLayout,
             sized=self.__sized,
-            versioned=self.__versioned,
+            version=self.__version,
             offset_type=self.__offset_type,
         )
         return arguments, ()
@@ -118,15 +114,33 @@ class TableLayout[Versioned: bool = bool]:
     @override
     def __repr__(self) -> str:
         return (
-            f"TableLayout(sized={self.__sized}, versioned={self.__versioned}, "
+            f"TableLayout(sized={self.__sized}, version={self.__version}, "
             f"offset_type={self.__offset_type!r})"
         )
 
     def sized(self) -> bool:
         return self.__sized
 
-    def versioned(self) -> Versioned:
-        return self.__versioned
+    def versioned(self) -> bool:
+        """Whether the header has a slot for a version"""
+        return self.__version is not None
+
+    def version(self) -> int | None:
+        """The version that writers write to the header, when it has a slot"""
+        return self.__version
+
+    def with_version(self, version: int) -> TableLayout:
+        """Returns the layout with ``version`` as its version, for another
+        version of the same format. A layout without a version gains the slot
+        for one, so its header is a slot longer.
+
+        Raises ``TypeError`` if ``version`` isn't an integer, and ``ValueError``
+        if it doesn't fit in the offset type.
+        """
+        # None, which the constructor takes for no version, isn't a version
+        return TableLayout(
+            sized=self.__sized, version=index(version), offset_type=self.__offset_type
+        )
 
     def offset_type(self) -> OffsetType:
         return self.__offset_type
@@ -143,38 +157,15 @@ class TableLayout[Versioned: bool = bool]:
 TableLayout.DEFAULT = TableLayout()
 
 
-# The longest table that offsets and lengths of each offset size address
-MAX_LENGTHS: dict[OffsetSize, int] = {
-    1: 0xFF,
-    2: 0xFFFF,
-    4: 0xFFFF_FFFF,
-}
-
-
-def header_length(fields: int, layout: TableLayout, version: int | None) -> int:
+def header_length(fields: int, layout: TableLayout) -> int:
     """Returns the byte length of the header of a table of ``fields`` fields in
-    ``layout``, whose writer puts ``version`` in the header.
+    ``layout``.
 
-    Raises ``TypeError`` if ``version`` is given for a layout without a version
-    slot, or missing for one with it. Raises ``ValueError`` if ``version``
-    doesn't fit in the layout's offset type, or the header alone is longer than
-    the layout addresses.
+    Raises ``ValueError`` if the header alone is longer than the layout
+    addresses.
     """
     size = layout.offset_size()
     max_length = MAX_LENGTHS[size]
-    versioned = layout.versioned()
-
-    if versioned != (version is not None):
-        raise TypeError(
-            "A versioned layout needs a version"
-            if versioned
-            else "The layout has no version slot"
-        )
-
-    if version is not None and not 0 <= version <= max_length:
-        raise ValueError(
-            f"Version {version} doesn't fit in a {layout.offset_type()} slot"
-        )
 
     length = layout.header_size() + fields * size
     if length > max_length:

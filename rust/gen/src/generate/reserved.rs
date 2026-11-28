@@ -17,7 +17,6 @@ const TYPESCRIPT: &[&str] = &[
     "ArrayLike",
     "BigInt64Array",
     "BigUint64Array",
-    "ByteBuffer",
     "DecodeError",
     "Float32Array",
     "Float64Array",
@@ -26,8 +25,10 @@ const TYPESCRIPT: &[&str] = &[
     "Int8Array",
     "Number",
     "RangeError",
+    "StringVector",
     "StructWriter",
     "TableLayout",
+    "TableReader",
     "TableSizer",
     "TableWriter",
     "Uint16Array",
@@ -41,7 +42,6 @@ const TYPESCRIPT: &[&str] = &[
 const PYTHON: &[&str] = &[
     "Buffer",
     "BufferError",
-    "ByteBuffer",
     "ClassVar",
     "DecodeError",
     "False",
@@ -56,8 +56,10 @@ const PYTHON: &[&str] = &[
     "Protocol",
     "Self",
     "Sequence",
+    "StringVector",
     "Struct",
     "TableLayout",
+    "TableReader",
     "TableWriter",
     "True",
     "TypeError",
@@ -89,8 +91,10 @@ const JAVA: &[&str] = &[
     "RandomAccess",
     "Short",
     "String",
+    "StringVector",
     "SuppressWarnings",
     "TableLayout",
+    "TableReader",
     "TableSizer",
     "TableWriter",
     "VarHandle",
@@ -103,19 +107,25 @@ const RUST: &[&str] = &[
     "Alignment",
     "ArrayView",
     "BuildError",
-    "ByteBuffer",
     "DecodeError",
     "ExactSizeIterator",
     "OffsetType",
     "Option",
     "Result",
     "Self",
+    "StringVector",
     "TableLayout",
+    "TableReader",
     "TableSizer",
     "TableWriter",
     "Vec",
     "Vector",
 ];
+
+/// The variants of the prelude that Rust makes and matches, which an enum of
+/// the same name would hide, since its tuple struct is a function too, as
+/// the struct of named fields of a message, table or struct isn't
+const RUST_ENUM: &[&str] = &["Err", "None", "Ok", "Some"];
 
 /// The macros of the C standard library that a name can take, which a header
 /// that C++'s generated code includes may define. C++ names the runtime and
@@ -126,21 +136,104 @@ const CPP: &[&str] = &[
     "SIGILL", "SIGINT", "SIGSEGV", "SIGTERM",
 ];
 
+/// The names that Swift imports, the runtime's module and its types, the
+/// types of the standard library that it names, which a struct of the same
+/// name would hide, the protocols that its types conform to or suppress,
+/// `Element`, which is `Array`'s own in the extension that reads an array of
+/// structs, whatever a schema declares, and `Any` and `Self`, keywords. It
+/// names `Swift.Range` in full instead, since a schema may well declare
+/// `Range`, and so `Swift`, the standard library's module.
+const SWIFT: &[&str] = &[
+    "Alignment",
+    "Any",
+    "Array",
+    "ArrayView",
+    "Bool",
+    "BuildError",
+    "DecodeError",
+    "Double",
+    "Element",
+    "Escapable",
+    "Float",
+    "Hashable",
+    "Int",
+    "Int16",
+    "Int32",
+    "Int64",
+    "Int8",
+    "RawRepresentable",
+    "RawSpan",
+    "Self",
+    "Sendable",
+    "String",
+    "StringVector",
+    "Swift",
+    "TableLayout",
+    "TableReader",
+    "TableSizer",
+    "TableWriter",
+    "Tafla",
+    "UInt16",
+    "UInt32",
+    "UInt64",
+    "UInt8",
+    "Vector",
+];
+
+/// The members that C#'s generated types declare beside their fields, which
+/// a type of the same name can't declare: a struct's `Size`, `Write()`,
+/// `Serialize()` and `SerializeArray()` and the members that a record
+/// declares, `Equals()`, `GetHashCode()`, `ToString()` and `PrintMembers()`,
+/// and a versioned message's `FormatVersion` and `VersionOf()`, `To`, whose
+/// array's view, `ToArray`, declares `ToArray()`, and `Enumerator`, which each
+/// view of a vector or an array of structs nests, and which would hide a
+/// declaration of that name within it. C# names the runtime and the standard
+/// library in full, from `global::`, so nothing else would clash.
+const CSHARP: &[&str] = &[
+    "Enumerator",
+    "Equals",
+    "FormatVersion",
+    "GetHashCode",
+    "PrintMembers",
+    "Serialize",
+    "SerializeArray",
+    "Size",
+    "To",
+    "ToString",
+    "VersionOf",
+    "Write",
+];
+
 /// Each target's names, after the names of the targets that use them
-const RESERVED: [(&[&str], &[&str]); 5] = [
+const RESERVED: [(&[&str], &[&str]); 7] = [
     (&["TypeScript", "JavaScript"], TYPESCRIPT),
     (&["Python"], PYTHON),
     (&["Java"], JAVA),
     (&["Rust"], RUST),
     (&["C++"], CPP),
+    (&["Swift"], SWIFT),
+    (&["C#"], CSHARP),
 ];
 
-/// The targets whose generated code uses `name`, which a declaration can't
-/// take, in the order that the README lists them
-pub fn targets_using(name: &str) -> Vec<&'static str> {
+/// What a schema declares by a name, which decides the names that it can't
+/// take
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Declared {
+    /// A message, table or struct
+    Definition,
+    Enum,
+}
+
+/// The targets whose generated code uses `name`, which a declaration of
+/// `declared` can't take, in the order that the README lists them, and then
+/// Rust for a name that only an enum can't take
+pub fn targets_using(name: &str, declared: Declared) -> Vec<&'static str> {
+    let enum_names = (declared == Declared::Enum).then_some((&["Rust"][..], RUST_ENUM));
+
     RESERVED
-        .iter()
+        .into_iter()
+        .chain(enum_names)
         .filter(|(_, names)| names.contains(&name))
-        .flat_map(|&(targets, _)| targets.iter().copied())
+        .flat_map(|(targets, _)| targets.iter().copied())
         .collect()
 }

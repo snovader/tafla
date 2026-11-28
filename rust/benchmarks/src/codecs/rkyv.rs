@@ -4,6 +4,7 @@ use rkyv::rancor;
 use rkyv::util::AlignedVec;
 
 use crate::codec::{Codec, DocumentWorkload, Error, Workload};
+use crate::string_workloads::{ArchivedStrings, Strings, StringsShape};
 use crate::workloads::{
     ArchivedDocument, ArchivedList, ArchivedRecord, ArchivedSample, Document, DocumentShape, Item,
     List, ListShape, Record, RecordShape, Sample, SampleShape, StructsShape, sum_column,
@@ -21,6 +22,9 @@ use crate::workloads::{
 ///
 /// rkyv archives a `Vec` of a struct inline, as an array of structs, so the
 /// vector of nested tables and the array of structs are the same archive.
+///
+/// The strings comparison's table archives as an array of 16 strings, whose
+/// UTF-8 bytecheck checks with simdutf8 in `access()`.
 #[derive(Clone, Copy, Debug)]
 pub struct Rkyv;
 
@@ -114,6 +118,25 @@ impl Workload<SampleShape> for Rkyv {
             key: sample.key.to_native(),
             a: sample.a.to_native(),
             b: sample.b.to_native(),
+        })
+    }
+}
+
+impl Workload<StringsShape> for Rkyv {
+    type Bytes = AlignedVec;
+
+    fn serialize(self, input: &Strings<'_>) -> Result<AlignedVec, Error> {
+        Ok(rkyv::to_bytes::<rancor::Error>(input)?)
+    }
+
+    fn deserialize(self, bytes: &[u8]) -> Result<Strings<'_>, Error> {
+        let strings = rkyv::access::<ArchivedStrings, rancor::Error>(bytes)?;
+
+        Ok(Strings {
+            items: strings
+                .items
+                .each_ref()
+                .map(|string| Cow::Borrowed(string.as_str())),
         })
     }
 }

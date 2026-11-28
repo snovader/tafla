@@ -1,0 +1,5 @@
+error: expected `:` and the enum's integer type, found `{`
+ --> enum_without_type.tafla:1:12
+  |
+1 | enum Color {
+  |            ^

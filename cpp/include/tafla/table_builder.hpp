@@ -22,6 +22,7 @@
 #include <variant>
 #include <vector>
 
+#include "bools.hpp"
 #include "bytes.hpp"
 #include "element.hpp"
 #include "errors.hpp"
@@ -359,15 +360,15 @@ private:
 
 }  // namespace detail
 
-/// Builds a table, which a `ByteBuffer` reads back.
+/// Builds a table, which a `TableReader` reads back.
 ///
 /// A table is a header with one offset per field, after the table's total
 /// length and version when its layout has them, followed by the fields in
 /// the order they're set. Arrays, strings and vectors start with their
 /// count, and a vector then holds the end of each item. Arrays of scalars
 /// and of structs are padded so their elements are aligned from the start of
-/// the table. Fields are read back by index with `ByteBuffer::root_offset()`,
-/// or `ByteBuffer::field_offset()` for a table nested in another.
+/// the table. Fields are read back by index with `TableReader::root_offset()`,
+/// or `TableReader::field_offset()` for a table nested in another.
 ///
 /// The builder writes the table forward as its fields are set: the header
 /// when it's started, and then each field's bytes after the last, and its
@@ -403,26 +404,17 @@ class TableBuilder {
 public:
     /// Starts a table of `fields` fields in `layout`, which its readers must
     /// use too, writing its header: an offset for each field, and the slots
-    /// of the layout's length and version. Nested tables use the default
-    /// layout.
+    /// of the layout's length and version, with the layout's version when it
+    /// has one. Nested tables use the default layout.
     ///
-    /// Throws a `BuildError` if the header alone is too long for the
-    /// layout's offset type, and `std::bad_alloc` if a header longer than the
-    /// 128 bytes that a builder holds within itself can't be allocated.
-    TableBuilder(std::size_t fields, TableLayout<false> layout)
-        : TableBuilder(fields, detail::header_length(fields, layout.is_sized(), false, layout.offset_type()),
-                       layout.is_sized(), std::nullopt, layout.offset_type()) {}
-
-    /// Starts a table of `fields` fields in `layout`, with `version` in its
-    /// header. Readers can check it with `ByteBuffer::version()` before
-    /// reading any field.
-    ///
-    /// Throws a `BuildError` if `version` doesn't fit in the layout's offset
-    /// type, or the header alone is too long for it, and `std::bad_alloc` as
-    /// the constructor above does.
-    TableBuilder(std::size_t fields, TableLayout<true> layout, std::uint32_t version)
-        : TableBuilder(fields, versioned_header(fields, layout, version), layout.is_sized(), version,
-                       layout.offset_type()) {}
+    /// Throws a `BuildError` if the layout's version doesn't fit in its
+    /// offset type, or the header alone is too long for it, and
+    /// `std::bad_alloc` if a header longer than the 128 bytes that a builder
+    /// holds within itself can't be allocated.
+    template <bool Versioned>
+    TableBuilder(std::size_t fields, TableLayout<Versioned> layout)
+        : TableBuilder(fields, detail::checked_header(fields, layout), layout.is_sized(),
+                       detail::header_version(layout), layout.offset_type()) {}
 
     /// Moves `other`'s bytes and what it owns, and leaves it as a builder
     /// that was just started, with its layout and number of fields, which
@@ -621,6 +613,25 @@ public:
     template <detail::Temporary Values>
     void set_float64_array(Values&& values) = delete;
 
+    /// Sets an array field of bools, written as a `uint8` array of 1 for each
+    /// true value and 0 for each false one, from a span that the builder
+    /// borrows or `Bools` that it owns, as those that
+    /// `TableReader::get_bool_array()` reads.
+    ///
+    /// Throws a `BuildError` as the scalars' setters do.
+    void set_bool_array(std::span<const bool> values) {
+        set_array(values);
+    }
+
+    void set_bool_array(Bools&& values) {
+        const auto padding = check_array(values.size(), Alignment::one);
+        const auto kept = keep(std::move(values));
+        put_counted(padding, kept.value.size(), kept.value.data(), kept.value.size(), Alignment::one, kept.owner);
+    }
+
+    template <detail::Temporary Values>
+    void set_bool_array(Values&& values) = delete;
+
     /// Sets a string field, from its UTF-8 bytes, which the builder borrows
     /// from a view or owns of a string.
     ///
@@ -682,8 +693,43 @@ public:
     template <detail::Temporary Range>
     void set_struct_array(Range&& bytes, std::size_t size, Alignment alignment) = delete;
 
+    /// Sets a vector of strings, from their UTF-8 bytes, after the end of
+    /// each, which lets readers find any string without reading the others.
+    /// It takes no more bytes for each string than its end, where a vector of
+    /// tables of one string takes each table's offset and the string's count
+    /// too. The builder borrows the strings that a span's views view, or
+    /// takes the strings of a vector, as `set_string()` borrows or takes one:
+    /// strings of 64 bytes or more are kept, and shorter ones copied. A
+    /// vector holding no string that long is copied, and left as it was.
+    ///
+    /// Throws a `BuildError` as the scalars' setters do.
+    void set_string_vector(std::span<const std::string_view> strings) {
+        check_field(detail::string_vector_bytes(strings, width()));
+        put_string_vector(strings, string_vector_room(strings), nullptr);
+    }
+
+    void set_string_vector(std::vector<std::string>&& strings) {
+        check_field(detail::string_vector_bytes(strings, width()));
+        const auto room = string_vector_room(strings);
+        if (room.segments == 0) {
+            put_string_vector(strings, room, nullptr);
+            return;
+        }
+
+        // Moving the vector moves none of its strings, which the segments
+        // point into
+        reserve_owned(1);
+        auto owned = std::make_shared<detail::OwnedValue<std::vector<std::string>>>(std::move(strings));
+        const auto& kept = owned->value;
+        owned_.push_back(std::move(owned));
+        put_string_vector(kept, room, &owned_.back());
+    }
+
+    template <detail::Temporary Strings>
+    void set_string_vector(Strings&& strings) = delete;
+
     /// Embeds a table, from its builder or its bytes, without a length
-    /// prefix. Readers find its fields with `ByteBuffer::field_offset()` from
+    /// prefix. Readers find its fields with `TableReader::field_offset()` from
     /// the field's position, which reads offsets of the parent's offset type,
     /// so the table should have no header and the parent's offset type:
     /// that's the default layout in a parent of `uint32` offsets.
@@ -747,9 +793,10 @@ public:
     /// `set_vector()` doesn't pad them.
     ///
     /// Throws a `BuildError` if the vector's count makes the table too long
-    /// before any item is written, if `fill` leaves an item's fields unset,
-    /// or as the setters do, and passes on what `fill` throws, leaving the
-    /// builder as it was either way.
+    /// before any item is written, with the length that its count and its
+    /// items' ends make it, if `fill` leaves an item's fields unset, or as
+    /// the setters do, and passes on what `fill` throws, leaving the builder
+    /// as it was either way.
     template <std::invocable<std::size_t, Item&> Fill>
     void set_vector(std::size_t count, std::size_t fields, Fill&& fill);
 
@@ -816,11 +863,6 @@ private:
           sized_(sized),
           offset_type_(offset_type) {
         write_header(header);
-    }
-
-    static std::uint32_t versioned_header(std::size_t fields, TableLayout<true> layout, std::uint32_t version) {
-        detail::check_version(version, layout.offset_type());
-        return detail::header_length(fields, layout.is_sized(), true, layout.offset_type());
     }
 
     /// The offset size, the width of offsets, counts and lengths
@@ -1169,6 +1211,54 @@ private:
 
     /// Adds the room that appending `table` needs to `room`
     static void add_room(Room& room, const NestedTable& table) noexcept;
+
+    /// The bytes and segments that a vector of `strings` adds: its count,
+    /// its strings' ends and the strings shorter than a segment, which the
+    /// setter checked fit its table
+    template <class Strings>
+    [[nodiscard]] Room string_vector_room(const Strings& strings) const noexcept {
+        Room room;
+        room.bytes = (strings.size() + 1) * width();
+        for (const auto& string : strings) {
+            if (is_segment(string.size())) {
+                ++room.segments;
+            } else {
+                room.bytes += string.size();
+            }
+        }
+        return room;
+    }
+
+    /// Writes a field of a vector of `strings`: its count, the end of each
+    /// string, counted from the vector's position, and the strings, each
+    /// copied or kept as `put_counted()` copies or keeps a string. `room` is
+    /// what `string_vector_room()` counted, which is made first, so that
+    /// nothing after it throws; if that fails, the owned value of the field
+    /// is removed.
+    template <class Strings>
+    void put_string_vector(const Strings& strings, const Room& room, const Owner* owner) {
+        reserve_or_forget(owner, [&] {
+            segments_.reserve_more(room.segments);
+            bytes_.reserve_more(room.bytes);
+        });
+
+        const auto vector = position();
+        const auto ends = bytes_.size() + width();
+        write_offset(vector);
+        detail::store_slot(bytes_.extend((strings.size() + 1) * width()), strings.size(), offset_type_);
+
+        std::size_t end = ends;
+        for (const auto& string : strings) {
+            if (is_segment(string.size())) {
+                add_segment(string.data(), string.size());
+            } else {
+                detail::copy(bytes_.extend(string.size()), string.data(), string.size());
+            }
+            detail::store_slot(bytes_.data() + end, static_cast<std::size_t>(position() - vector), offset_type_);
+            end += width();
+        }
+        commit(Alignment::one);
+    }
 
     void reserve(const Room& room) {
         segments_.reserve_more(room.segments);
@@ -1529,6 +1619,17 @@ public:
     template <detail::Temporary Values>
     void set_float64_array(Values&& values) = delete;
 
+    void set_bool_array(std::span<const bool> values) {
+        builder_->set_bool_array(values);
+    }
+
+    void set_bool_array(Bools&& values) {
+        builder_->set_bool_array(std::move(values));
+    }
+
+    template <detail::Temporary Values>
+    void set_bool_array(Values&& values) = delete;
+
     void set_string(std::string_view string) {
         builder_->set_string(string);
     }
@@ -1565,6 +1666,17 @@ public:
 
     template <detail::Temporary Range>
     void set_struct_array(Range&& bytes, std::size_t size, Alignment alignment) = delete;
+
+    void set_string_vector(std::span<const std::string_view> strings) {
+        builder_->set_string_vector(strings);
+    }
+
+    void set_string_vector(std::vector<std::string>&& strings) {
+        builder_->set_string_vector(std::move(strings));
+    }
+
+    template <detail::Temporary Strings>
+    void set_string_vector(Strings&& strings) = delete;
 
     void set_table(NestedTable table) {
         builder_->set_table(std::move(table));

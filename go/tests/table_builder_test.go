@@ -135,13 +135,13 @@ func TestATableNestedFromItsBuilderWritesTheSameParentAsFromItsBytes(t *testing.
 			t.Fatalf("wrote % x\nfrom the builder and % x\nfrom bytes", fromBuilder, fromBytes)
 		}
 
-		buffer := tafla.NewByteBuffer(fromBytes, layout)
-		position := must(buffer.RootOffset(1))
+		reader := tafla.NewTableReader(fromBytes, layout)
+		position := must(reader.RootOffset(1))
 		if position%8 != 0 || !bytes.Equal(fromBytes[position:position+len(built)], built) {
 			t.Fatalf("the table at %d holds % x", position, fromBytes[position:])
 		}
 
-		vector := must(buffer.GetVector(must(buffer.RootOffset(2))))
+		vector := must(reader.GetVector(must(reader.RootOffset(2))))
 		for item, err := range vector.Items() {
 			if err != nil || !bytes.Equal(item, built) {
 				t.Fatalf("read % x, %v", item, err)
@@ -153,7 +153,9 @@ func TestATableNestedFromItsBuilderWritesTheSameParentAsFromItsBytes(t *testing.
 // Tables nested from builders and recorded in place, with SetTableFunc and
 // SetVectorFunc, write the bytes that their builders write, and fail as they
 // fail, for tables of any offset type and of short ones, whose limits the
-// fields reach. Most tables nest only tables that are recorded in place, and
+// fields reach. A vector whose count and item ends alone make its table too
+// long fails before its items, where its builders fail for them or count
+// them too. Most tables nest only tables that are recorded in place, and
 // others any tables, of which those are recorded in place among the others.
 func TestTablesRecordedInPlaceWriteWhatTheirBuildersWrite(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
@@ -164,10 +166,29 @@ func TestTablesRecordedInPlaceWriteWhatTheirBuildersWrite(t *testing.T) {
 
 		inPlace, inPlaceErr := table.BytesInPlace()
 		fromBuilders, err := table.Bytes()
-		if !bytes.Equal(inPlace, fromBuilders) || !equalErrors(inPlaceErr, err) {
+		sameFailure := equalErrors(inPlaceErr, err) || failsBeforeItsItems(inPlaceErr, err)
+		if !bytes.Equal(inPlace, fromBuilders) || !sameFailure {
 			t.Fatalf("wrote % x, %v\nin place and % x, %v\nfrom builders", inPlace, inPlaceErr, fromBuilders, err)
 		}
 	})
+}
+
+// failsBeforeItsItems reports whether a table recorded in place failed for a
+// vector whose count and item ends alone make its table too long, which fails
+// before its items are recorded: with that length, where its builders failed
+// for the vector with its items too, which is longer, or for an item of it
+// first
+func failsBeforeItsItems(inPlace, fromBuilders error) bool {
+	var early, late *tafla.BuildError
+	if !errors.As(inPlace, &early) || !errors.As(fromBuilders, &late) {
+		return false
+	}
+	if early.Kind != tafla.TooLong || late.Kind != tafla.TooLong {
+		return false
+	}
+
+	sameField := early.Index == late.Index && early.OffsetType == late.OffsetType
+	return !sameField || early.Length < late.Length
 }
 
 // recordedInPlace returns a table, of tables nested from builders that are
@@ -336,6 +357,25 @@ func TestRejectsAVectorTooLongForItsOffsetType(t *testing.T) {
 	}
 }
 
+// A vector recorded in place whose count and item ends alone make its table
+// too long reports that length, since its items aren't recorded, where a
+// vector of their builders reports the length with its items
+func TestAVectorTooLongBeforeItsItemsReportsItsLengthWithoutThem(t *testing.T) {
+	layout := tafla.TableLayout{}.WithOffsetType(tafla.Uint8)
+	builder := must(tafla.NewTableBuilder(2, layout))
+	check(t, builder.SetUint8Array(make([]byte, 249)))
+	item := must(tafla.NewTableBuilder(1, layout))
+	check(t, item.SetUint8(1))
+
+	// 2 offsets, a count and 249 bytes, and a vector of a count and 3 ends,
+	// and of 3 items of an offset and a byte
+	err := builder.SetVectorFunc(3, 1, func(_ int, item tafla.Item) error { return item.SetUint8(1) })
+	expectError(t, err, &tafla.BuildError{Kind: tafla.TooLong, Index: 1, Length: 256, OffsetType: tafla.Uint8})
+
+	err = builder.SetVector(item, item, item)
+	expectError(t, err, &tafla.BuildError{Kind: tafla.TooLong, Index: 1, Length: 262, OffsetType: tafla.Uint8})
+}
+
 func TestPanicsForANegativeCountOrNumberOfFields(t *testing.T) {
 	builder := must(tafla.NewTableBuilder(1, tafla.TableLayout{}))
 	expectPanic(t, "a table of -1 fields", func() { _ = builder.SetTableFunc(-1, nil) })
@@ -404,10 +444,15 @@ const (
 	longNestedBytes
 	// A table of bytes, nested from its builder
 	longNestedBuilder
+	// A vector of one string
+	longStrings
+	// A vector of empty strings, each an end of its own
+	longEmptyStrings
 )
 
 var longFields = []longField{
 	longBytes, longFloats, longString, longStructs, longEmptyItems, longItem, longNestedBytes, longNestedBuilder,
+	longStrings, longEmptyStrings,
 }
 
 func (l longField) field(units int) tables.Field {
@@ -436,6 +481,10 @@ func (l longField) field(units int) tables.Field {
 		return tables.Vector{nestedOf(tables.FromBuilder, bytesTable())}
 	case longNestedBytes:
 		return tables.TableField{Nested: nestedOf(tables.FromBytes, bytesTable())}
+	case longStrings:
+		return tables.StringVector{strings.Repeat("a", units)}
+	case longEmptyStrings:
+		return make(tables.StringVector, units)
 	default:
 		return tables.TableField{Nested: nestedOf(tables.FromBuilder, bytesTable())}
 	}
@@ -449,7 +498,7 @@ func (l longField) unit(width int) int {
 		return 8
 	case longStructs:
 		return 3
-	case longEmptyItems:
+	case longEmptyItems, longEmptyStrings:
 		return width
 	default:
 		return 1
@@ -500,8 +549,8 @@ func TestRejectsAFieldThatMakesTheTableTooLong(t *testing.T) {
 		check(t, fits.SetUint8(7))
 
 		table := must(fits.Bytes())
-		buffer := tafla.NewByteBuffer(table, layout)
-		if len(table) != maxLength || must(buffer.GetUint8(must(buffer.RootOffset(1)))) != 7 {
+		reader := tafla.NewTableReader(table, layout)
+		if len(table) != maxLength || must(reader.GetUint8(must(reader.RootOffset(1)))) != 7 {
 			t.Errorf("wrote %d bytes", len(table))
 		}
 
@@ -597,24 +646,36 @@ func TestRejectsAVersionTooLargeForItsSlot(t *testing.T) {
 	}{{tafla.Uint8, 0x100}, {tafla.Uint16, 0x1_0000}}
 
 	for _, c := range cases {
-		layout := tafla.TableLayout{}.WithOffsetType(c.offsetType).Versioned()
+		layout := tafla.TableLayout{}.WithOffsetType(c.offsetType)
 
-		_, err := tafla.NewVersionedTableBuilder(1, layout, c.version)
+		_, err := tafla.NewTableBuilder(1, layout.WithVersion(c.version))
 		expectError(t, err, &tafla.BuildError{Kind: tafla.VersionTooLarge, Version: c.version, OffsetType: c.offsetType})
 		expectMessage(t, err, fmt.Sprintf("tafla: version %d doesn't fit in a %v slot", c.version, c.offsetType))
-		if _, err := tafla.NewVersionedTableBuilder(1, layout, c.version-1); err != nil {
+		if _, err := tafla.NewTableBuilder(1, layout.WithVersion(c.version-1)); err != nil {
 			t.Error(err)
 		}
 	}
 }
 
-func TestPanicsForAVersionThatTheLayoutDoesntHave(t *testing.T) {
-	expectPanic(t, "a versioned layout without a version", func() {
-		_, _ = tafla.NewTableBuilder(1, tafla.TableLayout{}.Versioned())
-	})
-	expectPanic(t, "a version without a slot", func() {
-		_, _ = tafla.NewVersionedTableBuilder(1, tafla.TableLayout{}, 1)
-	})
+func TestWritesTheLayoutsVersion(t *testing.T) {
+	first := tafla.TableLayout{}.Sized().WithVersion(1)
+	second := first.WithVersion(2)
+
+	if version, ok := second.Version(); version != 2 || !ok || !second.IsSized() {
+		t.Errorf("version %d, %v", version, ok)
+	}
+	if version, ok := (tafla.TableLayout{}).Version(); version != 0 || ok {
+		t.Errorf("version %d, %v", version, ok)
+	}
+
+	bytes := must(must(tafla.NewTableBuilder(0, second)).Bytes())
+
+	// A reader reads a table of any version, whatever its layout's
+	for _, layout := range []tafla.TableLayout{first, second} {
+		if version := must(tafla.NewTableReader(bytes, layout).Version()); version != 2 {
+			t.Errorf("read version %d", version)
+		}
+	}
 }
 
 func TestRejectsAnIncompleteNestedBuilder(t *testing.T) {
@@ -634,13 +695,13 @@ func TestRejectsAnIncompleteNestedBuilder(t *testing.T) {
 	check(t, parent.SetVector(nested))
 
 	table := must(parent.Bytes())
-	buffer := tafla.NewByteBuffer(table, tafla.TableLayout{})
-	position := must(buffer.RootOffset(0))
-	if position != 8 || must(buffer.GetUint8(must(buffer.FieldOffset(position, 1)))) != 2 {
+	reader := tafla.NewTableReader(table, tafla.TableLayout{})
+	position := must(reader.RootOffset(0))
+	if position != 8 || must(reader.GetUint8(must(reader.FieldOffset(position, 1)))) != 2 {
 		t.Errorf("read the nested table at %d", position)
 	}
 
-	vector := must(buffer.GetVector(must(buffer.RootOffset(1))))
+	vector := must(reader.GetVector(must(reader.RootOffset(1))))
 	if item := must(vector.Get(0)); vector.Len() != 1 || !bytes.Equal(item, must(nested.Bytes())) {
 		t.Errorf("read % x", item)
 	}

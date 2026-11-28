@@ -9,17 +9,17 @@ import (
 // Vector is a vector read from a table: its items, which are tables.
 //
 // The vector holds its count, the end of each item, counted from the
-// vector's position, and then the items. [ByteBuffer.GetVector] checks that
+// vector's position, and then the items. [TableReader.GetVector] checks that
 // the ends lie within the bytes, and each item is checked when it's read, so
 // reading one can fail. [Vector.Get] and [Vector.GetInPlace] find any item
 // from its end and the one before it, without reading the others.
 //
 // An item that has no header and its parent's offset type is read in place:
 // from the bytes that [Vector.GetInPlace] returns, which start where it does
-// and end where its parent's do, with a [ByteBuffer] of its parent's offset
+// and end where its parent's do, with a [TableReader] of its parent's offset
 // type, at position 0. Its reads may reach past its end, as those of any
 // table read in place may. Any other item is read as a table of its own,
-// from the bytes that [Vector.Get] returns, with a ByteBuffer of its own
+// from the bytes that [Vector.Get] returns, with a TableReader of its own
 // layout.
 //
 // The zero Vector is empty.

@@ -16,7 +16,7 @@ impl Table {
 
         if self.layout.versioned {
             let version = self.version.expect("A versioned table has a version");
-            TableBuilder::versioned(fields, layout.versioned(), version)
+            TableBuilder::new(fields, layout.with_version(version))
         } else {
             TableBuilder::new(fields, layout)
         }
@@ -41,7 +41,9 @@ impl Table {
     /// from a builder that it writes in place with `set_table_with()`, and
     /// each vector of them, when its items hold as many fields, with
     /// `set_vector_with()`, rather than from their builders. Its bytes and
-    /// errors are `to_bytes()`'s.
+    /// errors are `to_bytes()`'s, but for a vector whose count and items'
+    /// ends alone make its table too long, which fails before its items are
+    /// recorded.
     pub fn to_bytes_in_place(&self) -> Result<Vec<u8>, BuildError> {
         let in_place = Some(self.layout.offset_type);
 
@@ -89,6 +91,7 @@ macro_rules! set_field_on {
                     Self::U64Array(values) => target.set_u64_array(values),
                     Self::F32Array(values) => target.set_f32_array(values),
                     Self::F64Array(values) => target.set_f64_array(values),
+                    Self::BoolArray(values) => target.set_bool_array(values),
                     Self::String(string) => target.set_str(string),
                     Self::Struct(scalars) => target.set_struct(struct_bytes(scalars)),
                     Self::StructArray { types, items } => {
@@ -126,6 +129,10 @@ macro_rules! set_field_on {
                             .map(Nested::build)
                             .collect::<Result<Vec<_>, _>>()?;
                         target.set_vector(items)
+                    }
+                    Self::StringVector(strings) => {
+                        let strings: Vec<&str> = strings.iter().map(String::as_str).collect();
+                        target.set_str_vector(strings)
                     }
                 }
             }

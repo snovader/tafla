@@ -111,6 +111,24 @@ Outcome sample(const nlohmann::json& json, std::span<const std::uint8_t> bytes) 
     return {written, tables::describe(shapes::Sample::read(bytes)), tables::describe(sample)};
 }
 
+/// A task of enums, which the JSON holds as their integers, named or not
+Outcome task(const nlohmann::json& json, std::span<const std::uint8_t> bytes) {
+    const auto name = json.at("name").get<std::string>();
+    const auto history = elements<std::uint16_t>(json.at("history"),
+                                                 [](const auto& state) { return state.template get<std::uint16_t>(); });
+    const auto& step = json.at("step");
+    const shapes::TaskFields fields{
+        .priority = static_cast<shapes::Priority>(json.at("priority").get<std::int8_t>()),
+        .history = history,
+        .step = {.state = static_cast<shapes::State>(step.at("state").get<std::uint16_t>()),
+                 .priority = static_cast<shapes::Priority>(step.at("priority").get<std::int8_t>()),
+                 .seconds = step.at("seconds").get<std::uint32_t>()},
+        .name = name,
+    };
+
+    return {fields.serialize().to_vector(), tables::read(shapes::Task(bytes)), tables::describe(fields)};
+}
+
 std::vector<std::pair<std::string, Outcome>> cases() {
     const auto suite = read_json(generated() / "shapes.json");
     EXPECT_EQ(suite.at("schema"), "schemas/shapes.tafla");
@@ -131,6 +149,8 @@ std::vector<std::pair<std::string, Outcome>> cases() {
             outcome = item_list(fields, bytes);
         } else if (type == "Sample") {
             outcome = sample(fields, bytes);
+        } else if (type == "Task") {
+            outcome = task(fields, bytes);
         } else {
             ADD_FAILURE() << name << ": shapes.tafla has no " << type;
             continue;
@@ -144,7 +164,7 @@ std::vector<std::pair<std::string, Outcome>> cases() {
 
 TEST(ShapesCases, TheGeneratedCodeWritesEveryCaseByteForByteAndReadsItsValues) {
     const auto outcomes = cases();
-    EXPECT_EQ(outcomes.size(), 7U);
+    EXPECT_EQ(outcomes.size(), 9U);
 
     for (const auto& [name, outcome] : outcomes) {
         EXPECT_EQ(outcome.read, outcome.expected) << name;

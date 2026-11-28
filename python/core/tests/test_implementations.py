@@ -17,7 +17,7 @@ from functools import partial
 from types import ModuleType
 from typing import Any, override
 
-from hypothesis import given
+from hypothesis import example, given
 from hypothesis.strategies import (
     DataObject,
     DrawFn,
@@ -40,7 +40,15 @@ from hypothesis.strategies import (
 )
 
 import tafla
-from tafla import byte_buffer, fixed_fields, layout, table_writer
+from tafla import (
+    OffsetType,
+    fixed_fields,
+    layout,
+    string_vector,
+    table_builder,
+    table_reader,
+    table_writer,
+)
 from tests.tables import FORMATS
 from tests.test_fixed_fields import Misreported
 
@@ -50,6 +58,7 @@ except ImportError:
     _native = None
 
 OFFSET_TYPES = ("uint8", "uint16", "uint32")
+TABLE_OFFSET_TYPES: tuple[OffsetType, ...] = OFFSET_TYPES
 
 # Integers at the limits of the arguments that the classes take: within an
 # i64, beyond it, and beyond the digits that Python converts to a string.
@@ -90,6 +99,26 @@ class Index:
         return f"Index({self.value!r})"
 
 
+class Unpackable:
+    """An object whose ``__index__()`` raises an error that ``struct`` raises
+    itself for a value that it can't pack, which the scalar setters raise as
+    their ``ValueError``, and ``array()`` as it is"""
+
+    def __init__(self, error: type[Exception]) -> None:
+        self.error = error
+
+    def __index__(self) -> int:
+        raise self.error("no index")
+
+    @override
+    def __repr__(self) -> str:
+        return f"Unpackable({self.error.__name__})"
+
+
+UNPACKABLE: SearchStrategy[Unpackable] = builds(
+    Unpackable, sampled_from([OverflowError, IndexError, struct.error])
+)
+
 FLOATS: SearchStrategy[float] = one_of(
     floats(),
     floats(width=32),
@@ -108,6 +137,7 @@ VALUES: SearchStrategy[Any] = one_of(
     just("x"),
     binary(max_size=6),
     builds(Index, one_of(none(), integers(-300, 300))),
+    UNPACKABLE,
 )
 
 
@@ -155,6 +185,7 @@ ELEMENTS: SearchStrategy[Any] = one_of(
     builds(Int, integers(-300, 300)),
     builds(Float, FLOATS),
     builds(Index, one_of(none(), integers(-300, 300))),
+    UNPACKABLE,
     none(),
     just("x"),
 )
@@ -167,6 +198,24 @@ def sequences(elements: SearchStrategy[Any], max_size: int) -> SearchStrategy[An
     return tuples(sampled_from(SEQUENCES), lists(elements, max_size=max_size)).map(
         lambda drawn: drawn[0](drawn[1])
     )
+
+
+class Truthless:
+    """An object whose truth raises, as ``bool()`` takes it, and whose error
+    both writers raise for an array of bools that holds it"""
+
+    def __bool__(self) -> bool:
+        raise KeyError("no truth")
+
+    @override
+    def __repr__(self) -> str:
+        return "Truthless()"
+
+
+# Elements of the arrays of bools that callers pass: bools, which the native
+# writer converts itself, and anything else, which both convert as bool()
+# takes it, or raise its error for
+BOOL_ELEMENTS: SearchStrategy[Any] = one_of(booleans(), ELEMENTS, builds(Truthless))
 
 
 def convertible(kind: str) -> SearchStrategy[Any]:
@@ -186,28 +235,31 @@ class Implementation:
     """The classes of one implementation, which never mix with the other's"""
 
     name: str
-    ByteBuffer: Any
+    TableReader: Any
     FixedFields: Any
     TableLayout: Any
     TableWriter: Any
+    StringVector: Any
 
 
 PURE = Implementation(
     "python",
-    byte_buffer.ByteBuffer,
+    table_reader.TableReader,
     fixed_fields.FixedFields,
     layout.TableLayout,
     table_writer.TableWriter,
+    string_vector.StringVector,
 )
 
 
 def native_implementation(module: ModuleType) -> Implementation:
     return Implementation(
         "native",
-        module.ByteBuffer,
+        module.TableReader,
         module.FixedFields,
         module.TableLayout,
         module.TableWriter,
+        module.StringVector,
     )
 
 
@@ -303,6 +355,18 @@ def value_count(description: tuple[int, list[Any], bool]) -> int:
     return sum(value_count(each) if isinstance(each, tuple) else 1 for each in formats)
 
 
+def layout_from(
+    implementation: Any, arguments: dict[str, Any], version: int | None = None
+) -> Any:
+    """A layout of ``arguments``, an implementation's, with ``version`` when
+    it's versioned, or version 0 without one, as a reader's layout has"""
+    return implementation.TableLayout(
+        sized=arguments["sized"],
+        version=(0 if version is None else version) if arguments["versioned"] else None,
+        offset_type=arguments["offset_type"],
+    )
+
+
 def layout_arguments() -> SearchStrategy[dict[str, Any]]:
     return builds(
         dict,
@@ -325,13 +389,21 @@ class TestImplementations(unittest.TestCase):
     def test_tafla_uses_the_native_classes_unless_pure_python_is_forced(self) -> None:
         if tafla.IMPLEMENTATION == "native":
             self.assertIs(tafla.TableWriter, self.native.TableWriter)
-            self.assertIs(tafla.ByteBuffer, self.native.ByteBuffer)
+            self.assertIs(tafla.TableReader, self.native.TableReader)
+            self.assertIs(tafla.StringVector, self.native.StringVector)
         else:
             self.assertIs(tafla.TableWriter, PURE.TableWriter)
-            self.assertIs(tafla.ByteBuffer, PURE.ByteBuffer)
+            self.assertIs(tafla.TableReader, PURE.TableReader)
+            self.assertIs(tafla.StringVector, PURE.StringVector)
 
     def test_have_the_same_methods_with_the_same_parameters(self) -> None:
-        for name in ["ByteBuffer", "FixedFields", "TableLayout", "TableWriter"]:
+        for name in [
+            "TableReader",
+            "FixedFields",
+            "TableLayout",
+            "TableWriter",
+            "StringVector",
+        ]:
             pure, native = getattr(PURE, name), getattr(self.native, name)
             names = {
                 attribute
@@ -354,18 +426,18 @@ class TestImplementations(unittest.TestCase):
         arguments = {"sized": True, "versioned": True, "offset_type": "uint16"}
         tables = []
         for table_layout in [
-            self.native.TableLayout(**arguments),
-            PURE.TableLayout(**arguments),
+            layout_from(self.native, arguments, 3),
+            layout_from(PURE, arguments, 3),
         ]:
             fields = self.native.FixedFields(2, "h", layout=table_layout)
-            writer = self.native.TableWriter(2, table_layout, 3)
+            writer = self.native.TableWriter(2, table_layout)
             writer.set_fields(fields, (-2,))
             writer.set_string(1, "a")
             data = bytes(writer.bytes())
 
-            buffer = self.native.ByteBuffer(data, table_layout)
-            self.assertEqual(buffer.get_version(), 3)
-            self.assertEqual(buffer.get_fields(0, fields), (-2,))
+            reader = self.native.TableReader(data, table_layout)
+            self.assertEqual(reader.get_version(), 3)
+            self.assertEqual(reader.get_fields(0, fields), (-2,))
             tables.append(data)
 
         self.assertEqual(tables[1], tables[0])
@@ -387,11 +459,11 @@ class TestImplementations(unittest.TestCase):
         arguments = draw.draw(layout_arguments())
         content = draw.draw(binary(max_size=48))
         description = draw.draw(descriptions())
-        buffers = [
+        readers = [
             (
                 implementation,
-                implementation.ByteBuffer(
-                    content, implementation.TableLayout(**arguments)
+                implementation.TableReader(
+                    content, layout_from(implementation, arguments)
                 ),
             )
             for implementation in (PURE, self.native)
@@ -402,11 +474,38 @@ class TestImplementations(unittest.TestCase):
             args = draw.draw(READ_ARGUMENTS[method])
             outcomes = [
                 outcome(
-                    partial(read, buffer, implementation, method, args, description)
+                    partial(read, reader, implementation, method, args, description)
                 )
-                for implementation, buffer in buffers
+                for implementation, reader in readers
             ]
             self.assertEqual(outcomes[1], outcomes[0], describe_call(method, args))
+
+    @given(data())
+    def test_view_vectors_of_strings_as_each_other_whatever_the_bytes(
+        self, draw: DataObject
+    ) -> None:
+        """Each implementation's StringVector, of its own reader: its length,
+        its strings by index and every string, or the errors that they
+        raise"""
+        arguments = draw.draw(layout_arguments())
+        content = draw.draw(one_of(binary(max_size=48), STRING_VECTOR_TABLES))
+        position = draw.draw(one_of(integers(0, 8), POSITIONS))
+        indices = draw.draw(lists(one_of(integers(-8, 8), INTEGERS), max_size=4))
+        outcomes = [
+            outcome(
+                partial(
+                    view_strings, implementation, arguments, content, position, indices
+                )
+            )
+            for implementation in (PURE, self.native)
+        ]
+        self.assertEqual(outcomes[1], outcomes[0])
+
+    def test_native_string_vector_rejects_a_pure_python_reader(self) -> None:
+        reader = PURE.TableReader(bytes(8))
+
+        with self.assertRaises(TypeError):
+            self.native.StringVector(reader, 0)
 
     @given(data())
     def test_write_the_same_bytes_and_raise_the_same_errors_whatever_the_calls(
@@ -445,6 +544,32 @@ class TestImplementations(unittest.TestCase):
         if draw.draw(booleans()):
             calls.append(("hold_view", ()))
         calls.append((f"set_{kind}_array", (leading, values)))
+
+        self.assert_same_writes(arguments, leading + 1, None, (0, [], False), calls)
+
+    @given(data())
+    def test_write_the_same_arrays_of_bools_from_lists_and_tuples_of_any_values(
+        self, draw: DataObject
+    ) -> None:
+        """An exact list or tuple of bools is converted natively, and any
+        other values as ``bool()`` takes them: each writes the same bytes of 1
+        and 0, or raises the same error having written nothing, after fields
+        that pad it, and while a view of the bytes is held"""
+        arguments = draw.draw(layout_arguments())
+        values = draw.draw(
+            one_of(
+                sequences(booleans(), max_size=40),
+                sequences(BOOL_ELEMENTS, max_size=6),
+            )
+        )
+        leading = draw.draw(integers(0, 3))
+
+        calls: list[tuple[str, tuple[Any, ...]]] = [
+            ("set_uint8", (index, 1)) for index in range(leading)
+        ]
+        if draw.draw(booleans()):
+            calls.append(("hold_view", ()))
+        calls.append(("set_bool_array", (leading, values)))
 
         self.assert_same_writes(arguments, leading + 1, None, (0, [], False), calls)
 
@@ -548,6 +673,47 @@ class TestImplementations(unittest.TestCase):
                 description = (300, ["b"], False)
                 self.assert_same_writes(arguments, 1, None, description, calls)
 
+    def test_raise_the_same_error_for_a_value_whose_index_raises_what_struct_raises(
+        self,
+    ) -> None:
+        """Regressions: for a value whose ``__index__()`` raised
+        ``OverflowError``, ``IndexError`` or ``struct.error``, the native
+        setters of integers raised that error, where the pure-Python ones
+        raise the ``ValueError`` of a value that ``struct`` can't pack"""
+        arguments = {"sized": False, "versioned": False, "offset_type": "uint16"}
+        description = (2, ["b", "Q"], False)
+        for error in (OverflowError, IndexError, struct.error):
+            value = Unpackable(error)
+            cases: list[list[tuple[str, tuple[Any, ...]]]] = [
+                *([(f"set_{kind}", (0, value))] for kind in sorted(FORMATS)),
+                [("set_fields", ([value, 1], ""))],
+                [("set_fields", ([1, value], ""))],
+                [("set_table", (0, 1)), ("write_table", ([1, value], ""))],
+                [("set_vector_tables", (0, [([1, 2], ""), ([value, 2], "")], 0))],
+            ]
+            for calls in cases:
+                with self.subTest(error=error.__name__, calls=calls):
+                    self.assert_same_writes(arguments, 2, None, description, calls)
+
+            written = [
+                outcome(
+                    partial(
+                        _write_message,
+                        implementation,
+                        arguments,
+                        description,
+                        (1, value),
+                        "",
+                        None,
+                    )
+                )
+                for implementation in (PURE, self.native)
+            ]
+            with self.subTest(error=error.__name__, call="write_fields"):
+                self.assertEqual(written[1], written[0])
+                assert isinstance(written[0], Raised)
+                self.assertIs(written[0].error, ValueError)
+
     def assert_same_writes(
         self,
         arguments: dict[str, Any],
@@ -636,6 +802,33 @@ class TestImplementations(unittest.TestCase):
         one_of(none(), integers(0, 2**16), integers(-1, 1), INTEGERS),
         tuples(integers(0, 2**16), integers(0, 255)),
     )
+    # A version that doesn't fit raises from the layout in both, before a
+    # value whose conversion raises an error of its own
+    @example(
+        arguments={"sized": False, "versioned": True, "offset_type": "uint8"},
+        description=(1, ["b"], False),
+        values=[Index(None)],
+        string="",
+        version=256,
+        corruption=(0, 0),
+    )
+    @example(
+        arguments={"sized": True, "versioned": True, "offset_type": "uint16"},
+        description=(3, ["d", (1, ["H"], False)], True),
+        values=[1.5, Index(None)],
+        string="a",
+        version=-1,
+        corruption=(0, 0),
+    )
+    # And the value's own error for a version that fits
+    @example(
+        arguments={"sized": True, "versioned": True, "offset_type": "uint8"},
+        description=(1, ["b"], False),
+        values=[Index(None)],
+        string="",
+        version=255,
+        corruption=(0, 0),
+    )
     def test_write_and_read_messages_of_fixed_fields_as_each_other_in_one_call(
         self,
         arguments: dict[str, Any],
@@ -691,6 +884,49 @@ class TestImplementations(unittest.TestCase):
                 self.assertEqual(read[1], read[0])
 
 
+def view_strings(
+    implementation: Implementation,
+    arguments: dict[str, Any],
+    content: bytes,
+    position: int,
+    indices: list[int],
+) -> list[object]:
+    """What a view of the vector of strings at ``position`` reads: its
+    length, its strings at ``indices`` and every string, each read's outcome
+    on its own"""
+    reader = implementation.TableReader(content, layout_from(implementation, arguments))
+    vector = implementation.StringVector(reader, position)
+    reads: list[Callable[[], object]] = [
+        partial(len, vector),
+        vector.tolist,
+        partial(list, vector),
+        *(partial(vector.__getitem__, index) for index in indices),
+    ]
+    return [outcome(read) for read in reads]
+
+
+def _string_vector_table(
+    offset_type: OffsetType, strings: list[str], overwrites: list[tuple[int, int]]
+) -> bytes:
+    """A table of a vector of strings, with some of its bytes overwritten"""
+    builder = table_builder.TableBuilder(1, layout.TableLayout(offset_type=offset_type))
+    builder.set_string_vector(strings)
+    data = bytearray(builder.bytes())
+    for at, byte in overwrites:
+        data[at % len(data)] = byte
+    return bytes(data)
+
+
+# Tables of a vector of short strings, which fit any offset type, and some
+# with bytes overwritten
+STRING_VECTOR_TABLES: SearchStrategy[bytes] = builds(
+    _string_vector_table,
+    sampled_from(TABLE_OFFSET_TYPES),
+    lists(text(characters(codec="utf-8"), max_size=4), max_size=5),
+    lists(tuples(integers(0, 100), integers(0, 255)), max_size=2),
+)
+
+
 def _write_message(
     implementation: Implementation,
     arguments: dict[str, Any],
@@ -701,9 +937,9 @@ def _write_message(
 ) -> object:
     """Writes a message with ``write_fields()``, with fields of a layout of
     ``arguments``"""
-    layout = implementation.TableLayout(**arguments)
+    layout = layout_from(implementation, arguments, version)
     fields = fixed_fields_of(implementation, description, layout)
-    data = implementation.TableWriter.write_fields(fields, values, string, version)
+    data = implementation.TableWriter.write_fields(fields, values, string)
     # Bytes, which the writer's bytes() would be a view of
     assert type(data) is bytes
     return Written(data)
@@ -716,9 +952,9 @@ def _read_message(
     data: bytes,
     version: int | None,
 ) -> object:
-    layout = implementation.TableLayout(**arguments)
+    layout = layout_from(implementation, arguments)
     fields = fixed_fields_of(implementation, description, layout)
-    return implementation.ByteBuffer.read_fields(data, fields, version)
+    return implementation.TableReader.read_fields(data, fields, version)
 
 
 # Imports tafla with a finder that the module tafla._native finds first,
@@ -802,11 +1038,8 @@ def create_writer(
     version: int | None,
 ) -> None:
     """Appends a writer, unless creating it raises"""
-    table_layout = implementation.TableLayout(**arguments)
-    if version is None:
-        writer = implementation.TableWriter(fields, table_layout)
-    else:
-        writer = implementation.TableWriter(fields, table_layout, version)
+    table_layout = layout_from(implementation, arguments, version)
+    writer = implementation.TableWriter(fields, table_layout)
     writers.append((implementation, writer))
 
 
@@ -820,18 +1053,15 @@ class FixedTable:
     nested: bool
 
     def fields(self, implementation: Implementation) -> Any:
-        table_layout = implementation.TableLayout(**self.arguments)
+        table_layout = layout_from(implementation, self.arguments, 1)
         root_layout = None if self.nested else table_layout
         return fixed_fields_of(implementation, self.description, root_layout)
 
     def write(
         self, implementation: Implementation, values: tuple[Any, ...], string: str
     ) -> Written:
-        table_layout = implementation.TableLayout(**self.arguments)
-        version = [1] if self.arguments["versioned"] else []
-        writer = implementation.TableWriter(
-            self.description[0] + 1, table_layout, *version
-        )
+        table_layout = layout_from(implementation, self.arguments, 1)
+        writer = implementation.TableWriter(self.description[0] + 1, table_layout)
         fields = self.fields(implementation)
         if self.nested:
             writer.set_table(self.description[0], 1)
@@ -841,10 +1071,10 @@ class FixedTable:
         return Written(bytes(writer.bytes()))
 
     def read(self, implementation: Implementation, data: bytes) -> object:
-        table_layout = implementation.TableLayout(**self.arguments)
-        buffer = implementation.ByteBuffer(data, table_layout)
-        position = buffer.root_offset(self.description[0]) if self.nested else 0
-        return buffer.get_fields(position, self.fields(implementation))
+        table_layout = layout_from(implementation, self.arguments)
+        reader = implementation.TableReader(data, table_layout)
+        position = reader.root_offset(self.description[0]) if self.nested else 0
+        return reader.get_fields(position, self.fields(implementation))
 
 
 @dataclass(frozen=True)
@@ -862,7 +1092,12 @@ def describe_call(method: str, args: tuple[Any, ...]) -> str:
 
 
 # The writer's private methods that TableBuilder calls
-BUILDER_METHODS = {"_checked", "_copy_table", "_set_encoded_string"}
+BUILDER_METHODS = {
+    "_checked",
+    "_copy_table",
+    "_set_encoded_string",
+    "_set_encoded_string_vector",
+}
 
 
 def parameters(method: Callable[..., object]) -> list[str]:
@@ -877,6 +1112,7 @@ ARRAY_READS = [f"get_{kind}_array" for kind in sorted(FORMATS)]
 READS = [
     *SCALAR_READS,
     *ARRAY_READS,
+    "get_bool_array",
     "get_string",
     "root_offset",
     "field_offset",
@@ -890,6 +1126,8 @@ READS = [
     "get_fields",
     "get_vector_fields",
     "iter_vector_fields",
+    "get_string_vector",
+    "get_string_vector_item",
     "get_size",
     "get_version",
     "bytes",
@@ -900,6 +1138,7 @@ SIZES = one_of(integers(-2, 20), INTEGERS)
 
 READ_ARGUMENTS: dict[str, SearchStrategy[tuple[Any, ...]]] = {
     **{method: tuples(POSITIONS) for method in SCALAR_READS + ARRAY_READS},
+    "get_bool_array": tuples(POSITIONS),
     "get_string": tuples(POSITIONS),
     "root_offset": tuples(POSITIONS),
     "field_offset": tuples(POSITIONS, POSITIONS),
@@ -908,6 +1147,8 @@ READ_ARGUMENTS: dict[str, SearchStrategy[tuple[Any, ...]]] = {
     "get_vector_length": tuples(POSITIONS),
     "get_vector_offset": tuples(POSITIONS, POSITIONS),
     "get_vector_item_offset": tuples(POSITIONS, integers(0, 12), POSITIONS),
+    "get_string_vector": tuples(POSITIONS),
+    "get_string_vector_item": tuples(POSITIONS, integers(0, 12), POSITIONS),
     "get_vector_offsets": tuples(POSITIONS),
     "get_vector": tuples(POSITIONS),
     "get_fields": tuples(POSITIONS),
@@ -920,7 +1161,7 @@ READ_ARGUMENTS: dict[str, SearchStrategy[tuple[Any, ...]]] = {
 
 
 def read(
-    buffer: Any,
+    reader: Any,
     implementation: Implementation,
     method: str,
     args: tuple[Any, ...],
@@ -929,13 +1170,13 @@ def read(
     if method in {"get_fields", "get_vector_fields"}:
         # A nested table's fields, for any offset type
         fields = fixed_fields_of(implementation, description)
-        return getattr(buffer, method)(*args, fields)
+        return getattr(reader, method)(*args, fields)
     if method == "iter_vector_fields":
         fields = fixed_fields_of(implementation, description)
         return _items_until_error(
-            buffer.iter_vector_fields(*args, fields, lambda offset: ("read", offset))
+            reader.iter_vector_fields(*args, fields, lambda offset: ("read", offset))
         )
-    return getattr(buffer, method)(*args)
+    return getattr(reader, method)(*args)
 
 
 def _items_until_error(items: Iterator[object]) -> list[object]:
@@ -961,6 +1202,15 @@ ARRAYS: SearchStrategy[Any] = one_of(
     binary(min_size=2, max_size=8).map(lambda data: memoryview(data)[::2]),
 )
 
+# What callers pass as an array of bools: sequences of any values, and other
+# iterables, of bytes and of ints, and an object that isn't iterable
+BOOL_ARRAYS: SearchStrategy[Any] = one_of(
+    sequences(BOOL_ELEMENTS, max_size=4),
+    binary(max_size=8),
+    builds(array, just("i"), lists(integers(-2, 2), max_size=4)),
+    none(),
+)
+
 STRUCTS: SearchStrategy[Any] = one_of(
     binary(max_size=12),
     binary(max_size=12).map(bytearray),
@@ -973,6 +1223,21 @@ ALIGNMENTS: SearchStrategy[Any] = one_of(
 
 INDICES = one_of(integers(-6, 8), INTEGERS)
 
+# Strings as the writers take them, and a lone surrogate, which they reject
+WRITTEN_STRINGS: SearchStrategy[str] = one_of(
+    text(characters(codec="utf-8"), max_size=6), just("\ud800"), just("é" * 300)
+)
+
+# Vectors of strings: lists and tuples of strings, of their subclasses, a str,
+# which the writers reject, and sequences whose len() isn't their number
+STRING_VECTOR_VALUES: SearchStrategy[Any] = one_of(
+    sequences(WRITTEN_STRINGS, max_size=4),
+    WRITTEN_STRINGS,
+    tuples(lists(WRITTEN_STRINGS, max_size=3), sampled_from([-1, 1])).map(
+        lambda drawn: Misreported(drawn[0], max(len(drawn[0]) + drawn[1], 0))
+    ),
+)
+
 WRITES: SearchStrategy[tuple[str, tuple[Any, ...]]] = one_of(
     tuples(
         sampled_from([f"set_{kind}" for kind in sorted(FORMATS)]),
@@ -982,6 +1247,7 @@ WRITES: SearchStrategy[tuple[str, tuple[Any, ...]]] = one_of(
         sampled_from([f"set_{kind}_array" for kind in sorted(FORMATS)]),
         tuples(INDICES, ARRAYS),
     ),
+    tuples(just("set_bool_array"), tuples(INDICES, BOOL_ARRAYS)),
     tuples(
         just("set_string"),
         tuples(
@@ -1030,6 +1296,12 @@ WRITES: SearchStrategy[tuple[str, tuple[Any, ...]]] = one_of(
             # How far the items' len() is from their number
             one_of(just(0), sampled_from([-1, 1])),
         ),
+    ),
+    tuples(just("set_string_vector"), tuples(INDICES, STRING_VECTOR_VALUES)),
+    # Bytes, which needn't be UTF-8, since TableBuilder encodes them
+    tuples(
+        just("_set_encoded_string_vector"),
+        tuples(INDICES, lists(binary(max_size=300), max_size=4)),
     ),
 )
 

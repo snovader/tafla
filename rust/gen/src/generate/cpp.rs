@@ -1,12 +1,25 @@
 //! C++ for `tafla`'s header-only runtime, in a header of C++20. Messages and
 //! tables are views that read fields lazily from bytes that the caller owns,
-//! as `std::string_view`s and `tafla::ArrayView`s of strings and arrays;
-//! they're written from structs of their fields, which a `TableSizer` sizes
-//! and a `TableWriter` writes, nested tables in place. Beside the fields
+//! as `std::string_view`s, `tafla::ArrayView`s and `tafla::StringVector`s of
+//! strings, arrays and vectors of strings; they're written from structs of
+//! their fields, which hold a vector of strings as a span of
+//! `std::string_view`s, and which a `TableSizer` sizes and a `TableWriter`
+//! writes, nested tables in place. Beside the fields
 //! struct of a table with vectors or arrays of structs, a template in the
 //! namespace `generic` takes them as views of any items that convert into
 //! theirs, rather than as spans of their own.
 //! Structs are aggregates read and written at fixed offsets.
+//!
+//! An enum is an `enum class` of its integer type, which holds any value of
+//! that type, named or not, so that its fields read any integer. They're
+//! `static_cast` from and to that type as they're read and written. An array
+//! of enums is read and written as an array of their integer type, since a
+//! view or a span of integers can't be read as one of enums without a copy.
+//!
+//! An array of bools is read as its bytes in place, as a `uint8` array is,
+//! since a byte other than 0 or 1 is no `bool`, which
+//! `tafla::Bools::from_bytes()` reads as bools. It's written from a span of
+//! bools.
 //!
 //! The fields whose sizes the schema fixes, scalars, structs and nested
 //! tables of only such fields, the generated code lays out itself, as Go's
@@ -28,7 +41,7 @@ use super::prose::indefinite_article;
 use super::writer::{CodeWriter, comment_text, escape_outside_code_spans};
 use super::{GeneratedFile, Options};
 use crate::model::{
-    Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema,
+    Definition, Enum, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema,
     strongly_connected_components,
 };
 
@@ -252,8 +265,8 @@ pub fn generate(
 
     let mut writer = CodeWriter::new(INDENT);
     writer.line(format!("// {header}"));
-    // A schema without definitions includes nothing
-    if schema.definitions.is_empty() {
+    // A schema without declarations includes nothing
+    if schema.definitions.is_empty() && schema.enums.is_empty() {
         return vec![GeneratedFile {
             path: format!("{stem}.hpp"),
             contents: writer.finish(),
@@ -266,6 +279,13 @@ pub fn generate(
     generator.includes(&mut writer, runtime);
     writer.blank();
     writer.line(format!("namespace {namespace} {{"));
+
+    // The enums, which depend on nothing, before the definitions that hold
+    // them
+    for enumeration in &schema.enums {
+        writer.blank();
+        enum_class(&mut writer, enumeration);
+    }
 
     let tables: Vec<usize> = nesting_order(schema, |definition| !definition.is_struct());
     let structs: Vec<usize> = nesting_order(schema, Definition::is_struct);
@@ -386,8 +406,14 @@ impl Generator<'_> {
     /// The standard headers that the code includes, and the runtime's.
     /// `std::memcpy()` copies the string of a message written whole, and
     /// `std::ranges::size()` counts the items of a generic fields struct's
-    /// views.
+    /// views. A schema of only enums includes only `<cstdint>`, of their
+    /// integer types.
     fn includes(&self, writer: &mut CodeWriter, runtime: &str) {
+        if self.schema.definitions.is_empty() {
+            writer.line("#include <cstdint>");
+            return;
+        }
+
         let copies_strings = self.writes_whole_strings();
         let any_generic = (0..self.schema.definitions.len()).any(|index| self.is_generic(index));
         for include in [
@@ -561,13 +587,19 @@ impl Generator<'_> {
     fn getter_declarations(&self, writer: &mut CodeWriter, definition: &Definition) {
         for field in &definition.fields {
             let name = identifier(&field.name);
-            let mut docs = field.docs.clone();
+            let mut docs = self.member_docs(field);
+            if field.field_type == FieldType::Array(Scalar::Bool) {
+                if !docs.is_empty() {
+                    docs.push(String::new());
+                }
+                docs.push("A byte for each bool, which is true where it isn't 0".to_owned());
+            }
             if !docs.is_empty() {
                 docs.push(String::new());
             }
             docs.push(getter_doc(field.field_type).to_owned());
 
-            // Inlined where they're called, as `ByteBuffer`'s getters are, so
+            // Inlined where they're called, as `TableReader`'s getters are, so
             // that the reader stays in registers and its layout's constants
             // fold, rather than a getter that the compiler leaves out of line,
             // such as a string's with its UTF-8 validation, taking the
@@ -576,21 +608,21 @@ impl Generator<'_> {
             cpp_doc(writer, &docs);
             writer.line(format!(
                 "[[nodiscard]] TAFLA_ALWAYS_INLINE {} {name}() const;",
-                self.value_type(field.field_type)
+                self.value_type(field)
             ));
         }
     }
 
     /// The definitions of a message's or table's getters, after every
-    /// declaration. Each reads with a buffer in the table's layout, a
+    /// declaration. Each reads with a reader in the table's layout, a
     /// constant, so that its reads compile for that layout's offset type.
     fn getter_definitions(&self, writer: &mut CodeWriter, definition: &Definition) {
         let class = &type_name(&definition.name);
         let is_root = matches!(definition.kind, Kind::Message(_));
-        let buffer = if is_root {
-            "const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);"
+        let reader = if is_root {
+            "const ::tafla::TableReader reader(bytes_, LAYOUT);"
         } else {
-            "const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());"
+            "const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());"
         };
 
         if let Kind::Message(Layout {
@@ -603,28 +635,34 @@ impl Generator<'_> {
         for (index, field) in definition.fields.iter().enumerate() {
             let name = identifier(&field.name);
             let offset = if is_root {
-                format!("buffer.root_offset({index})")
+                format!("reader.root_offset({index})")
             } else {
-                format!("buffer.field_offset(0, {index})")
+                format!("reader.field_offset(0, {index})")
             };
 
             writer.blank();
             writer.line(format!(
                 "inline {} {class}::{name}() const {{",
-                self.value_type(field.field_type)
+                self.value_type(field)
             ));
             writer.indent();
-            writer.line(buffer);
+            writer.line(reader);
             writer.line(format!("const auto position = {offset};"));
             let read = match field.field_type {
-                FieldType::Scalar(Scalar::Bool) => "buffer.get_uint8(position) != 0".to_owned(),
-                FieldType::Scalar(scalar) => format!("buffer.get_{}(position)", scalar.name()),
-                FieldType::Array(scalar) => format!("buffer.get_{}_array(position)", scalar.name()),
-                FieldType::String => "buffer.get_string(position)".to_owned(),
+                FieldType::StringVector => "reader.get_string_vector(position)".to_owned(),
+                FieldType::Scalar(Scalar::Bool) => "reader.get_uint8(position) != 0".to_owned(),
+                FieldType::Scalar(scalar) => {
+                    self.as_enum(field, format!("reader.get_{}(position)", scalar.name()))
+                }
+                // An array of bools as its bytes, in place, since a byte
+                // other than 0 or 1 is no `bool`
+                FieldType::Array(Scalar::Bool) => "reader.get_uint8_array(position)".to_owned(),
+                FieldType::Array(scalar) => format!("reader.get_{}_array(position)", scalar.name()),
+                FieldType::String => "reader.get_string(position)".to_owned(),
                 FieldType::Struct(structure) => {
                     let structure = &type_name(&self.schema.definition(structure).name);
                     format!(
-                        "{structure}::from_bytes(buffer.get_struct(position, {structure}::SIZE).data())"
+                        "{structure}::from_bytes(reader.get_struct(position, {structure}::SIZE).data())"
                     )
                 }
                 // From the table's bytes, which `get_table()` checks lie
@@ -633,16 +671,16 @@ impl Generator<'_> {
                 // nested table's reads would wait for
                 FieldType::Table(table) => {
                     let table = &type_name(&self.schema.definition(table).name);
-                    format!("{table}(buffer.get_table(position), 0)")
+                    format!("{table}(reader.get_table(position), 0)")
                 }
                 FieldType::Vector(_) => {
-                    let view = self.value_type(field.field_type);
-                    format!("{view}(buffer.get_vector(position))")
+                    let view = self.value_type(field);
+                    format!("{view}(reader.get_vector(position))")
                 }
                 FieldType::StructArray(structure) => {
-                    let view = self.value_type(field.field_type);
+                    let view = self.value_type(field);
                     let structure = &type_name(&self.schema.definition(structure).name);
-                    format!("{view}(buffer.get_struct_array(position, {structure}::SIZE))")
+                    format!("{view}(reader.get_struct_array(position, {structure}::SIZE))")
                 }
             };
             writer.line(format!("return {read};"));
@@ -665,7 +703,7 @@ impl Generator<'_> {
             cpp_doc(writer, &field.docs);
             writer.line(format!(
                 "{} {}{{}};",
-                self.input_type(field.field_type, false),
+                self.input_type(field, false),
                 identifier(&field.name)
             ));
         }
@@ -724,9 +762,10 @@ impl Generator<'_> {
             let at = at_offset("bytes", offset);
             let read = match field.field_type {
                 FieldType::Scalar(Scalar::Bool) => format!("bytes[{offset}] != 0"),
-                FieldType::Scalar(scalar) => {
-                    format!("::tafla::load_le<{}>({at})", scalar_type(scalar))
-                }
+                FieldType::Scalar(scalar) => self.as_enum(
+                    field,
+                    format!("::tafla::load_le<{}>({at})", scalar_type(scalar)),
+                ),
                 FieldType::Struct(inner) => {
                     format!(
                         "{}::from_bytes({at})",
@@ -768,7 +807,10 @@ impl Generator<'_> {
                         "bytes_[{offset}] = static_cast<std::uint8_t>({name});"
                     ));
                 }
-                FieldType::Scalar(_) => writer.line(format!("::tafla::store_le({at}, {name});")),
+                FieldType::Scalar(scalar) => writer.line(format!(
+                    "::tafla::store_le({at}, {});",
+                    as_integer(field, scalar, &name)
+                )),
                 FieldType::Struct(_) => writer.line(format!("{name}.to_bytes({at});")),
                 _ => unreachable!("structs hold scalars and structs only"),
             }
@@ -850,8 +892,8 @@ impl Generator<'_> {
                     cpp_doc(writer, &docs);
                     generic_field.parameter.clone()
                 } else {
-                    cpp_doc(writer, &field.docs);
-                    self.input_type(field.field_type, in_generic)
+                    cpp_doc(writer, &self.member_docs(field));
+                    self.input_type(field, in_generic)
                 };
             writer.line(format!(
                 "{field_type} {}{initializer};",
@@ -1127,15 +1169,9 @@ impl Generator<'_> {
         }
 
         self.view_checks(writer, index, in_generic);
-        if layout.version.is_some() {
-            writer.line(format!(
-                "::tafla::TableSizer sizer_({fields}, {name}::LAYOUT, {name}::FORMAT_VERSION);"
-            ));
-        } else {
-            writer.line(format!(
-                "::tafla::TableSizer sizer_({fields}, {name}::LAYOUT);"
-            ));
-        }
+        writer.line(format!(
+            "::tafla::TableSizer sizer_({fields}, {name}::LAYOUT);"
+        ));
         self.sizes(writer, index, in_generic);
         writer.blank();
         writer.line(match output {
@@ -1279,6 +1315,9 @@ impl Generator<'_> {
             let generic = self.generic_field(index, position, in_generic);
             let value = identifier(&field.name);
             match field.field_type {
+                FieldType::StringVector => {
+                    writer.line(format!("sizer_.add_string_vector({value});"));
+                }
                 FieldType::Scalar(scalar) => {
                     writer.line(format!("sizer_.add_{}();", scalar.stored().name()));
                 }
@@ -1336,13 +1375,17 @@ impl Generator<'_> {
             let generic = self.generic_field(index, position, in_generic);
             let value = identifier(&field.name);
             match field.field_type {
+                FieldType::StringVector => {
+                    writer.line(format!("writer_.set_string_vector({position}, {value});"));
+                }
                 FieldType::Scalar(Scalar::Bool) => writer.line(format!(
                     "writer_.set_uint8({position}, static_cast<std::uint8_t>({value}));"
                 )),
                 FieldType::Scalar(scalar) => {
                     writer.line(format!(
-                        "writer_.set_{}({position}, {value});",
-                        scalar.name()
+                        "writer_.set_{}({position}, {});",
+                        scalar.name(),
+                        as_integer(field, scalar, &value)
                     ));
                 }
                 FieldType::Array(scalar) => writer.line(format!(
@@ -1415,12 +1458,16 @@ impl Generator<'_> {
     }
 
     /// The type that a getter returns
-    fn value_type(&self, field_type: FieldType) -> String {
+    fn value_type(&self, field: &Field) -> String {
         let name = |index: usize| type_name(&self.schema.definition(index).name);
 
-        match field_type {
-            FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
-            FieldType::Array(Scalar::Uint8) => "std::span<const std::uint8_t>".to_owned(),
+        match field.field_type {
+            FieldType::StringVector => "::tafla::StringVector".to_owned(),
+            FieldType::Scalar(scalar) => self.scalar_field_type(field, scalar),
+            // Bytes in place, and an array of bools as its bytes
+            FieldType::Array(Scalar::Uint8 | Scalar::Bool) => {
+                "std::span<const std::uint8_t>".to_owned()
+            }
             FieldType::Array(scalar) => format!("::tafla::ArrayView<{}>", scalar_type(scalar)),
             FieldType::String => "std::string_view".to_owned(),
             FieldType::Struct(index) | FieldType::Table(index) => name(index),
@@ -1433,7 +1480,7 @@ impl Generator<'_> {
     /// table's fields struct as a generic fields struct does when
     /// `in_generic`. The arrays of structs of a fields struct are generic, and
     /// take their type parameters' names instead.
-    fn input_type(&self, field_type: FieldType, in_generic: bool) -> String {
+    fn input_type(&self, field: &Field, in_generic: bool) -> String {
         let name = |index: usize| type_name(&self.schema.definition(index).name);
         let fields = |index: usize| {
             fields_type(
@@ -1443,8 +1490,9 @@ impl Generator<'_> {
             )
         };
 
-        match field_type {
-            FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
+        match field.field_type {
+            FieldType::StringVector => "std::span<const std::string_view>".to_owned(),
+            FieldType::Scalar(scalar) => self.scalar_field_type(field, scalar),
             FieldType::Array(scalar) => format!("std::span<const {}>", scalar_type(scalar)),
             FieldType::String => "std::string_view".to_owned(),
             FieldType::Struct(index) => name(index),
@@ -1452,6 +1500,45 @@ impl Generator<'_> {
             FieldType::Table(index) => fields(index),
             FieldType::Vector(index) => format!("std::span<const {}>", fields(index)),
         }
+    }
+
+    /// The type of a scalar field: its enum, or its scalar's type
+    fn scalar_field_type(&self, field: &Field, scalar: Scalar) -> String {
+        match field.enumeration {
+            Some(index) => type_name(&self.schema.enumeration(index).name),
+            None => scalar_type(scalar).to_owned(),
+        }
+    }
+
+    /// `read`, an expression of a scalar field's integer, as the field's
+    /// enum, with a `static_cast` that any integer of the type converts
+    /// through unchecked, or as it is for a field of no enum
+    fn as_enum(&self, field: &Field, read: String) -> String {
+        match field.enumeration {
+            Some(index) => format!(
+                "static_cast<{}>({read})",
+                type_name(&self.schema.enumeration(index).name)
+            ),
+            None => read,
+        }
+    }
+
+    /// A field's documentation, as its member and its getter carry it, with
+    /// the enum of an array of enums, whose type names their integer type
+    /// alone
+    fn member_docs(&self, field: &Field) -> Vec<String> {
+        let mut docs = field.docs.clone();
+        if let (FieldType::Array(scalar), Some(index)) = (field.field_type, field.enumeration) {
+            if !docs.is_empty() {
+                docs.push(String::new());
+            }
+            docs.push(format!(
+                "`{}`s, as the `{}`s that store them",
+                type_name(&self.schema.enumeration(index).name),
+                scalar_type(scalar)
+            ));
+        }
+        docs
     }
 }
 
@@ -1477,7 +1564,9 @@ fn generic_fields(schema: &Schema, namespace: &str) -> Vec<Vec<Option<GenericFie
     let declared: HashSet<String> = schema
         .definitions
         .iter()
-        .map(|definition| type_name(&definition.name))
+        .map(|definition| &definition.name)
+        .chain(schema.enums.iter().map(|enumeration| &enumeration.name))
+        .map(|name| type_name(name))
         .collect();
 
     schema
@@ -1554,6 +1643,12 @@ const fn getter_doc(field_type: FieldType) -> &'static str {
             "Views the structs, reading each one when it's asked for, and `to_vector()` reads \
              every struct. Throws a `tafla::DecodeError` if the field or its structs lie outside \
              the bytes."
+        }
+        FieldType::StringVector => {
+            "Views the strings, reading each one when it's asked for, which throws a \
+             `tafla::DecodeError` if it lies outside the bytes or isn't valid UTF-8, and \
+             `to_vector()` reads every string. Throws a `tafla::DecodeError` if the field, or the \
+             vector's count or the ends of its strings, lie outside the bytes."
         }
         _ => "Throws a `tafla::DecodeError` if the field lies outside the bytes",
     }
@@ -1777,12 +1872,70 @@ fn put_fields(writer: &mut CodeWriter, fields: &[Field], positions: &[usize]) {
             FieldType::Scalar(Scalar::Bool) => writer.line(format!(
                 "bytes_[{position}] = static_cast<std::uint8_t>({name});"
             )),
-            FieldType::Scalar(_) => writer.line(format!("::tafla::store_le({at}, {name});")),
+            FieldType::Scalar(scalar) => writer.line(format!(
+                "::tafla::store_le({at}, {});",
+                as_integer(field, scalar, &name)
+            )),
             FieldType::Struct(_) | FieldType::Table(_) => {
                 writer.line(format!("{name}.to_bytes({at});"));
             }
             _ => unreachable!("only fields of fixed size are written whole"),
         }
+    }
+}
+
+/// `value`, a scalar field's member, as the integer that stores it: an
+/// enum's with a `static_cast` to its integer type, which the runtime's
+/// setters and `store_le()` take, or as it is for a field of no enum
+fn as_integer(field: &Field, scalar: Scalar, value: &str) -> String {
+    if field.enumeration.is_some() {
+        format!("static_cast<{}>({value})", scalar_type(scalar))
+    } else {
+        value.to_owned()
+    }
+}
+
+/// An enum, as an `enum class` of its integer type, with the schema's
+/// documentation of it and of each value. An enum class of a fixed type
+/// holds any value of that type, so that a field of the enum reads any
+/// integer, named or not, as its documentation says.
+fn enum_class(writer: &mut CodeWriter, enumeration: &Enum) {
+    let name = &type_name(&enumeration.name);
+    let integer = scalar_type(enumeration.underlying);
+    let mut docs = enumeration.docs.clone();
+    if !docs.is_empty() {
+        docs.push(String::new());
+    }
+    docs.push(format!(
+        "A value of `{name}`: one that it names, or any other `{integer}`"
+    ));
+
+    cpp_doc(writer, &docs);
+    writer.line(format!("enum class {name} : {integer} {{"));
+    writer.indent();
+    for value in &enumeration.values {
+        cpp_doc(writer, &value.docs);
+        writer.line(format!(
+            "{} = {},",
+            enumerator(&value.name),
+            enumerator_value(value.value)
+        ));
+    }
+    writer.dedent();
+    writer.line("};");
+}
+
+/// An enum value's integer as a C++ expression. A literal has no sign, so
+/// `int64`'s least, whose magnitude no `long long` holds, is written as
+/// `INT64_MIN` is, one less than its negated greatest, and an integer beyond
+/// `long long`'s greatest takes a `U`, for an unsigned type that holds it.
+fn enumerator_value(value: i128) -> String {
+    if value == i128::from(i64::MIN) {
+        format!("{} - 1", i64::MIN + 1)
+    } else if value > i128::from(i64::MAX) {
+        format!("{value}U")
+    } else {
+        value.to_string()
     }
 }
 
@@ -1807,7 +1960,7 @@ fn version_definitions(writer: &mut CodeWriter, class: &str) {
         "inline std::uint32_t {class}::version_of(std::span<const std::uint8_t> bytes) {{"
     ));
     writer.line(format!(
-        "{INDENT}return ::tafla::ByteBuffer(bytes, LAYOUT).version();"
+        "{INDENT}return ::tafla::TableReader(bytes, LAYOUT).version();"
     ));
     writer.line("}");
 }
@@ -2058,14 +2211,15 @@ fn assignment(writer: &mut CodeWriter, declaration: &str, value: &str) {
     writer.line(format!("{INDENT}{value};"));
 }
 
-/// A C++ expression of the message's layout
+/// A C++ expression of the message's layout, whose version is the class's
+/// `FORMAT_VERSION`
 fn layout_expression(layout: Layout) -> String {
     let mut expression = "::tafla::TableLayout()".to_owned();
     if layout.sized {
         expression.push_str(".sized()");
     }
     if layout.version.is_some() {
-        expression.push_str(".versioned()");
+        expression.push_str(".with_version(FORMAT_VERSION)");
     }
     match layout.offset_type {
         OffsetType::Uint8 => expression.push_str(".with_offset_type(::tafla::OffsetType::uint8)"),
@@ -2151,6 +2305,17 @@ fn doxygen_text(text: &str) -> String {
 
 fn identifier(name: &str) -> String {
     if KEYWORDS.contains(&name) || MACROS.contains(&name) || MEMBERS.contains(&name) {
+        format!("{name}_")
+    } else {
+        name.to_owned()
+    }
+}
+
+/// An enum's value, with a `_` after a keyword or a macro, as a field's
+/// name takes. An enum class declares nothing beside its values, so they
+/// keep the names of the members that the generated code declares.
+fn enumerator(name: &str) -> String {
+    if KEYWORDS.contains(&name) || MACROS.contains(&name) {
         format!("{name}_")
     } else {
         name.to_owned()

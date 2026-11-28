@@ -34,7 +34,7 @@ pub struct GoldenRoot {
 /// target's language, whose tests run them against its runtime and whose
 /// checks type-check, lint and format-check them; `tests/wasm/check.mjs`
 /// keeps the same table.
-pub const GOLDEN_ROOTS: [GoldenRoot; 7] = [
+pub const GOLDEN_ROOTS: [GoldenRoot; 9] = [
     GoldenRoot {
         target: "typescript",
         root: "typescript/core/test/generated",
@@ -71,6 +71,19 @@ pub const GOLDEN_ROOTS: [GoldenRoot; 7] = [
     GoldenRoot {
         target: "cpp",
         root: "cpp/tests/generated",
+        subdirectory: None,
+    },
+    // A module of each schema, which swift/Package.swift declares, and
+    // whose tests lie in swift/Tests/TaflaTests/Generated
+    GoldenRoot {
+        target: "swift",
+        root: "swift/Tests/Generated",
+        subdirectory: None,
+    },
+    // A library of their own, which csharp/tests/Tafla.Tests runs
+    GoldenRoot {
+        target: "csharp",
+        root: "csharp/tests/Tafla.Generated",
         subdirectory: None,
     },
 ];
@@ -150,7 +163,7 @@ pub struct BenchmarkSchema {
 /// Every suite's schema, which are copies of one schema, since the suites
 /// run the same workloads. Each directory holds the generated code and
 /// nothing else.
-pub const BENCHMARK_SCHEMAS: [BenchmarkSchema; 6] = [
+pub const BENCHMARK_SCHEMAS: [BenchmarkSchema; 8] = [
     BenchmarkSchema {
         target: "typescript",
         schema: "typescript/benchmarks/comparison/workloads.tafla",
@@ -185,6 +198,102 @@ pub const BENCHMARK_SCHEMAS: [BenchmarkSchema; 6] = [
         target: "cpp",
         schema: "cpp/benchmarks/workloads.tafla",
         directory: "cpp/benchmarks/generated/tafla",
+        package: None,
+    },
+    BenchmarkSchema {
+        target: "csharp",
+        schema: "csharp/benchmarks/workloads.tafla",
+        directory: "csharp/benchmarks/Tafla.Benchmarks/Generated/TaflaGen",
+        package: None,
+    },
+    BenchmarkSchema {
+        target: "swift",
+        schema: "swift/benchmarks/workloads.tafla",
+        directory: "swift/benchmarks/Sources/GeneratedTafla",
+        package: None,
+    },
+];
+
+/// The schemas of the strings suites, which are copies of one schema, since
+/// the suites write and read the same table. Each directory holds the
+/// generated code and nothing else.
+pub const STRINGS_SCHEMAS: [BenchmarkSchema; 4] = [
+    BenchmarkSchema {
+        target: "typescript",
+        schema: "typescript/benchmarks/strings/strings.tafla",
+        directory: "typescript/benchmarks/strings/generated/tafla",
+        package: None,
+    },
+    BenchmarkSchema {
+        target: "java",
+        schema: "java/benchmarks/src/main/tafla/strings.tafla",
+        directory: "java/benchmarks/src/main/java",
+        package: Some("io.github.snovader.tafla.benchmarks.generated.strings"),
+    },
+    BenchmarkSchema {
+        target: "rust",
+        schema: "rust/benchmarks/strings.tafla",
+        directory: "rust/benchmarks/src/codecs/tafla_gen_strings",
+        package: None,
+    },
+    BenchmarkSchema {
+        target: "cpp",
+        schema: "cpp/benchmarks/strings.tafla",
+        directory: "cpp/benchmarks/generated/strings",
+        package: None,
+    },
+];
+
+/// The schemas of the suites of lists of strings, which are copies of one
+/// schema, since the suites write and read the same lists. Each directory
+/// holds the generated code and nothing else.
+pub const LISTS_SCHEMAS: &[BenchmarkSchema] = &[
+    BenchmarkSchema {
+        target: "typescript",
+        schema: "typescript/benchmarks/strings/lists/lists.tafla",
+        directory: "typescript/benchmarks/strings/lists/generated",
+        package: None,
+    },
+    BenchmarkSchema {
+        target: "java",
+        schema: "java/benchmarks/src/main/tafla/lists.tafla",
+        directory: "java/benchmarks/src/main/java",
+        package: Some("io.github.snovader.tafla.benchmarks.generated.lists"),
+    },
+    BenchmarkSchema {
+        target: "go",
+        schema: "go/benchmarks/lists.tafla",
+        directory: "go/benchmarks/generated/lists",
+        package: None,
+    },
+    BenchmarkSchema {
+        target: "csharp",
+        schema: "csharp/benchmarks/lists.tafla",
+        directory: "csharp/benchmarks/Tafla.Benchmarks/Generated/Lists",
+        package: None,
+    },
+    BenchmarkSchema {
+        target: "swift",
+        schema: "swift/benchmarks/lists.tafla",
+        directory: "swift/benchmarks/Sources/GeneratedLists",
+        package: None,
+    },
+    BenchmarkSchema {
+        target: "cpp",
+        schema: "cpp/benchmarks/lists.tafla",
+        directory: "cpp/benchmarks/generated/lists",
+        package: None,
+    },
+    BenchmarkSchema {
+        target: "python",
+        schema: "python/benchmarks/src/tafla_benchmarks/generated/lists.tafla",
+        directory: "python/benchmarks/src/tafla_benchmarks/generated/lists",
+        package: None,
+    },
+    BenchmarkSchema {
+        target: "rust",
+        schema: "rust/benchmarks/lists.tafla",
+        directory: "rust/benchmarks/src/lists/generated",
         package: None,
     },
 ];

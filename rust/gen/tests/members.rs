@@ -60,7 +60,7 @@ fn typescript_renames_object_members_and_then() {
             "    toString_(): number {",
             "    then_(): number {",
             "    constructor_: number;",
-            "    readonly #writer: number;",
+            "    declare private readonly _writer: number;",
             "    serialize(): number {",
             "    new(): number {",
             "    static versionOf(bytes: Uint8Array): number {",
@@ -78,7 +78,6 @@ fn javascript_renames_object_members_and_then() {
             "    toString_() {",
             "    then_() {",
             " * @property {number} constructor_",
-            "    #writer;",
             "    serialize() {",
         ],
     );
@@ -338,6 +337,145 @@ fn cpp_renames_the_members_of_structs_and_fields_structs_and_keywords() {
             "    std::uint8_t writer{};",
             "    std::uint8_t bytes{};",
             "    std::uint8_t read_{};",
+        ],
+    );
+}
+
+/// Swift's fields structs and structs have `serialize()`, which a property
+/// of its name clashes with, and a field named `self` would hide the instance
+/// in an initializer, so both take a `_`, where other keywords are escaped in
+/// backticks. A message or table holds its reader and position in
+/// properties whose names start with a `_`, which no field's does.
+#[test]
+fn swift_renames_serialize_and_self() {
+    let schema = "\
+message Members (version: 1) {
+    reader: uint8;
+    serialize: uint8;
+    version: uint8;
+    format_version: uint8;
+    layout: uint8;
+    class: uint8;
+    write: uint8;
+    nested: Nested;
+}
+
+table Nested {
+    position: uint8;
+    self: uint8;
+    alignment: uint8;
+    add: uint8;
+}
+
+struct Frame {
+    serialize: uint8;
+    size: uint8;
+    bytes: uint8;
+    append: uint8;
+}
+";
+
+    assert_generates(
+        "swift",
+        schema,
+        &[
+            "    public var reader: UInt8 {",
+            "    let _reader: TableReader\n",
+            "    public var serialize_: UInt8 {",
+            "    public func serialize() throws(BuildError) -> [UInt8] {",
+            "    public static func version(of bytes: RawSpan) throws(DecodeError) -> UInt32 {",
+            "    public var version: UInt8 {",
+            "    public static let formatVersion: UInt32 = 1\n",
+            "    public var formatVersion: UInt8 {",
+            "    public var layout: UInt8 {",
+            "    public var `class`: UInt8 {",
+            "        self.`class` = `class`\n",
+            "    public var write: UInt8 {",
+            "    public var position: UInt8 {",
+            "    let _position: Int\n",
+            "    public var self_: UInt8 {",
+            "        self.self_ = self_\n",
+            "    public var alignment: UInt8\n",
+            "    public static let alignment: Alignment = .one\n",
+            "    public var add: UInt8\n",
+            "    public var size: UInt8\n",
+            "    public static let size = 4\n",
+            "    public var bytes: UInt8\n",
+            "        self.bytes = UInt8(littleEndianBytes: bytes, at: offset + 2)\n",
+            "    public var append: UInt8\n",
+            "    public func serialize() -> [UInt8] {",
+        ],
+    );
+}
+
+#[test]
+fn csharp_renames_the_members_of_readers_fields_and_structs_and_their_own_names() {
+    assert_declares(
+        "csharp",
+        &[
+            "    public byte ToString_ => _reader.GetUInt8(_reader.RootOffset(1));",
+            "    public byte Serialize_ => _reader.GetUInt8(_reader.RootOffset(2));",
+            "    public byte Equals_ => _reader.GetUInt8(_reader.RootOffset(8));",
+            "    public byte Write_ => _reader.GetUInt8(_reader.RootOffset(10));",
+            "    public byte VersionOf_ => _reader.GetUInt8(_reader.RootOffset(12));",
+            "    public required byte Serialize_ { get; init; }",
+            "    public static uint VersionOf(global::System.ReadOnlySpan<byte> bytes) =>",
+            "    public byte[] Serialize()",
+            // PascalCase names are never C#'s keywords, nor Python's or
+            // TypeScript's members
+            "    public byte Constructor => _reader.GetUInt8(_reader.RootOffset(0));",
+            "    public byte New => _reader.GetUInt8(_reader.RootOffset(3));",
+            "    public byte Int => _reader.GetUInt8(_reader.RootOffset(6));",
+            "    public bool Bool => _reader.GetUInt8(_reader.RootOffset(7)) != 0;",
+            "    public byte Read => _reader.GetUInt8(_reader.RootOffset(9));",
+            "    public byte Then => _reader.GetUInt8(_reader.RootOffset(11));",
+            "    public required byte Writer { get; init; }",
+            "    public required byte Bytes { get; init; }",
+            "    public required byte Read { get; init; }",
+        ],
+    );
+
+    // A field named after its own definition, or its definition's fields,
+    // which C# reserves for their constructors, and after the members of a
+    // struct and of a table's fields
+    assert_generates(
+        "csharp",
+        "message Point { point: uint8; point_fields: uint8; inner: Inner; whole: Whole; }\n\
+         table Inner { add_to: uint8; write_to: uint8; name: string; }\n\
+         table Whole { put_to: uint8; }\n\
+         struct Frame { size: uint8; alignment: uint8; serialize_array: uint8; frame: uint8; }",
+        &[
+            "    public byte Point_ => _reader.GetUInt8(_reader.RootOffset(0));",
+            "    public required byte PointFields_ { get; init; }",
+            "    public required byte AddTo_ { get; init; }",
+            "    internal void AddTo(ref global::Tafla.TableSizer sizer)",
+            "    public required byte WriteTo_ { get; init; }",
+            "    public required byte PutTo_ { get; init; }",
+            "    internal void PutTo(global::System.Span<byte> bytes)",
+            "    public const int Size = 4;",
+            "    public required byte Size_ { get; init; }",
+            "    public required byte Alignment_ { get; init; }",
+            "    public required byte SerializeArray_ { get; init; }",
+            "    public required byte Frame_ { get; init; }",
+        ],
+    );
+}
+
+/// C++'s enum values take a `_` after a keyword or a macro, as fields do, but
+/// keep the names of the members that the generated code declares, since an
+/// enum class declares nothing beside its values
+#[test]
+fn cpp_renames_enum_values_named_after_keywords_and_macros_only() {
+    assert_generates(
+        "cpp",
+        "enum Member: uint8 { new = 0; linux = 1; read = 2; size = 3; then = 4; }",
+        &[
+            "enum class Member : std::uint8_t {",
+            "    new_ = 0,",
+            "    linux_ = 1,",
+            "    read = 2,",
+            "    size = 3,",
+            "    then = 4,",
         ],
     );
 }

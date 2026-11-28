@@ -1,0 +1,5 @@
+error: expected `=` and the value's integer, found `;`
+ --> enum_value_without_integer.tafla:2:8
+  |
+2 |     red;
+  |        ^

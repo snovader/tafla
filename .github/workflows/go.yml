@@ -222,7 +222,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [FuzzByteBuffer, FuzzConformance]
+        target: [FuzzTableReader, FuzzConformance]
     steps:
       - name: Checkout GitHub repo
         uses: actions/checkout@v7
@@ -276,6 +276,9 @@ jobs:
       # checks that the benchmarks work
       - name: Run benchmarks briefly
         run: go run ./cmd/comparison -quick
+
+      - name: Run the lists of strings briefly
+        run: go run ./cmd/lists -quick
 
       - name: Print the encoded sizes
         run: go run ./cmd/encoding

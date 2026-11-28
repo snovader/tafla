@@ -1,0 +1,41 @@
+/// Values that their enum's integer type can't hold
+enum Small: uint8 {
+    least = 0;
+    greatest = 255;
+    too_large = 256;
+    negative = -1;
+}
+
+enum Signed: int8 {
+    least = -128;
+    greatest = 127;
+    below = -129;
+    above = 128;
+}
+
+enum Wide: int64 {
+    least = -9223372036854775808;
+    greatest = 9223372036854775807;
+    above = 9223372036854775808;
+}
+
+enum Widest: uint64 {
+    greatest = 18446744073709551615;
+    negative_zero = -0;
+    zero = 0;
+}
+
+/// Two names of one integer
+enum Aliased: uint16 {
+    first = 1;
+    one = 1;
+    second = 2;
+    /// A value out of range is still compared with the others
+    large = 65536;
+    larger = 65536;
+}
+
+message Uses {
+    small: Small;
+    signed: [Signed];
+}

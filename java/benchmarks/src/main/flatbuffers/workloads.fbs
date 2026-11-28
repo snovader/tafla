@@ -1,4 +1,5 @@
-// The workloads' tables, the same as the TypeScript comparison's. The Java classes in
+// The workloads' tables, the same as the TypeScript comparison's, and the strings
+// suite's, the same as TypeScript's strings suite's. The Java classes in
 // src/main/java/io/github/snovader/tafla/benchmarks/generated/flatbuffers are written by hand in the
 // shape that `flatc --java` generates from this schema.
 namespace io.github.snovader.tafla.benchmarks.generated.flatbuffers;
@@ -16,3 +17,5 @@ struct Triple { value: float; first: float; second: float; }
 table Triples { items: [Triple]; }
 
 table Sample { key: uint; a: float; b: float; }
+
+table Strings { items: [string]; }

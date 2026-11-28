@@ -24,10 +24,29 @@ public class TableLayoutTest {
         @ForAll boolean versioned,
         @ForAll OffsetType offsetType
     ) {
-        var layout = TableLayout.builder().sized(sized).versioned(versioned).offsetType(offsetType).build();
+        var builder = TableLayout.builder().sized(sized).offsetType(offsetType);
+        var layout = (versioned ? builder.version(1) : builder).build();
         var slots = (sized ? 1 : 0) + (versioned ? 1 : 0);
 
         assertEquals(slots * offsetType.size(), layout.headerSize());
+        assertEquals(versioned, layout.versioned());
+        assertEquals(versioned ? OptionalLong.of(1) : OptionalLong.empty(), layout.version());
+    }
+
+    @Example
+    void a_layout_of_another_version_differs_in_the_version_only() {
+        var first = TableLayout.builder().sized(true).version(1).offsetType(OffsetType.UINT16).build();
+        var second = first.withVersion(2);
+
+        assertEquals(OptionalLong.of(2), second.version());
+        assertTrue(second.sized());
+        assertEquals(OffsetType.UINT16, second.offsetType());
+        assertEquals(OptionalLong.of(1), first.version());
+
+        // A layout without a version gains the slot for one
+        var versioned = TableLayout.DEFAULT.withVersion(7);
+        assertEquals(OptionalLong.of(7), versioned.version());
+        assertEquals(TableLayout.DEFAULT.headerSize() + OffsetType.UINT32.size(), versioned.headerSize());
     }
 
     @Example
@@ -53,6 +72,6 @@ public class TableLayoutTest {
     void the_layout_names_its_offset_type() {
         var layout = TableLayout.builder().sized(true).offsetType(OffsetType.UINT8).build();
 
-        assertEquals("TableLayout[sized=true, versioned=false, offsetType=uint8]", layout.toString());
+        assertEquals("TableLayout[sized=true, version=none, offsetType=uint8]", layout.toString());
     }
 }

@@ -1,7 +1,7 @@
 from collections.abc import Buffer
 from struct import Struct
 
-from tafla import SIZEOF_32, ByteBuffer, TableBuilder, TableLayout
+from tafla import SIZEOF_32, TableBuilder, TableLayout, TableReader
 from tafla_benchmarks.codecs.codec import Codec, DocumentWorkload, Workload
 from tafla_benchmarks.workloads import (
     DocumentInput,
@@ -12,8 +12,8 @@ from tafla_benchmarks.workloads import (
     SampleInput,
 )
 
-DOCUMENT_LAYOUT = TableLayout(sized=True, versioned=True)
 DOCUMENT_VERSION = 1
+DOCUMENT_LAYOUT = TableLayout(sized=True, version=DOCUMENT_VERSION)
 
 SAMPLE_SIZE = 3 * SIZEOF_32
 # The fixed-size record's fields, a uint32 and two float32s, which
@@ -36,20 +36,20 @@ def serialize_record(input: RecordInput) -> memoryview:
 
 
 def deserialize_record(data: Buffer) -> RecordInput:
-    buffer = ByteBuffer(data)
+    reader = TableReader(data)
 
     return RecordInput(
-        buffer.get_float64(buffer.root_offset(0)),
-        buffer.get_float64(buffer.root_offset(1)),
-        buffer.get_int64(buffer.root_offset(2)),
-        buffer.get_string(buffer.root_offset(3)),
+        reader.get_float64(reader.root_offset(0)),
+        reader.get_float64(reader.root_offset(1)),
+        reader.get_int64(reader.root_offset(2)),
+        reader.get_string(reader.root_offset(3)),
     )
 
 
 def serialize_document(input: DocumentInput) -> memoryview:
     """Arrays of the columns' element types are copied as bytes, and lists are
     converted as ``array()`` converts them"""
-    document = TableBuilder(4, DOCUMENT_LAYOUT, DOCUMENT_VERSION)
+    document = TableBuilder(4, DOCUMENT_LAYOUT)
     document.set_float64(input.x)
     document.set_float64(input.y)
     document.set_string(input.name)
@@ -66,25 +66,25 @@ def _set_columns(columns: TableBuilder, input: DocumentInput) -> None:
 
 
 def deserialize_document(data: Buffer) -> DocumentOutput:
-    buffer = _open_document(data)
-    columns = buffer.root_offset(3)
+    reader = _open_document(data)
+    columns = reader.root_offset(3)
 
     return DocumentOutput(
-        buffer.get_float64(buffer.root_offset(0)),
-        buffer.get_float64(buffer.root_offset(1)),
-        buffer.get_string(buffer.root_offset(2)),
-        buffer.get_int64(buffer.field_offset(columns, 0)),
-        buffer.get_uint32_array(buffer.field_offset(columns, 1)),
-        buffer.get_float32_array(buffer.field_offset(columns, 2)),
-        buffer.get_float32_array(buffer.field_offset(columns, 3)),
+        reader.get_float64(reader.root_offset(0)),
+        reader.get_float64(reader.root_offset(1)),
+        reader.get_string(reader.root_offset(2)),
+        reader.get_int64(reader.field_offset(columns, 0)),
+        reader.get_uint32_array(reader.field_offset(columns, 1)),
+        reader.get_float32_array(reader.field_offset(columns, 2)),
+        reader.get_float32_array(reader.field_offset(columns, 3)),
     )
 
 
 def sum_a(data: Buffer) -> float:
     """Sums the elements of the column's view, as tafla's documentation advises
     over a getter call per element"""
-    buffer = _open_document(data)
-    a = buffer.get_float32_array(buffer.field_offset(buffer.root_offset(3), 2))
+    reader = _open_document(data)
+    a = reader.get_float32_array(reader.field_offset(reader.root_offset(3), 2))
 
     total = 0.0
     for i in range(len(a)):
@@ -93,13 +93,13 @@ def sum_a(data: Buffer) -> float:
     return total
 
 
-def _open_document(data: Buffer) -> ByteBuffer:
+def _open_document(data: Buffer) -> TableReader:
     """Raises ``ValueError`` if the document is in another version"""
-    buffer = ByteBuffer(data, DOCUMENT_LAYOUT)
-    if buffer.get_version() != DOCUMENT_VERSION:
-        raise ValueError(f"Unsupported document version {buffer.get_version()}")
+    reader = TableReader(data, DOCUMENT_LAYOUT)
+    if reader.get_version() != DOCUMENT_VERSION:
+        raise ValueError(f"Unsupported document version {reader.get_version()}")
 
-    return buffer
+    return reader
 
 
 def serialize_list(input: ListInput) -> memoryview:
@@ -120,17 +120,17 @@ def _set_pair(pair: TableBuilder, input: ItemInput) -> None:
 
 
 def deserialize_list(data: Buffer) -> ListInput:
-    buffer = ByteBuffer(data)
-    offsets = buffer.get_vector_offsets(buffer.root_offset(0))
+    reader = TableReader(data)
+    offsets = reader.get_vector_offsets(reader.root_offset(0))
 
     items: list[ItemInput] = []
     for item in offsets:
-        pair = buffer.field_offset(item, 1)
+        pair = reader.field_offset(item, 1)
         items.append(
             ItemInput(
-                buffer.get_float32(buffer.field_offset(item, 0)),
-                buffer.get_float32(buffer.field_offset(pair, 0)),
-                buffer.get_float32(buffer.field_offset(pair, 1)),
+                reader.get_float32(reader.field_offset(item, 0)),
+                reader.get_float32(reader.field_offset(pair, 0)),
+                reader.get_float32(reader.field_offset(pair, 1)),
             )
         )
 
@@ -155,8 +155,8 @@ def serialize_structs(input: ListInput) -> memoryview:
 
 def deserialize_structs(data: Buffer) -> ListInput:
     """Unpacks the array's view with ``struct``, as tafla-gen's code reads it"""
-    buffer = ByteBuffer(data)
-    structs = buffer.get_struct_array(buffer.root_offset(0), ITEM_STRUCT.size)
+    reader = TableReader(data)
+    structs = reader.get_struct_array(reader.root_offset(0), ITEM_STRUCT.size)
 
     return ListInput(
         [ItemInput(*values) for values in ITEM_STRUCT.iter_unpack(structs)]
@@ -177,12 +177,12 @@ def serialize_sample(input: SampleInput) -> bytearray:
 
 
 def deserialize_sample(data: Buffer) -> SampleInput:
-    buffer = ByteBuffer(data)
+    reader = TableReader(data)
 
     return SampleInput(
-        buffer.get_uint32(0),
-        buffer.get_float32(SIZEOF_32),
-        buffer.get_float32(2 * SIZEOF_32),
+        reader.get_uint32(0),
+        reader.get_float32(SIZEOF_32),
+        reader.get_float32(2 * SIZEOF_32),
     )
 
 
@@ -196,5 +196,5 @@ TAFLA = Codec(
 )
 """tafla's tables, nested from their builders, with columns read back as
 views. The fixed-size record is packed field by field with ``struct`` and read
-with ``ByteBuffer``'s getters at fixed positions, and an array of structs is
+with ``TableReader``'s getters at fixed positions, and an array of structs is
 packed and unpacked with ``struct``, as tafla-gen's code does."""

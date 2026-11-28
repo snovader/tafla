@@ -1,43 +1,44 @@
 # tafla
 
 Binary tables of scalars, strings and typed arrays. `TableBuilder` writes a
-table at its exact size, copying typed arrays in bulk, and `ByteBuffer` reads
+table at its exact size, copying typed arrays in bulk, and `TableReader` reads
 fields back by offset, with arrays as views of the bytes where it can. Every
 read checks that it stays within the bytes it was given.
 
 ```ts
-import { ByteBuffer, TableBuilder, TableLayout } from 'tafla';
+import { TableReader, TableBuilder, TableLayout } from 'tafla';
 
 // A format's header, shared by its writer and its readers
-const LAYOUT = TableLayout.create({ sized: true, versioned: true });
 const FORMAT_VERSION = 1;
+const LAYOUT = TableLayout.create({ sized: true, version: FORMAT_VERSION });
 
 const series = new TableBuilder(2);
 series.setUint32Array(timestamps); // a Uint32Array is copied as bytes
 series.setFloat32Array(values); // a number[] would be converted first
 
-const builder = new TableBuilder(3, LAYOUT, FORMAT_VERSION);
+const builder = new TableBuilder(3, LAYOUT);
 builder.setFloat64(59.3293);
 builder.setString('Europe/Stockholm');
 builder.setTable(series); // written straight into the table
 const bytes = builder.bytes();
 
-const buffer = new ByteBuffer(bytes, LAYOUT);
-if (buffer.getVersion() !== FORMAT_VERSION) {
+const reader = new TableReader(bytes, LAYOUT);
+if (reader.getVersion() !== FORMAT_VERSION) {
     throw new Error('Unsupported format version');
 }
 
-const latitude = buffer.getFloat64(buffer.rootOffset(0));
-const timeZone = buffer.getString(buffer.rootOffset(1));
-const table = buffer.rootOffset(2);
-const read = buffer.getFloat32Array(buffer.fieldOffset(table, 1));
+const latitude = reader.getFloat64(reader.rootOffset(0));
+const timeZone = reader.getString(reader.rootOffset(1));
+const table = reader.rootOffset(2);
+const read = reader.getFloat32Array(reader.fieldOffset(table, 1));
 ```
 
 `StructWriter`, and the read and write functions, one of each per scalar
 type, such as `readUint32()` and `writeFloat64()`, read and write records at
 fixed offsets, such as stream frames, without a header or offsets. The write
 functions write into a `Uint8Array` at an offset, and throw a `RangeError` for
-a value that doesn't lie within it, without writing any of it.
+a value that doesn't lie within it, before converting the value and without
+writing any of it.
 
 `TableSizer` and `TableWriter` write a table whose fields are known before
 it's written, as the code that tafla-gen generates writes its tables. The
@@ -85,11 +86,11 @@ change with it:
   item ends or an array's count and padding, and return the position in
   `target()`, the writer's bytes, where the caller writes the nested table,
   the vector's items or the structs.
-- `TableWriter.tableBytes()` and `versionedTableBytes()` return the bytes of
-  a message written whole, without a sizer and a writer, with its header
-  written, and check its header and length as the sizer and its `writer()`
-  check them. `utf8Length()` and `writeUtf8()` count and write a string after
-  its fields of fixed size.
+- `TableWriter.tableBytes()` returns the bytes of a message written whole,
+  without a sizer and a writer, with its header written, and checks its
+  header and length as the sizer and its `writer()` check them.
+  `utf8Length()` and `writeUtf8()` count and write a string after its fields
+  of fixed size.
 - `viewOf()` makes a `DataView` of a range of bytes, through which the
   generated code writes a run of 128 bytes or more of structs or nested
   tables, and writes shorter runs with the write functions, since a
@@ -101,7 +102,7 @@ All values are little-endian. A table is its header, one offset per field
 and then the fields in the order they were set:
 
 - The header holds the table's byte length when the layout is `sized`, and
-  then its version when it's `versioned`.
+  then the layout's `version` when it has one.
 - Header slots, offsets, counts, lengths and item ends are all of the
   layout's offset type, `offsetType`: `'uint8'`, `'uint16'` or `'uint32'`,
   whose offset size is 1, 2 or 4 bytes. It limits the table to 255 bytes,
@@ -121,6 +122,14 @@ and then the fields in the order they were set:
   without reading the items before it. `getVectorItemOffset()` finds it from
   the count that `getVectorLength()` returned, so that reading many items
   reads and checks the count once, as the generated views do.
+- An array of bools is a `uint8` array of 1 and 0, which `setBoolArray()`
+  writes from bools and `getBoolArray()` reads into bools, true where a byte
+  isn't 0. `getUint8Array()` reads its bytes in place.
+- A vector of strings lays out its count and ends as a vector of tables
+  does, and then each string's UTF-8, without a count of its own.
+  `setStringVector()` writes one from an array of strings,
+  `getStringVector()` reads every string, and a `StringVector` reads one
+  string from its ends with `get(i)` and every string with `toArray()`.
 
 The repository's `conformance` directory holds golden tables of every part of
 the format, which every implementation of tafla reads and rebuilds byte for
@@ -201,7 +210,7 @@ byte; its README describes them. This package writes them, and
   heap, no less.
 - **Small tables cost about the allocation of their bytes.** A table of two
   float64s, a string and an int64 took 0.18–0.20 µs from `bytes()` in
-  Node 27, and 0.34 µs from `finalize()`, whose `ByteBuffer` asks for the
+  Node 27, and 0.34 µs from `finalize()`, whose `TableReader` asks for the
   bytes' `ArrayBuffer` for its `DataView`. Call `bytes()` for a table that you send
   or store rather than read. A nested builder allocates neither, so the
   vector of 100 nested tables took 12 µs against 7–13 µs in
@@ -225,11 +234,12 @@ setters and typed arrays convert it:
 
 Validation is always on:
 
-- Every read checks its range against the bytes the `ByteBuffer` was given,
+- Every read checks its range against the bytes the `TableReader` was given,
   even when the backing `ArrayBuffer` is larger, and throws a `DecodeError`
-  if it would leave them. Strings must be valid UTF-8. A truncated or
-  corrupted buffer therefore throws rather than returning values from outside
-  it.
+  if it would leave them. Strings must be valid UTF-8, and so must each
+  string of a vector of strings, which is checked when it's read. A
+  truncated or corrupted buffer therefore throws rather than returning values
+  from outside it.
 - Once the bytes' `ArrayBuffer` is detached, or a resizable one has shrunk
   below bytes of fixed length, every read throws a `DecodeError`. Bytes made
   over a resizable buffer without a length track its length instead, so once
@@ -245,18 +255,18 @@ Validation is always on:
 Using the API wrongly throws other errors, whatever the bytes:
 
 - `TableLayout.create()` throws a `RangeError` for an offset type other than
-  `'uint8'`, `'uint16'` and `'uint32'`, and a `TypeError` for an option other
-  than `sized`, `versioned` and `offsetType`.
+  `'uint8'`, `'uint16'` and `'uint32'`, or a version that isn't an integer
+  that fits in it, and a `TypeError` for an option other than `sized`,
+  `version` and `offsetType`.
 - `TableBuilder` throws a `RangeError` for more or fewer fields than it was
-  created with, or a version that doesn't fit. A field that would make the
-  table too long for its offset type throws a `RangeError` from its setter
-  and isn't added. A version missing from or given for a layout, or a field
-  set after `finalize()`, throws a `TypeError`. `finalize()` and `bytes()`
+  created with. A field that would make the table too long for its offset
+  type throws a `RangeError` from its setter and isn't added. A field set
+  after `finalize()` throws a `TypeError`. `finalize()` and `bytes()`
   throw a `RangeError`, and leave the builder unfinalized, when arrays have
   changed length since they were set so that the fields no longer fit the
   table or fill it.
-- `TableSizer` throws as `TableBuilder`'s constructor does for its header and
-  version, and its `byteLength()` and `writer()` throw a `RangeError` for a
+- `TableSizer` throws as `TableBuilder`'s constructor does for its header,
+  and its `byteLength()` and `writer()` throw a `RangeError` for a
   table too long for its offset type, and `writer(bytes)` for a table longer
   than `bytes`, before writing any of them. A `TableWriter` throws a `RangeError`
   from `bytes()` when its fields didn't fill the bytes that its sizer
@@ -265,7 +275,7 @@ Using the API wrongly throws other errors, whatever the bytes:
   item end to be its own; hand-written tables use `TableBuilder`.
 - A struct size that isn't a positive integer, for an array of structs, and
   an alignment other than 1, 2, 4 or 8 throw a `RangeError`.
-- `getVersion()` throws a `TypeError` when the layout isn't versioned.
+- `getVersion()` throws a `TypeError` when the layout has no version.
 - `getVectorOffset()` throws a `RangeError` for an index outside the vector,
   once its count has been checked against the bytes, and
   `getVectorItemOffset()` for an index outside the count it's given.

@@ -8,10 +8,10 @@ import java.util.function.*;
 /**
  * Builds a table: a header with one offset per field, after the table's total length and version
  * when its layout has them, followed by the fields in the order they're set. Arrays, strings and
- * vectors start with their count, and a vector then holds the end of each item. Arrays of scalars
- * and of structs are padded so that their elements are aligned from the start of the table. Fields
- * are read back by index with {@link ByteBuffer#rootOffset}, or {@link ByteBuffer#fieldOffset} for
- * a table nested in another.
+ * vectors start with their count, and a vector, of tables or of strings, then holds the end of each
+ * item. Arrays of scalars and of structs are padded so that their elements are aligned from the
+ * start of the table. Fields are read back by index with {@link TableReader#rootOffset}, or
+ * {@link TableReader#fieldOffset} for a table nested in another.
  *
  * <p>Setting a field records it and counts its bytes. {@link #bytes()} then allocates the table at
  * its exact size and writes every field in one pass, with a {@link TableWriter} as the generated
@@ -37,7 +37,6 @@ public final class TableBuilder {
     private byte @Nullable [] written;
 
     private final TableLayout layout;
-    private final long version;
     /** The type of offsets, lengths and header slots */
     private final OffsetType offsetType;
     /**
@@ -85,28 +84,15 @@ public final class TableBuilder {
 
     /**
      * @param fields the number of fields that the table will hold
-     * @param layout the table's header and offset type, which its readers must use too
-     * @throws IllegalArgumentException if the layout is versioned, or the header alone is longer
-     *     than the layout addresses
+     * @param layout the table's header and offset type, which its readers must use too, with the
+     *     version to write to the header when it has one. Readers can check it with
+     *     {@link TableReader#getVersion()} before reading any field.
+     * @throws IllegalArgumentException if the number of fields is negative, or the header alone is
+     *     longer than the layout addresses
      */
     public TableBuilder(int fields, TableLayout layout) {
-        this(fields, layout, false, 0);
-    }
-
-    /**
-     * @param version the version to write to the header. Readers can check it with
-     *     {@link ByteBuffer#getVersion()} before reading any field.
-     * @throws IllegalArgumentException if the layout isn't versioned, the version doesn't fit in
-     *     the layout's offset type, or the header alone is longer than the layout addresses
-     */
-    public TableBuilder(int fields, TableLayout layout, long version) {
-        this(fields, layout, true, version);
-    }
-
-    private TableBuilder(int fields, TableLayout layout, boolean versioned, long version) {
-        this.offset = layout.headerLength(fields, versioned, version);
+        this.offset = layout.headerLength(fields);
         this.layout = layout;
-        this.version = version;
         this.offsetType = layout.offsetType();
         this.maxLength = (int) layout.maxLength();
 
@@ -136,7 +122,7 @@ public final class TableBuilder {
         }
 
         // The constructor checked the header, as the sizer's writer() does
-        var writer = new TableWriter(new byte[offset], offset, fields, layout, version, List.of());
+        var writer = new TableWriter(new byte[offset], offset, fields, layout, List.of());
         writeFields(writer, 0, fields);
         written = writer.bytes();
 
@@ -229,6 +215,14 @@ public final class TableBuilder {
         addArray(values.length, Double.BYTES, (writer, index) -> writer.setFloat64Array(index, values));
     }
 
+    /**
+     * Sets an array of bools, which is written as a {@code uint8} array, 1 for each true value and 0
+     * for each false one. {@link TableReader#getBoolArray} reads it back.
+     */
+    public void setBoolArray(boolean[] values) {
+        addArray(values.length, Byte.BYTES, (writer, index) -> writer.setBoolArray(index, values));
+    }
+
     /** Writes {@code string} as UTF-8, with lone surrogates replaced by U+FFFD */
     public void setString(String string) {
         // As the sizer adds strings: a short one is counted, and the writer encodes it in place,
@@ -244,8 +238,42 @@ public final class TableBuilder {
     }
 
     /**
+     * Writes a vector of strings, each as UTF-8 with lone surrogates replaced by U+FFFD, after the
+     * end of each, which lets readers find any string without reading the others. It takes no
+     * more bytes for each string than its end, where a vector of tables of one string takes each
+     * table's offset and the string's count too. {@link TableReader#getStringVector} and
+     * {@link StringVector} read it back.
+     *
+     * <p>The list is copied, so later changes to it don't change the table.</p>
+     */
+    public void setStringVector(List<String> strings) {
+        var items = strings.toArray(new String[0]);
+
+        // As setString() records a string: a short one is counted, and the writer encodes it in
+        // place, and a long one is encoded once here, in order, and the writer copies it
+        List<byte[]> longStrings = List.of();
+        var byteLength = (items.length + 1L) * offsetType.size();
+        for (var string : items) {
+            if (string.length() < Utf8.SHORT_LENGTH) {
+                byteLength += Utf8.length(string);
+                continue;
+            }
+
+            if (longStrings.isEmpty()) {
+                longStrings = new ArrayList<>();
+            }
+            var utf8 = Utf8.encode(string);
+            longStrings.add(utf8);
+            byteLength += utf8.length;
+        }
+
+        var encoded = longStrings;
+        addField(byteLength, 0, (writer, index) -> writer.setStringVector(index, items, encoded));
+    }
+
+    /**
      * Sets a struct field from its bytes: its scalars, little-endian, one after another, which are
-     * written as they are, without padding. {@link ByteBuffer#getStruct} reads them back.
+     * written as they are, without padding. {@link TableReader#getStruct} reads them back.
      */
     public void setStruct(byte[] bytes) {
         addField(bytes.length, 0, (writer, index) -> writer.setStruct(index, bytes));
@@ -255,7 +283,7 @@ public final class TableBuilder {
      * Sets an array of structs of {@code size} bytes each, from their bytes one after another,
      * after their count. It's padded so that the structs start at a multiple of {@code alignment}
      * from the start of the table, which is the size of the structs' largest scalar.
-     * {@link ByteBuffer#getStructArray} reads them back.
+     * {@link TableReader#getStructArray} reads them back.
      *
      * @param alignment what the structs' start is padded to a multiple of: 1, 2, 4 or 8
      * @throws IllegalArgumentException if {@code size} is less than 1, {@code bytes} aren't a whole
@@ -281,7 +309,7 @@ public final class TableBuilder {
 
     /**
      * Embeds a table from its builder, without a length prefix. Readers find its fields with
-     * {@link ByteBuffer#fieldOffset} from the field's offset, so its layout must be
+     * {@link TableReader#fieldOffset} from the field's offset, so its layout must be
      * {@link TableLayout#DEFAULT}.
      *
      * <p>The builder must have all its fields set. {@link #bytes()} writes it straight into this
@@ -314,7 +342,7 @@ public final class TableBuilder {
 
     /**
      * Embeds a table from its bytes, without a length prefix. Readers find its fields with
-     * {@link ByteBuffer#fieldOffset} from the field's offset, so its layout must be
+     * {@link TableReader#fieldOffset} from the field's offset, so its layout must be
      * {@link TableLayout#DEFAULT}.
      *
      * <p>The nested table's arrays are aligned from its own start, so it's padded to start at a
@@ -547,7 +575,7 @@ public final class TableBuilder {
      *     fit in the offset type
      */
     private int headerOf(int fields) {
-        return TableLayout.headerless(offsetType).headerLength(fields, false, 0);
+        return TableLayout.headerless(offsetType).headerLength(fields);
     }
 
     /** @throws IllegalArgumentException if the table recorded in place has fields left to set */
@@ -806,8 +834,16 @@ public final class TableBuilder {
             TableBuilder.this.setFloat64Array(values);
         }
 
+        public void setBoolArray(boolean[] values) {
+            TableBuilder.this.setBoolArray(values);
+        }
+
         public void setString(String string) {
             TableBuilder.this.setString(string);
+        }
+
+        public void setStringVector(List<String> strings) {
+            TableBuilder.this.setStringVector(strings);
         }
 
         public void setStruct(byte[] bytes) {

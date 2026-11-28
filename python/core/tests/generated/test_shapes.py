@@ -8,7 +8,7 @@ from functools import partial
 from hypothesis import given
 from hypothesis.strategies import binary, integers, one_of
 
-from tafla import ByteBuffer, DecodeError
+from tafla import DecodeError, TableReader
 from tests.generated import SETTINGS
 from tests.generated.byte_strategies import (
     Overwrite,
@@ -723,15 +723,15 @@ def _items_by_index(data: bytes) -> list[str]:
 def _items_by_offset(data: bytes) -> list[str]:
     """Each item of an item list, as ``_items_by_index()`` reads them, but
     found by ``get_vector_offset()``, which reads the count for each"""
-    buffer = ByteBuffer(data)
+    reader = TableReader(data)
     try:
-        vector = buffer.root_offset(0)
-        count = buffer.get_vector_length(vector)
+        vector = reader.root_offset(0)
+        count = reader.get_vector_length(vector)
     except DecodeError as error:
         return [f"DecodeError: {error}"]
 
     def read(index: int) -> ItemFields:
-        return read_item(Item(buffer, buffer.get_vector_offset(vector, index)))
+        return read_item(Item(reader, reader.get_vector_offset(vector, index)))
 
     indices = [*range(count), count - 1, count]
     return [_outcome(partial(read, index)) for index in indices]

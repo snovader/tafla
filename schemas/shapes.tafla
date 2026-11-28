@@ -1,6 +1,6 @@
 // Generic shapes of tables: a point of scalars and a string, a document
-// whose header nests a table of columns, a list of small nested tables, and a
-// fixed-size sample.
+// whose header nests a table of columns, a list of small nested tables, a
+// fixed-size sample, and a task of enums.
 
 /// A small table of two coordinates, an identifier and a name
 message Point {
@@ -49,4 +49,35 @@ struct Sample {
     key: uint32;
     a: float32;
     b: float32;
+}
+
+/// A task, whose fields are enums, alone, in an array and in a struct
+message Task {
+    priority: Priority;
+    /// The states that the task has been in, the oldest first
+    history: [State];
+    step: Step;
+    name: string;
+}
+
+/// A state and how long the task has been in it
+struct Step {
+    state: State;
+    priority: Priority;
+    seconds: uint32;
+}
+
+/// How soon to do a task
+enum Priority: int8 {
+    low = -1;
+    normal = 0;
+    high = 1;
+}
+
+/// What has become of a task
+enum State: uint16 {
+    waiting = 0;
+    running = 1;
+    done = 2;
+    failed = 1000;
 }

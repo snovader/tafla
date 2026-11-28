@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <!-- tafla's runtime, which depends only on the .NET base class library, and is published to
+         NuGet as the package Tafla, as RELEASING.md describes -->
+    <PropertyGroup>
+        <RootNamespace>Tafla</RootNamespace>
+        <AssemblyName>Tafla</AssemblyName>
+        <!-- Checks that the runtime trims and compiles ahead of time without warnings -->
+        <IsAotCompatible>true</IsAotCompatible>
+
+        <PackageId>Tafla</PackageId>
+        <!-- scripts/version.sh csharp sets it, for a release -->
+        <Version>0.0.0</Version>
+        <Description>Binary tables of scalars, strings, arrays and structs, read with bounds checks and spans of the bytes</Description>
+        <PackageTags>binary;serialization;zero-copy;table;span;tafla</PackageTags>
+        <PackageProjectUrl>https://github.com/snovader/tafla/tree/main/csharp#readme</PackageProjectUrl>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+    </PropertyGroup>
+
+    <!-- The package's page on NuGet shows README.md, written for it, and the package holds the
+         license at the root of the repository, as the other runtimes' packages do -->
+    <ItemGroup>
+        <None Include="README.md" Pack="true" PackagePath="/" />
+        <None Include="../../../LICENSE" Pack="true" PackagePath="/" Visible="false" />
+    </ItemGroup>
+</Project>

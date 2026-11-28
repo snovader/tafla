@@ -10,6 +10,7 @@ import io.github.snovader.tafla.benchmarks.generated.flatbuffers.List;
 import io.github.snovader.tafla.benchmarks.generated.flatbuffers.Pair;
 import io.github.snovader.tafla.benchmarks.generated.flatbuffers.Record;
 import io.github.snovader.tafla.benchmarks.generated.flatbuffers.Sample;
+import io.github.snovader.tafla.benchmarks.generated.flatbuffers.Strings;
 import io.github.snovader.tafla.benchmarks.generated.flatbuffers.Triple;
 import io.github.snovader.tafla.benchmarks.generated.flatbuffers.Triples;
 
@@ -26,7 +27,15 @@ public final class FlatBuffersCodec {
     private FlatBuffersCodec() {}
 
     public static Codec create() {
-        return new Codec("flatbuffers", new Records(), new Documents(), new Lists(), new Structs(), new Samples());
+        return new Codec(
+            "flatbuffers",
+            new Records(),
+            new Documents(),
+            new Lists(),
+            new Structs(),
+            new Samples(),
+            new StringTables()
+        );
     }
 
     private static final class Records implements Workload<RecordInput> {
@@ -204,6 +213,36 @@ public final class FlatBuffersCodec {
             var sample = Sample.getRootAsSample(ByteBuffer.wrap(bytes));
 
             return new SampleInput(sample.key(), sample.a(), sample.b());
+        }
+    }
+
+    /** A vector of strings, created from the offsets of the strings that the builder wrote first */
+    private static final class StringTables implements Workload<java.util.List<String>> {
+        @Override
+        public byte[] serialize(java.util.List<String> strings) {
+            var builder = new FlatBufferBuilder();
+
+            var offsets = new int[strings.size()];
+            for (int i = 0; i < offsets.length; i++) {
+                offsets[i] = builder.createString(strings.get(i));
+            }
+
+            var items = Strings.createItemsVector(builder, offsets);
+            builder.finish(Strings.createStrings(builder, items));
+
+            return builder.sizedByteArray();
+        }
+
+        @Override
+        public java.util.List<String> deserialize(byte[] bytes) {
+            var table = Strings.getRootAsStrings(ByteBuffer.wrap(bytes));
+
+            var strings = new String[table.itemsLength()];
+            for (int i = 0; i < strings.length; i++) {
+                strings[i] = table.items(i);
+            }
+
+            return Arrays.asList(strings);
         }
     }
 }

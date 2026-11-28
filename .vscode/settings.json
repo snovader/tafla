@@ -1,9 +1,8 @@
 {
-    "biome.lsp.bin": "typescript/node_modules/.bin/biome",
     "editor.codeActionsOnSave": {
         "source.fixAll": "explicit"
     },
-    "editor.defaultFormatter": "biomejs.biome",
+    "editor.defaultFormatter": "oxc.oxc-vscode",
     "editor.formatOnSave": true,
     "editor.inlayHints.enabled": "off",
     "editor.semanticTokenColorCustomizations": {
@@ -23,6 +22,9 @@
     "js/ts.referencesCodeLens.enabled": true,
     "js/ts.tsdk.promptToUseWorkspaceVersion": true,
     "js/ts.tsserver.automaticTypeAcquisition.enabled": false,
+    "oxc.path.oxfmt": "typescript/node_modules/.bin/oxfmt",
+    "oxc.path.oxlint": "typescript/node_modules/.bin/oxlint",
+    "oxc.path.tsgolint": "typescript/node_modules/.bin/tsgolint",
     "[python]": {
         "editor.defaultFormatter": "charliermarsh.ruff",
         "editor.codeActionsOnSave": {

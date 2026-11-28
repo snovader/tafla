@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <!-- Compares tafla's C# runtime with .NET's libraries that encode the same workloads, as
+         ../README.md describes. It's a project of its own, so that the runtime, which it references,
+         depends on none of their packages. -->
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <IsPackable>false</IsPackable>
+        <RootNamespace>Tafla.Benchmarks</RootNamespace>
+        <!-- The benchmarks document themselves by their names and ../README.md -->
+        <NoWarn>$(NoWarn);CS1591</NoWarn>
+        <InvariantGlobalization>true</InvariantGlobalization>
+
+        <!-- The workstation garbage collector without its background thread, so that a collection
+             doesn't run beside the next round. Tiered compilation and dynamic PGO keep their
+             defaults, as an application has them, and the harness warms up past them. -->
+        <ServerGarbageCollection>false</ServerGarbageCollection>
+        <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Google.FlatBuffers" />
+        <PackageReference Include="Google.Protobuf" />
+        <PackageReference Include="MemoryPack" />
+        <PackageReference Include="MessagePack" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../../src/Tafla/Tafla.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="Tafla.Benchmarks.Tests" />
+    </ItemGroup>
+</Project>

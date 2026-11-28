@@ -1,8 +1,11 @@
 # Changelog
 
-The changes in each release of `tafla-gen` on crates.io, tafla's schema
-compiler. Each of tafla's packages has a version and a changelog of its own,
-as [RELEASING.md](https://github.com/snovader/tafla/blob/main/RELEASING.md)
+The changes in each release of tafla-gen, tafla's schema compiler: the crate
+`tafla-gen` on crates.io, `@tafla/gen` on npm, which runs its WebAssembly
+module, `io.github.snovader.tafla:tafla-gen` on Maven Central, a jar of the
+module, and `Tafla.Gen` on NuGet, which holds its command. Each of tafla's
+packages has a version and a changelog of its own, as
+[RELEASING.md](https://github.com/snovader/tafla/blob/main/RELEASING.md)
 describes. When the code that tafla-gen generates for a language needs a
 newer release of that language's runtime, its entry names the release. The
 format is that of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
@@ -18,16 +21,62 @@ first commits, for code built from its source before the release.
 
 - tafla-gen, a schema compiler written in Rust, which generates code that
   writes and reads a schema's messages, tables and structs in TypeScript,
-  JavaScript, Python, Java, Rust, Go and C++, with lazy views of vectors and
+  JavaScript, Python, Java, Rust, Go, C++, Swift and C#, with lazy views of vectors and
   arrays of structs, views in place of arrays of scalars in Java, whose
   getters copy them, and a WebAssembly module of it for other hosts.
+- `@tafla/gen` on npm, which runs the command, as `npx @tafla/gen` or the
+  `tafla-gen` of a project that depends on it, and generates a schema's files
+  with `compile()`, through the WebAssembly module and without a Rust
+  toolchain.
+- The package `Tafla.Gen` on NuGet, which holds tafla-gen for Linux, macOS
+  and Windows on x64 and Arm64, and generates C# from a .NET project's
+  `TaflaSchema` items when the project builds, with the command of the host
+  that builds it.
+- `io.github.snovader.tafla:tafla-gen` on Maven Central, a jar that runs the
+  command, as `java -jar` or a build's task does, on Java 21 or later and
+  without a Rust toolchain. It holds the WebAssembly module compiled to
+  classes of the JVM, and depends on nothing.
+- The `cli` module, which parses the command's arguments and generates from
+  the schemas that its caller reads, and the WebAssembly module's
+  `tafla_command` and `tafla_generate` exports of it, so that a host of the
+  module only reads schemas, writes files and prints.
+- `tafla-gen` on PyPI, which holds the command built for Linux, macOS and
+  Windows, so that `uvx tafla-gen` and `pipx run tafla-gen` run it without a
+  Rust toolchain. Its source distribution builds the command with cargo on
+  other platforms.
 - [SPEC.md](https://github.com/snovader/tafla/blob/main/SPEC.md#evolution)
   describes how a format's messages evolve: each version fixes its fields and
   keeps the same layout, and a new version appends fields to the previous
   version's.
 - A `bool` scalar, one byte that writers write as 0 or 1 and readers read as
   true when it isn't 0, in tables and structs, which tafla-gen generates as
-  each language's boolean. Arrays of bools aren't supported.
+  each language's boolean, and arrays of bools, `[bool]`, which are `uint8`
+  arrays of 0 and 1, whose getter returns the bytes and whose fields hold
+  the language's bools.
+- Enums, such as `enum Priority: int8 { low = -1; high = 1; }`, which name
+  integers of an integer type, `int8` to `uint64`, and are stored as it, in
+  fields, structs and arrays, without changing the format. A field of an
+  enum reads any integer of its type, named or not, as cheaply as the
+  integer, and an array of an enum is the view in place of an array of its
+  integer. tafla-gen declares each enum in every target, as a frozen object
+  and a type alias in TypeScript and JavaScript, an `IntEnum` in Python, a
+  class of constants in Java, a newtype of the integer with constants in
+  Rust, a defined type and constants in Go, an `enum class` in C++, a
+  `RawRepresentable` struct in Swift and an `enum` in C#, and checks that
+  each value fits the type and has a name and an integer of its own, and
+  that an enum has no more values than the constant pool of its Java class
+  holds.
+- `[string]`, a vector of strings, which `SPEC.md` adds to the format, in
+  every target. Its getter returns the runtime's `StringVector`, which reads
+  one string from its ends or every string, and the code writes it from a
+  list of strings: a `readonly string[]` in TypeScript and JavaScript, a
+  `Sequence[str]` in Python, a `List<String>` in Java, a `&[&str]` in Rust,
+  a `[]string` in Go, a `std::span<const std::string_view>` in C++, a
+  `[String]` in Swift and a `ReadOnlyMemory<string>` in C#. Whole reads,
+  where a target has them, give a list of strings. `StringVector` is a
+  reserved name in the targets that name it unqualified: TypeScript,
+  JavaScript, Python, Java, Rust and Swift. The checker rejected `[string]`
+  before.
 - A static `versionOf()` on every versioned message that tafla-gen generates
   (`version_of()` in Python and Rust), which reads the version in the header
   so that an application can choose the reader of that version.
@@ -49,6 +98,19 @@ first commits, for code built from its source before the release.
   TypeScript and JavaScript, which writes the message into the start of the
   caller's bytes and returns the view of the bytes that holds it, saving the
   allocation of new bytes for each table.
+- A `csharp` target, abbreviated `cs`, which generates C# 14 for .NET 10:
+  `readonly ref struct` readers of spans whose properties read fields lazily,
+  `readonly record struct`s of each message's and table's fields with
+  `required` properties, which `Serialize()` and `SerializeInto(byte[])`
+  write, structs as `readonly record struct`s read from and written into
+  spans, and views of vectors and arrays of structs. It names the runtime and
+  the standard library from `global::`, so declarations can't take only the
+  names of the members that their own C# types declare, such as `Size` and
+  `Write`, and `Enumerator`. It writes tables of fields of fixed sizes whole,
+  and a message of such fields and a string after them, with the C# runtime's
+  `TableSizer.AddTableBytes()`, `TableWriter.ReserveTableBytes()` and
+  `TableWriter.CreateTableBytes()`, which come with it. The file's
+  `<auto-generated>` header keeps a project's analyzers off it.
 - A generated `serialize_into(bytes)` on C++'s messages, which writes the
   message into the start of bytes that the caller owns and reuses, and
   returns the message's length.
@@ -85,7 +147,7 @@ first commits, for code built from its source before the release.
 - Generated Python declares `fields()` on each message and table whose
   fields are all scalars, structs and tables of them, and a string last,
   which reads every field at once into the `TypedDict` that it's written
-  from, through `ByteBuffer.get_fields()`. It reads them through the getters
+  from, through `TableReader.get_fields()`. It reads them through the getters
   when the table's offsets aren't those that its writer writes, so its values
   and errors are theirs. The getters stay lazy.
 - A generated `Read<Struct>()` beside each Go struct, which reads it from
@@ -104,7 +166,7 @@ first commits, for code built from its source before the release.
 - Generated Python declares `field_values()` on every message and table,
   which reads every field's value into a tuple in one call, typed by the
   alias `<Name>FieldValues` that's declared beside `<Name>Fields`: the leading
-  fields of fixed size through `ByteBuffer.get_fields()`, and the others
+  fields of fixed size through `TableReader.get_fields()`, and the others
   after them, those of nested tables without such fields included, in the
   order that the getters read them, so that its values and errors are
   theirs. A nested table's values are in place of it when they're all of
@@ -116,7 +178,7 @@ first commits, for code built from its source before the release.
   read the items' values without creating their readers.
 - Generated Python views of vectors have `iter_field_values()`, which
   iterates over the items' values: for a table of fixed size without
-  structs, through the runtime's `ByteBuffer.iter_vector_fields()`, which
+  structs, through the runtime's `TableReader.iter_vector_fields()`, which
   reads each item's end when it reaches the item, without creating the
   items' readers, nor a list of their values.
 - Generated Python messages of only fields of fixed size, and a string
@@ -128,7 +190,7 @@ first commits, for code built from its source before the release.
   reads every field's value as `field_values()` reads them, without creating
   a reader, and raises the reader's `DecodeError` for another format
   version: a message of only fields of fixed size in one call, through
-  `ByteBuffer.read_fields()`, and any other from a `ByteBuffer` of its own.
+  `TableReader.read_fields()`, and any other from a `TableReader` of its own.
 - Generated Python messages of scalars, strings, arrays and vectors of
   tables of fixed size without structs have `serialize_values()`, which
   writes the message from its fields' values as positional arguments, each
@@ -140,10 +202,65 @@ first commits, for code built from its source before the release.
   and `item_field_values(index)`, which reads one struct's, without creating
   their dataclasses. A view reads a struct by index with one unpack, whose
   check of the offset is the check of the index.
+- A `swift` target, which generates Swift for the Swift runtime, `Tafla`:
+  messages and tables as nonescapable views of a `RawSpan` with throwing
+  getters, views of vectors and arrays of structs, `<Name>Fields` structs
+  that write them through the runtime's `TableSizer` and `TableWriter`, and
+  structs read and written at their offsets. The target that holds the code
+  enables the experimental feature `Lifetimes` in Swift 6.2 to 6.4, as the
+  runtime's does. The checker keeps declarations from taking the names that
+  it relies on, such as `Int`, `RawSpan` and `Swift`, and fields named
+  `serialize` or `self` take a `_` in Swift.
 
 ### Changed
 
+- The generated TypeScript declares a class's fields as `declare private
+  readonly`, named with a `_`, and the generated JavaScript assigns them in
+  the constructor without declaring them, rather than as `#` fields, which V8
+  holds as mutable and of any type. Reading every item of a vector of nested
+  tables takes 7 to 17% less time in Node 24, 26 and 27.
+- The TypeScript and JavaScript that tafla-gen generates for a versioned
+  message gives the version to the message's `TableLayout`, as
+  `TableLayout.create({ version: Document.FORMAT_VERSION })`, rather than to
+  each sizer and to `TableWriter.versionedTableBytes()`, which the runtime
+  no longer has. It needs the runtime that takes the version so.
+- The Go that tafla-gen generates for a versioned message gives the version
+  to the message's layout, as `WithVersion(DocumentFormatVersion)`, rather
+  than to `NewVersionedTableSizer()` and `AppendVersionedTable()`, which the
+  runtime no longer has. It needs the runtime that takes the version so.
+- The Java that tafla-gen generates for a versioned message gives the
+  version to the message's layout, as `.version(FORMAT_VERSION)`, rather
+  than to each `TableSizer`, which no longer takes one. It needs the runtime
+  that takes the version so.
+- The C++ that tafla-gen generates for a versioned message gives the
+  version to the message's layout, as `with_version(FORMAT_VERSION)`, rather
+  than to its `TableSizer`, which no longer takes one. It needs the runtime
+  that takes the version so.
+- The C# that tafla-gen generates for a versioned message gives the version
+  to the message's layout, as `Version = FormatVersion`, rather than to each
+  `TableSizer` and to `TableWriter.CreateTableBytes()`, which no longer take
+  one. It needs the runtime that takes the version so.
+- The Swift that tafla-gen generates for a versioned message gives the
+  version to the message's layout, as `version: formatVersion`, rather than
+  to each `TableSizer`, which no longer takes one. It needs the runtime that
+  takes the version so.
+- The Rust that tafla-gen generates for a versioned message gives the
+  version to the message's layout, as `with_version(Self::FORMAT_VERSION)`,
+  rather than to `TableSizer::versioned()` and
+  `TableWriter::versioned_table_bytes()`, which the runtime no longer has.
+  It needs the runtime that takes the version so.
+- The Python that tafla-gen generates for a versioned message gives the
+  version to the message's layout, as `version=FORMAT_VERSION`, rather than
+  to each `TableWriter` and to `TableWriter.write_fields()`, which no longer
+  take one. It needs the runtime that takes the version so.
+- The command prints the error of a file that it can't write after the errors
+  of schemas that write the same file, rather than before them, as every
+  host of the `cli` module does.
 - The project is named tafla rather than buffy.
+- Generated code reads tables with the runtimes' `TableReader` rather than
+  `ByteBuffer`, and names it `reader`. A declaration can't be named
+  `TableReader`, nor `ByteBuffer` still, which the generated Java imports from
+  `java.nio`.
 - Schemas set a layout's offset type with `offset_type: uint16` rather than
   `offset_size: 16`.
 - Generated tables are written with a sizer and a writer rather than with
@@ -166,6 +283,16 @@ first commits, for code built from its source before the release.
   into the bytes that the runtime's `TableWriter::table_bytes()` returns. The
   benchmarks' vector of 100 nested tables took 0.15 µs to write rather than
   0.83 µs, and the record 20 ns rather than 30 ns.
+- Generated Rust getters are `#[inline(always)]`, as the runtime's reads that
+  they call are, so that each compiles where it's called, to the read that
+  `TableReader`'s getters make by hand. LLVM called some out of line where a
+  function called several, returning each `Result` through memory. The
+  benchmarks' document of 100 rows read in 10.3 ns rather than 12.6 ns, a
+  table of 16 strings in 0.64 to 0.97 of the time, and a vector of tables of
+  a string each in 0.67 to 0.92. Reading the vector of 100 nested tables
+  into the workload's items took 296 ns rather than 277 ns. The record read
+  took 5.5 ns rather than 5.0 ns, as by hand, until the runtime checked
+  short strings for ASCII where it reads them, which brought both to 5.0 ns.
 - Generated TypeScript and JavaScript write a nested table whose fields'
   sizes the schema fixes whole, with its `writeAt()`, where its parent's
   writer reserves its `SIZE` bytes, and size a vector of them in one call, as
@@ -175,6 +302,15 @@ first commits, for code built from its source before the release.
   and vectors of such tables, are written where the writer reserves them,
   rather than into bytes of their own: a run of fewer than 128 bytes with the
   runtime's write functions, and a longer one through a `DataView`.
+- Generated TypeScript and JavaScript import the runtime's functions, then
+  its classes, then its types, each in natural order, as the TypeScript
+  project's oxlint configuration checks.
+- A message that generated TypeScript and JavaScript write whole leaves out
+  the zero bytes of its offsets in `serialize()`, whose new bytes are zero
+  already, and writes them in `serializeInto()`, whose bytes needn't be.
+  They were 12 of a record's 20 stores, and 96 of the 317 bytes of bytecode
+  of its `serialize()`, which V8 counts against the bytecode that it inlines
+  into the function that calls it.
 - Generated C++ readers of tables nested in a message hold the bytes from the
   table's start, 16 bytes rather than 24, and read its offsets at constant
   positions, so their decode errors report positions from the table's start,
@@ -192,7 +328,7 @@ first commits, for code built from its source before the release.
   without a bounds check for each struct.
 - Generated Go getters read uint32 offsets with the Go runtime's
   `Uint32FieldOffset()`, which the compiler inlines, at the slot of each
-  field, rather than through `ByteBuffer.FieldOffset()` or `RootOffset()`, so
+  field, rather than through `TableReader.FieldOffset()` or `RootOffset()`, so
   that a getter is one call rather than two.
 - The generated C++ getter of a vector or an array of structs returns its
   view, a `<Table>Vector` or a `<Struct>Array`, which reads each item when
@@ -202,7 +338,7 @@ first commits, for code built from its source before the release.
   when the getter is called.
 - Generated C++ getters are `TAFLA_ALWAYS_INLINE`, as the runtime's getters
   are, and the getter of a nested table reads it through the runtime's
-  `ByteBuffer::get_table()`, so it throws a `tafla::DecodeError` when the
+  `TableReader::get_table()`, so it throws a `tafla::DecodeError` when the
   table's offset leads past the bytes, rather than returning a reader whose
   reads all fail.
 - Generated fields that clash with the generated code's members, or that are
@@ -227,7 +363,7 @@ first commits, for code built from its source before the release.
   A list of the items is `list(view)`. An item whose bytes are corrupt raises
   `DecodeError` when it's read, rather than when the getter is called.
 - Generated Java views of vectors iterate their items with
-  `ByteBuffer.getVectorItemEnd()`, carrying each item's end to the next, so
+  `TableReader.getVectorItemEnd()`, carrying each item's end to the next, so
   that a loop over a view reads one end for each item rather than two.
   Java's comparison suite summed every item of its vector of 100 tables so
   in 0.427 µs rather than 0.490 µs.
@@ -256,10 +392,45 @@ first commits, for code built from its source before the release.
   allocated each item's reader, 4,280 bytes, and took 0.908 µs in Node 27,
   against 280 bytes and 0.825 µs now, with the runtime's inlined vector item
   reads.
+- Generated Swift views are `@inlinable`, with `@usableFromInline` stored
+  properties, as are structs' readers, so that a release build inlines their
+  getters into the module that calls them rather than calling into the
+  generated module for each field. Swift's comparison suite summed every item
+  of its vector of 100 nested tables in 1.21 µs rather than 2.21 µs, and
+  every struct of its array of 100 in 61 ns rather than 181 ns, as fast as
+  `TableReader`'s getters by hand. The views and structs are `@frozen`, so
+  that the code still compiles with library evolution.
+- Generated Swift views of arrays of structs read a struct from its own
+  bytes, which the check of its index keeps within the array's, so that the
+  compiler folds the checks of its scalars' loads. Before, each load was
+  checked against the array's length, which the compiler can't prove it
+  within where it can't see where the bytes came from, such as in a function
+  that takes the view: a loop there checked every struct and wasn't
+  vectorized. Summing an array of 100 structs in such a function took 66 ns
+  rather than 114 ns, and reading the comparison suite's last struct 7.2 ns
+  rather than 7.9 ns.
+- A generated Swift message's `layout` is an inlinable computed property
+  rather than a `static let`, which a caller in another module reads through
+  an accessor that it can't see into. The layout is then built in the code
+  that reads with it, as the runtime's `TableLayout.default` is, so that the
+  getters inlined into a caller know its offset type, rather than loading it
+  and switching on it at each of the message's fields. The comparison suite
+  then read the last struct of its array of 100 in 4.1 ns rather than 7.1 ns,
+  the last item of its vector of 100 nested tables in 21.8 ns rather than
+  25.3 ns, and its record in 115 ns rather than 122 ns.
+- Generated TypeScript and JavaScript modules are named in kebab-case,
+  rather than in camelCase: the schema's file name with a `-` for each `_`,
+  such as `point-cloud.ts` of `point_cloud.tafla` rather than
+  `pointCloud.ts`. Its other characters stay as they are. This breaks the
+  imports of code generated before: an application that regenerates its
+  modules imports them by their new names.
 
 ### Fixed
 
 - Generated TypeScript structs are written into bytes of their own.
+- The `fields()` of generated JavaScript's vectors of tables and arrays of
+  structs casts its new array to the type of its items in `JSDoc`, so that
+  it returns the type its `@returns` tag names rather than `any[]`.
 - Generated Python structs reject negative offsets and out-of-range values.
 - tafla-gen rejects fields whose names are the same in camelCase, names that
   clash with generated code, definitions too wide for a Java record, and

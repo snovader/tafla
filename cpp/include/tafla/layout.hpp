@@ -7,6 +7,14 @@
 #include <cstdint>
 #include <string_view>
 
+// An empty member that takes no bytes. MSVC's ABI ignores the standard
+// attribute, and Clang follows it there, so both take MSVC's own.
+#if defined(_MSC_VER)
+#define TAFLA_NO_UNIQUE_ADDRESS [[msvc::no_unique_address]]
+#else
+#define TAFLA_NO_UNIQUE_ADDRESS [[no_unique_address]]
+#endif
+
 namespace tafla {
 
 /// A table's offset type, which limits how long the table can be.
@@ -92,20 +100,46 @@ constexpr Offset padding(Offset offset, Alignment alignment) noexcept {
 /// The header and offset type of a table.
 ///
 /// A format creates its layout once, as a constant, and passes it to both the
-/// `TableBuilder` or `TableSizer` that writes the table and the `ByteBuffer`
+/// `TableBuilder` or `TableSizer` that writes the table and the `TableReader`
 /// that reads it, so that the two can't disagree. The default layout has the
 /// offset type `uint32` and no header slots, which nested tables have.
 ///
-/// `Versioned` says whether the header has a slot for a version, so that the
-/// compiler requires a version exactly where a versioned table is written,
-/// and offers `ByteBuffer::version()` only where there is one.
+/// `Versioned` says whether the header holds a version, so that the compiler
+/// offers the layout's `version()` and `TableReader::version()` only where
+/// there is one. A layout with a version is the layout of that version of
+/// the format: its builders and writers write the version, and its readers
+/// read tables of any version, so that a program can read a table's version
+/// before it chooses how to read the fields. The layouts of a format's
+/// versions should differ in the version only.
 ///
 /// ```cpp
-/// constexpr auto document = tafla::TableLayout().sized().versioned();
+/// constexpr auto document = tafla::TableLayout().sized().with_version(1);
 /// constexpr auto frame = tafla::TableLayout().with_offset_type(tafla::OffsetType::uint8);
-/// static_assert(document.header_size() == 8 && frame.header_size() == 0);
+/// static_assert(document.header_size() == 8 && document.version() == 1 && frame.header_size() == 0);
 /// ```
 template <bool Versioned = false>
+class TableLayout;
+
+namespace detail {
+
+/// The version that a layout holds: none when it isn't versioned, so that
+/// such a layout, and a reader that keeps it, takes no more bytes than one
+/// that never held a version
+template <bool Versioned>
+struct LayoutVersion {
+    friend constexpr bool operator==(LayoutVersion, LayoutVersion) noexcept = default;
+};
+
+template <>
+struct LayoutVersion<true> {
+    std::uint32_t value = 0;
+
+    friend constexpr bool operator==(LayoutVersion, LayoutVersion) noexcept = default;
+};
+
+}  // namespace detail
+
+template <bool Versioned>
 class TableLayout {
 public:
     /// No header slots, and offsets and lengths of the offset type `uint32`
@@ -113,22 +147,33 @@ public:
 
     /// Starts the header with the table's total byte length
     [[nodiscard]] constexpr TableLayout sized() const noexcept {
-        return TableLayout(true, offset_type_);
+        return TableLayout(true, offset_type_, version_);
     }
 
-    /// Adds a slot for a version to the header, after the length when sized.
-    /// Readers can check it before reading any field.
-    [[nodiscard]] constexpr TableLayout<true> versioned() const noexcept
-        requires(!Versioned)
+    /// Puts `version` in a slot of the header, after the length when sized,
+    /// which builders and writers write there. Readers can check the
+    /// version that a table holds, with `TableReader::version()`, before
+    /// reading any field.
+    ///
+    /// A version must fit in the layout's offset type, which
+    /// `with_offset_type()` may set later, so the builders and sizers check
+    /// it, and throw a `BuildError`.
+    [[nodiscard]] constexpr TableLayout<true> with_version(std::uint32_t version) const noexcept {
+        return TableLayout<true>(sized_, offset_type_, detail::LayoutVersion<true>{version});
+    }
+
+    /// The version that builders and writers write to the header
+    [[nodiscard]] constexpr std::uint32_t version() const noexcept
+        requires Versioned
     {
-        return TableLayout<true>(sized_, offset_type_);
+        return version_.value;
     }
 
     /// Sets the offset type, the unsigned integer type of the header slots,
     /// field offsets, counts, lengths and item ends, which limits how long
     /// the table can be. The default is `OffsetType::uint32`.
     [[nodiscard]] constexpr TableLayout with_offset_type(OffsetType offset_type) const noexcept {
-        return TableLayout(sized_, offset_type);
+        return TableLayout(sized_, offset_type, version_);
     }
 
     [[nodiscard]] constexpr bool is_sized() const noexcept {
@@ -160,10 +205,12 @@ private:
     template <bool>
     friend class TableLayout;
 
-    constexpr TableLayout(bool sized, OffsetType offset_type) noexcept : sized_(sized), offset_type_(offset_type) {}
+    constexpr TableLayout(bool sized, OffsetType offset_type, detail::LayoutVersion<Versioned> version) noexcept
+        : sized_(sized), offset_type_(offset_type), version_(version) {}
 
     bool sized_ = false;
     OffsetType offset_type_ = OffsetType::uint32;
+    TAFLA_NO_UNIQUE_ADDRESS detail::LayoutVersion<Versioned> version_;
 };
 
 }  // namespace tafla

@@ -87,8 +87,8 @@ impl Kind {
 /// Writes `value` as `kind` into `destination`, which is `kind.size()` bytes,
 /// as `struct` packs it with the kind's little-endian format. Returns
 /// `false`, having written nothing, for a value that `struct` rejects with
-/// `struct.error` or `OverflowError`, and raises what `struct` raises
-/// otherwise, such as an exception from a value's `__index__()`.
+/// `struct.error`, `OverflowError` or `IndexError`, and raises what `struct`
+/// raises otherwise, such as another exception from a value's `__index__()`.
 #[inline]
 pub fn write(kind: Kind, value: &Bound<'_, PyAny>, destination: &mut [u8]) -> PyResult<bool> {
     let py = value.py();
@@ -156,13 +156,19 @@ pub fn write(kind: Kind, value: &Bound<'_, PyAny>, destination: &mut [u8]) -> Py
 }
 
 /// Converts an integer as `struct` does: an `int` as it is, another object
-/// through its `__index__()`, whose errors propagate, and anything else is
-/// rejected. `convert` returns `None` for an `int` out of the kind's range.
+/// through its `__index__()`, and anything else is rejected. `convert`
+/// returns `None` for an `int` out of the kind's range.
+///
+/// An error of `__index__()` propagates, unless it's one that `struct`
+/// raises for a value that it can't pack. The pure-Python runtime can't
+/// tell that one from `struct`'s own, so the value is rejected, as a float's
+/// is whatever its `__float__()` raises.
 #[inline]
 fn integer(
     value: &Bound<'_, PyAny>,
     convert: impl FnOnce(*mut ffi::PyObject) -> PyResult<Option<()>>,
 ) -> PyResult<bool> {
+    let py = value.py();
     let object = value.as_ptr();
     if unsafe { ffi::PyLong_Check(object) } != 0 {
         return Ok(convert(object)?.is_some());
@@ -171,8 +177,11 @@ fn integer(
         return Ok(false);
     }
 
-    let index = unsafe { Bound::from_owned_ptr_or_err(value.py(), ffi::PyNumber_Index(object))? };
-    Ok(convert(index.as_ptr())?.is_some())
+    match unsafe { Bound::from_owned_ptr_or_err(py, ffi::PyNumber_Index(object)) } {
+        Ok(index) => Ok(convert(index.as_ptr())?.is_some()),
+        Err(error) if objects(py)?.is_pack_error(py, &error) => Ok(false),
+        Err(error) => Err(error),
+    }
 }
 
 /// A float as `struct` converts it, or `None` for an object that

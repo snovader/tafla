@@ -1,0 +1,47 @@
+# maturin builds the generator's command, the binary of the crate in
+# rust/gen, into platform wheels, and the source distribution, which holds
+# the crate's sources. The distribution has no Python of its own; see
+# README.md.
+[build-system]
+# The release's maturin-action builds with the same version
+requires = ["maturin==1.16.0"]
+build-backend = "maturin"
+
+[project]
+name = "tafla-gen"
+version = "0.0.0"
+description = "Compiles tafla schemas into code that writes and reads tables in TypeScript, Python, Java, Rust, Go, C++, Swift and C#"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "snovader" }]
+keywords = ["codegen", "schema", "serialization", "tafla"]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Programming Language :: Rust",
+  "Topic :: Software Development :: Code Generators",
+]
+requires-python = ">=3.8"
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/snovader/tafla/tree/main/rust/gen#readme"
+Source = "https://github.com/snovader/tafla"
+Issues = "https://github.com/snovader/tafla/issues"
+Changelog = "https://github.com/snovader/tafla/blob/main/rust/gen/CHANGELOG.md"
+
+[tool.maturin]
+# The crate's binary, tafla-gen, which a wheel installs as a script. The
+# crate is a member of the Rust workspace, whose lock file the release's
+# wheels build with --locked.
+bindings = "bin"
+manifest-path = "../../rust/gen/Cargo.toml"
+strip = true
+# The tests of the generator, and of the Rust runtime that they depend on,
+# which the source distribution's build doesn't run
+exclude = [
+  { path = "**/rust/gen/tests/**", format = "sdist" },
+  { path = "**/rust/core/tests/**", format = "sdist" },
+]

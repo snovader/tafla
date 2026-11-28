@@ -1,5 +1,4 @@
 import {
-    ByteBuffer,
     readFloat32,
     readFloat64,
     readInt8,
@@ -10,19 +9,22 @@ import {
     readUint16,
     readUint32,
     readUint64,
+    StringVector,
     StructWriter,
     TableBuilder,
-    type TableItem,
     TableLayout,
+    TableReader,
     TableSizer,
-    TableWriter
+    TableWriter,
+    type TableItem
 } from 'tafla';
 import {
-    type Alignment,
     elementTypeOf,
-    type FieldDescription,
     fromJsonNumber,
     isArrayField,
+    toJsonNumber,
+    type Alignment,
+    type FieldDescription,
     type JsonNumber,
     type LayoutDescription,
     type NestedTable,
@@ -30,8 +32,7 @@ import {
     type ScalarType,
     type StructArrayField,
     type TableDescription,
-    type TableField,
-    toJsonNumber
+    type TableField
 } from './description.ts';
 
 /** The byte size of each scalar type, which its arrays are aligned to */
@@ -48,12 +49,38 @@ export const ELEMENT_SIZES: Readonly<Record<ScalarType, Alignment>> = {
     float64: 8
 };
 
-export function layoutOf({
-    sized,
-    versioned,
-    offsetType
-}: LayoutDescription): TableLayout {
-    return TableLayout.create({ sized, versioned, offsetType });
+/**
+ * The layout that a description sets out, with `version` when it's
+ * versioned. A reader reads tables of any version, so it needs none.
+ * Writers take {@link writtenLayoutOf}, which requires the version.
+ */
+export function layoutOf(
+    { sized, versioned, offsetType }: LayoutDescription,
+    version = 0
+): TableLayout {
+    return TableLayout.create({
+        sized,
+        version: versioned ? version : undefined,
+        offsetType
+    });
+}
+
+/**
+ * The layout that a table's writers take, with the version that its
+ * description gives
+ *
+ * @throws {TypeError} If the layout is versioned and the description has
+ * no version, which would otherwise be written as 0.
+ */
+export function writtenLayoutOf({
+    layout,
+    version
+}: Pick<TableDescription, 'layout' | 'version'>): TableLayout {
+    if (layout.versioned && version == null) {
+        throw new TypeError('A versioned table needs a version');
+    }
+
+    return layoutOf(layout, version);
 }
 
 /** Builds a table as its description sets it out */
@@ -93,7 +120,7 @@ function setFieldInPlace(
 ): void {
     if (
         field.type === 'table' &&
-        field.alignment === undefined &&
+        field.alignment == null &&
         recordsInPlace(field, offsetType)
     ) {
         const { fields } = field.table;
@@ -144,25 +171,8 @@ function itemsInPlace(items: NestedTable[], offsetType: OffsetType): boolean {
 }
 
 /** Creates the builder of a table, with none of its fields set */
-export function createBuilder({
-    layout,
-    version,
-    fields
-}: TableDescription): TableBuilder {
-    const { sized, offsetType } = layout;
-
-    if (layout.versioned) {
-        return new TableBuilder(
-            fields.length,
-            TableLayout.create({ sized, versioned: true, offsetType }),
-            version as number
-        );
-    }
-
-    return new TableBuilder(
-        fields.length,
-        TableLayout.create({ sized, offsetType })
-    );
+export function createBuilder(table: TableDescription): TableBuilder {
+    return new TableBuilder(table.fields.length, writtenLayoutOf(table));
 }
 
 /**
@@ -215,6 +225,10 @@ export function setField(builder: TableItem, field: FieldDescription): void {
             builder.setUint8(field.value ? 1 : 0);
             break;
 
+        case 'bool[]':
+            builder.setBoolArray(field.value);
+            break;
+
         case 'int8[]':
             builder.setInt8Array(field.value.map(fromJsonNumber));
             break;
@@ -257,6 +271,10 @@ export function setField(builder: TableItem, field: FieldDescription): void {
 
         case 'string':
             builder.setString(field.value);
+            break;
+
+        case 'string[]':
+            builder.setStringVector(field.value);
             break;
 
         case 'struct':
@@ -359,7 +377,7 @@ function addReserved(sizer: TableSizer, field: FieldDescription): void {
 
         case 'vector': {
             const length = itemLength(field.items);
-            if (length === undefined) {
+            if (length == null) {
                 addField(sizer, field);
                 break;
             }
@@ -404,7 +422,7 @@ function writeReserved(
 
         case 'vector': {
             const length = itemLength(field.items);
-            if (length === undefined) {
+            if (length == null) {
                 writeField(writer, index, field);
                 break;
             }
@@ -456,12 +474,10 @@ export function nestedInPlace(table: TableDescription): TableDescription {
             case 'vector':
                 return {
                     ...description,
-                    items: description.items.map(
-                        (item): NestedTable => ({
-                            from: 'builder',
-                            table: inPlace(item.table)
-                        })
-                    )
+                    items: description.items.map((item): NestedTable => ({
+                        from: 'builder',
+                        table: inPlace(item.table)
+                    }))
                 };
 
             default:
@@ -472,47 +488,12 @@ export function nestedInPlace(table: TableDescription): TableDescription {
     return { ...table, fields: table.fields.map(field) };
 }
 
-function createSizer({
-    layout,
-    version,
-    fields
-}: TableDescription): TableSizer {
-    const { sized, offsetType } = layout;
-
-    if (layout.versioned) {
-        return new TableSizer(
-            fields.length,
-            TableLayout.create({ sized, versioned: true, offsetType }),
-            version as number
-        );
-    }
-
-    return new TableSizer(
-        fields.length,
-        TableLayout.create({ sized, offsetType })
-    );
+function createSizer(table: TableDescription): TableSizer {
+    return new TableSizer(table.fields.length, writtenLayoutOf(table));
 }
 
-function createWriter(
-    { layout, version, fields }: TableDescription,
-    bytes: Uint8Array
-): TableWriter {
-    const { sized, offsetType } = layout;
-
-    if (layout.versioned) {
-        return new TableWriter(
-            bytes,
-            fields.length,
-            TableLayout.create({ sized, versioned: true, offsetType }),
-            version as number
-        );
-    }
-
-    return new TableWriter(
-        bytes,
-        fields.length,
-        TableLayout.create({ sized, offsetType })
-    );
+function createWriter(table: TableDescription, bytes: Uint8Array): TableWriter {
+    return new TableWriter(bytes, table.fields.length, writtenLayoutOf(table));
 }
 
 /** Writes the table's fields, and returns its bytes */
@@ -571,6 +552,10 @@ function addField(sizer: TableSizer, field: FieldDescription): void {
             sizer.addUint8();
             break;
 
+        case 'bool[]':
+            sizer.addBoolArray(field.value.length);
+            break;
+
         case 'int8[]':
             sizer.addInt8Array(field.value.length);
             break;
@@ -613,6 +598,10 @@ function addField(sizer: TableSizer, field: FieldDescription): void {
 
         case 'string':
             sizer.addString(field.value);
+            break;
+
+        case 'string[]':
+            sizer.addStringVector(field.value);
             break;
 
         case 'struct':
@@ -700,6 +689,10 @@ function writeField(
             writer.setUint8(index, field.value ? 1 : 0);
             break;
 
+        case 'bool[]':
+            writer.setBoolArray(index, field.value);
+            break;
+
         case 'int8[]':
             writer.setInt8Array(index, field.value.map(fromJsonNumber));
             break;
@@ -742,6 +735,10 @@ function writeField(
 
         case 'string':
             writer.setString(index, field.value);
+            break;
+
+        case 'string[]':
+            writer.setStringVector(index, field.value);
             break;
 
         case 'struct':
@@ -941,7 +938,7 @@ function toBigInt(value: JsonNumber): bigint {
  * tables, or 1 if it has neither, and for bytes 4.
  */
 export function alignmentOf({ from, alignment, table }: TableField): Alignment {
-    if (alignment !== undefined) {
+    if (alignment != null) {
         return alignment;
     }
 
@@ -970,15 +967,15 @@ function alignmentWithin(field: FieldDescription): Alignment {
         return structAlignment(field.fields);
     }
 
-    // Scalars, strings, structs and vectors aren't padded
+    // Scalars, arrays of bools, strings, structs and vectors aren't padded
     return field.type === 'table' ? alignmentOf(field) : 1;
 }
 
 /**
- * Thrown by {@link TableReader} when bytes read as values that don't match
- * the shape of a description: a size slot that doesn't hold the table's
- * length, or a vector of another number of items. Unlike a `DecodeError`, the
- * bytes were read.
+ * Thrown by {@link DescriptionReader} when bytes read as values that don't
+ * match the shape of a description: a size slot that doesn't hold the
+ * table's length, or a vector of another number of items. Unlike a
+ * `DecodeError`, the bytes were read.
  */
 export class DescriptionMismatch extends Error {
     constructor(message: string) {
@@ -997,12 +994,12 @@ export class DescriptionMismatch extends Error {
  * its own: a vector item from its bytes, and a field from its position to the
  * end of its parent.
  */
-export class TableReader {
-    readonly #buffer: ByteBuffer;
+export class DescriptionReader {
+    readonly #reader: TableReader;
     readonly #layout: LayoutDescription;
 
     constructor(bytes: Uint8Array, layout: LayoutDescription) {
-        this.#buffer = new ByteBuffer(bytes, layoutOf(layout));
+        this.#reader = new TableReader(bytes, layoutOf(layout));
         this.#layout = layout;
     }
 
@@ -1014,125 +1011,128 @@ export class TableReader {
      * length.
      */
     readTable(table: TableDescription): TableDescription {
-        const buffer = this.#buffer;
+        const reader = this.#reader;
         const { layout } = table;
 
-        if (layout.sized && buffer.getSize() !== buffer.bytes().length) {
+        if (layout.sized && reader.getSize() !== reader.bytes().length) {
             throw new DescriptionMismatch(
-                `The size slot holds ${buffer.getSize()}, but the table has ${buffer.bytes().length} bytes`
+                `The size slot holds ${reader.getSize()}, but the table has ${reader.bytes().length} bytes`
             );
         }
 
-        const version = layout.versioned ? buffer.getVersion() : undefined;
+        const version = layout.versioned ? reader.getVersion() : undefined;
         const fields = table.fields.map((field, index) =>
             this.readRootField(index, field)
         );
 
-        return version === undefined
+        return version == null
             ? { layout, fields }
             : { layout, version, fields };
     }
 
     readRootField(index: number, field: FieldDescription): FieldDescription {
-        return this.#readField(this.#buffer.rootOffset(index), field);
+        return this.#readField(this.#reader.rootOffset(index), field);
     }
 
     #readField(position: number, field: FieldDescription): FieldDescription {
-        const buffer = this.#buffer;
+        const reader = this.#reader;
 
         switch (field.type) {
             case 'int8':
-                return { ...field, value: buffer.getInt8(position) };
+                return { ...field, value: reader.getInt8(position) };
 
             case 'uint8':
-                return { ...field, value: buffer.getUint8(position) };
+                return { ...field, value: reader.getUint8(position) };
 
             case 'int16':
-                return { ...field, value: buffer.getInt16(position) };
+                return { ...field, value: reader.getInt16(position) };
 
             case 'uint16':
-                return { ...field, value: buffer.getUint16(position) };
+                return { ...field, value: reader.getUint16(position) };
 
             case 'int32':
-                return { ...field, value: buffer.getInt32(position) };
+                return { ...field, value: reader.getInt32(position) };
 
             case 'uint32':
-                return { ...field, value: buffer.getUint32(position) };
+                return { ...field, value: reader.getUint32(position) };
 
             case 'int64':
-                return { ...field, value: String(buffer.getInt64(position)) };
+                return { ...field, value: String(reader.getInt64(position)) };
 
             case 'uint64':
-                return { ...field, value: String(buffer.getUint64(position)) };
+                return { ...field, value: String(reader.getUint64(position)) };
 
             case 'float32':
                 return {
                     ...field,
-                    value: toJsonNumber(buffer.getFloat32(position))
+                    value: toJsonNumber(reader.getFloat32(position))
                 };
 
             case 'float64':
                 return {
                     ...field,
-                    value: toJsonNumber(buffer.getFloat64(position))
+                    value: toJsonNumber(reader.getFloat64(position))
                 };
 
             case 'bool':
-                return { ...field, value: buffer.getUint8(position) !== 0 };
+                return { ...field, value: reader.getUint8(position) !== 0 };
+
+            case 'bool[]':
+                return { ...field, value: reader.getBoolArray(position) };
 
             case 'int8[]':
                 return {
                     ...field,
-                    value: Array.from(buffer.getInt8Array(position))
+                    value: Array.from(reader.getInt8Array(position))
                 };
 
             case 'uint8[]':
                 return {
                     ...field,
-                    value: Array.from(buffer.getUint8Array(position))
+                    value: Array.from(reader.getUint8Array(position))
                 };
 
             case 'int16[]':
                 return {
                     ...field,
-                    value: Array.from(buffer.getInt16Array(position))
+                    value: Array.from(reader.getInt16Array(position))
                 };
 
             case 'uint16[]':
                 return {
                     ...field,
-                    value: Array.from(buffer.getUint16Array(position))
+                    value: Array.from(reader.getUint16Array(position))
                 };
 
             case 'int32[]':
                 return {
                     ...field,
-                    value: Array.from(buffer.getInt32Array(position))
+                    value: Array.from(reader.getInt32Array(position))
                 };
 
             case 'uint32[]':
                 return {
                     ...field,
-                    value: Array.from(buffer.getUint32Array(position))
+                    value: Array.from(reader.getUint32Array(position))
                 };
 
             case 'int64[]':
                 return {
                     ...field,
-                    value: Array.from(buffer.getInt64Array(position), String)
+                    value: Array.from(reader.getInt64Array(position), String)
                 };
 
             case 'uint64[]':
                 return {
                     ...field,
-                    value: Array.from(buffer.getUint64Array(position), String)
+                    value: Array.from(reader.getUint64Array(position), String)
                 };
 
             case 'float32[]':
                 return {
                     ...field,
                     value: Array.from(
-                        buffer.getFloat32Array(position),
+                        reader.getFloat32Array(position),
                         toJsonNumber
                     )
                 };
@@ -1141,18 +1141,21 @@ export class TableReader {
                 return {
                     ...field,
                     value: Array.from(
-                        buffer.getFloat64Array(position),
+                        reader.getFloat64Array(position),
                         toJsonNumber
                     )
                 };
 
             case 'string':
-                return { ...field, value: buffer.getString(position) };
+                return { ...field, value: reader.getString(position) };
+
+            case 'string[]':
+                return { ...field, value: this.#readStringVector(position) };
 
             case 'struct': {
                 const types = field.fields.map(({ type }) => type);
                 const values = readStruct(
-                    buffer.getStruct(position, structSize(types)),
+                    reader.getStruct(position, structSize(types)),
                     types,
                     0
                 );
@@ -1191,7 +1194,7 @@ export class TableReader {
      * items.
      */
     #readVector(position: number, items: NestedTable[]): NestedTable[] {
-        const offsets = this.#buffer.getVectorOffsets(position);
+        const offsets = this.#reader.getVectorOffsets(position);
         if (offsets.length !== items.length) {
             throw new DescriptionMismatch(
                 `The vector holds ${offsets.length} items rather than ${items.length}`
@@ -1200,7 +1203,7 @@ export class TableReader {
 
         // Finding each item from its ends alone finds the same item
         for (const [index, offset] of offsets.entries()) {
-            const found = this.#buffer.getVectorOffset(position, index);
+            const found = this.#reader.getVectorOffset(position, index);
             if (found !== offset) {
                 throw new DescriptionMismatch(
                     `Item ${index} of the vector is at ${found} from its ends, but at ${offset} among every item`
@@ -1208,7 +1211,7 @@ export class TableReader {
             }
         }
 
-        const vector = this.#buffer.getVector(position);
+        const vector = this.#reader.getVector(position);
 
         return items.map((item, index) => ({
             ...item,
@@ -1218,12 +1221,43 @@ export class TableReader {
         }));
     }
 
+    /**
+     * Reads every string of a vector of strings, and each from its ends
+     * alone.
+     *
+     * @throws {DescriptionMismatch} If a string read from its ends alone
+     * isn't the one read among every string, or a view of the vector reads
+     * another.
+     */
+    #readStringVector(position: number): string[] {
+        const reader = this.#reader;
+        const strings = reader.getStringVector(position);
+        const count = reader.getVectorLength(position);
+        const view = new StringVector(reader, position);
+        if (count !== strings.length || view.length() !== strings.length) {
+            throw new DescriptionMismatch(
+                `The vector holds ${count} strings, a view of it ${view.length()}, and reading them all ${strings.length}`
+            );
+        }
+
+        for (const [index, string] of strings.entries()) {
+            const found = reader.getStringVectorItem(position, count, index);
+            if (found !== string || view.get(index) !== string) {
+                throw new DescriptionMismatch(
+                    `String ${index} of the vector isn't the same from its ends as among every string`
+                );
+            }
+        }
+
+        return strings;
+    }
+
     #readStructArray(
         position: number,
         { fields }: StructArrayField
     ): JsonNumber[][] {
         const size = structSize(fields);
-        const bytes = this.#buffer.getStructArray(position, size);
+        const bytes = this.#reader.getStructArray(position, size);
 
         return Array.from({ length: bytes.length / size }, (_, index) =>
             readStruct(bytes, fields, index * size)
@@ -1237,7 +1271,7 @@ export class TableReader {
         }
 
         // Its length isn't written, so it's read up to the end of its parent
-        return readTable(this.#buffer.bytes().subarray(position), table);
+        return readTable(this.#reader.bytes().subarray(position), table);
     }
 
     #readsInPlace({ layout }: TableDescription): boolean {
@@ -1249,21 +1283,21 @@ export class TableReader {
     }
 
     #readInPlace(position: number, table: TableDescription): TableDescription {
-        const buffer = this.#buffer;
+        const reader = this.#reader;
 
         return {
             layout: table.layout,
             fields: table.fields.map((field, index) =>
-                this.#readField(buffer.fieldOffset(position, index), field)
+                this.#readField(reader.fieldOffset(position, index), field)
             )
         };
     }
 }
 
-/** Reads a table from its own bytes, as {@link TableReader.readTable} does */
+/** Reads a table from its own bytes, as {@link DescriptionReader.readTable} does */
 export function readTable(
     bytes: Uint8Array,
     table: TableDescription
 ): TableDescription {
-    return new TableReader(bytes, table.layout).readTable(table);
+    return new DescriptionReader(bytes, table.layout).readTable(table);
 }

@@ -7,15 +7,15 @@ import (
 	"unsafe"
 )
 
-// TableBuilder builds a table, which a [ByteBuffer] reads back.
+// TableBuilder builds a table, which a [TableReader] reads back.
 //
 // A table is a header with one offset per field, after the table's total
 // length and version when its layout has them, followed by the fields in the
 // order they're set. Arrays, strings and vectors start with their count, and
 // a vector then holds the end of each item. Arrays of scalars and of structs
 // are padded so their elements are aligned from the start of the table.
-// Fields are read back by index with [ByteBuffer.RootOffset], or
-// [ByteBuffer.FieldOffset] for a table nested in another.
+// Fields are read back by index with [TableReader.RootOffset], or
+// [TableReader.FieldOffset] for a table nested in another.
 //
 // Setting a field records it, keeping its value, and [TableBuilder.Bytes]
 // then writes every field through a [TableWriter], into bytes of the table's
@@ -53,35 +53,21 @@ type TableBuilder struct {
 	// The number of fields that the table holds
 	fields uint32
 	// The table's length so far, which is where the next field goes
-	length  uint32
-	version uint32
-	layout  TableLayout
+	length uint32
+	layout TableLayout
 	// The largest alignment that a field needs from the table's start, which
 	// a parent pads this table to when it nests it
 	alignment Alignment
 }
 
 // NewTableBuilder starts a table of fields fields in layout, which its
-// readers must use too. Nested tables use the default layout, the zero
-// [TableLayout]. It fails with HeaderTooLong if the header alone is too long
-// for the layout's offset type, and panics if the layout is versioned, which
-// [NewVersionedTableBuilder] builds, or fields is negative.
+// readers must use too, with the layout's version in its header when it has
+// one. Nested tables use the default layout, the zero [TableLayout]. It
+// fails with VersionTooLarge if the layout's version doesn't fit in its
+// offset type, or with HeaderTooLong if the header alone is too long for
+// it, and panics if fields is negative.
 func NewTableBuilder(fields int, layout TableLayout) (*TableBuilder, error) {
-	return newTableBuilder(fields, layout, false, 0)
-}
-
-// NewVersionedTableBuilder starts a table of fields fields in layout, with
-// version in its header. Readers can check it with [ByteBuffer.Version]
-// before reading any field. It fails with VersionTooLarge if the version
-// doesn't fit in the layout's offset type, or with HeaderTooLong if the
-// header alone is too long for it, and panics if the layout isn't versioned
-// or fields is negative.
-func NewVersionedTableBuilder(fields int, layout TableLayout, version uint32) (*TableBuilder, error) {
-	return newTableBuilder(fields, layout, true, version)
-}
-
-func newTableBuilder(fields int, layout TableLayout, versioned bool, version uint32) (*TableBuilder, error) {
-	if err := layout.checkVersion(versioned, version); err != nil {
+	if err := layout.checkVersion(); err != nil {
 		return nil, err
 	}
 
@@ -95,7 +81,6 @@ func newTableBuilder(fields int, layout TableLayout, versioned bool, version uin
 	builder.end = fields
 	builder.fields = uint32(fields)
 	builder.length = header
-	builder.version = version
 	builder.layout = layout
 	builder.alignment = Align1
 
@@ -146,7 +131,7 @@ func (b *TableBuilder) Bytes() ([]byte, error) {
 
 	// The constructor checked the header and the version, and each setter
 	// the table's length, so the writer writes the fields as counted
-	writer := newTableWriter(nil, int(b.length), int(b.fields), b.layout, b.version)
+	writer := newTableWriter(nil, int(b.length), int(b.fields), b.layout)
 	if b.valuePerField() {
 		b.writeValues(&writer)
 	} else {
@@ -232,6 +217,11 @@ func (b *TableBuilder) SetFloat32Array(values []float32) error { return setArray
 // until the table is written. It fails as [TableBuilder.SetInt8] does.
 func (b *TableBuilder) SetFloat64Array(values []float64) error { return setArray(b, values) }
 
+// SetBoolArray sets an array field of bools, written as a uint8 array of 1
+// for each true value and 0 for each false one, which the builder keeps
+// until the table is written. It fails as [TableBuilder.SetInt8] does.
+func (b *TableBuilder) SetBoolArray(values []bool) error { return setArray(b, boolBytes(values)) }
+
 // SetString sets a string field, of its bytes, which are UTF-8 if it is. It
 // fails as [TableBuilder.SetInt8] does.
 func (b *TableBuilder) SetString(value string) error {
@@ -239,6 +229,28 @@ func (b *TableBuilder) SetString(value string) error {
 		data:   unsafe.Pointer(unsafe.StringData(value)),
 		length: len(value),
 		kind:   stringField,
+	})
+}
+
+// SetStringVector sets a vector of strings: the end of each string, which
+// lets readers find any string without reading the others, and then each
+// string's bytes, which are UTF-8 if it is. It takes no more bytes for each
+// string than its end, where a vector of tables of one string takes each
+// table's offset and the string's count too. The builder keeps the slice
+// until the table is written, so neither it nor its strings must change in
+// between. It fails as [TableBuilder.SetInt8] does.
+func (b *TableBuilder) SetStringVector(values []string) error {
+	// Up to a length past any table, which fails
+	length := uint64(0)
+	for _, value := range values {
+		length = min(length+uint64(len(value)), past)
+	}
+
+	return b.addField(field{
+		data:   unsafe.Pointer(unsafe.SliceData(values)),
+		length: len(values),
+		bits:   length,
+		kind:   stringVectorField,
 	})
 }
 
@@ -290,7 +302,7 @@ type TableBytes []byte
 func (TableBytes) nestedTable() {}
 
 // SetTable embeds a table, from its builder or its bytes, without a length
-// prefix. Readers find its fields with [ByteBuffer.FieldOffset] from the
+// prefix. Readers find its fields with [TableReader.FieldOffset] from the
 // field's position, which reads offsets of the parent's offset type, so the
 // table should have no header and the parent's offset type: that's the
 // default layout in a parent of uint32 offsets.
@@ -412,11 +424,12 @@ func (b *TableBuilder) SetTableFunc(fields int, fill func(table Item) error) err
 // aren't padded, as SetVector doesn't pad them.
 //
 // It fails with TooLong before recording any item if the vector's count and
-// the ends of its items alone make the table too long, or after recording
-// them if the items do. It fails otherwise as SetTableFunc does, for each
-// item, and returns what fill returns, leaving the builder as it was in each
-// case. It panics if count or fields is negative. If fill panics, the
-// builder is left recording the item, and mustn't be used again.
+// the ends of its items alone make the table too long, with the length that
+// they make it, or after recording them if the items do. It fails otherwise
+// as SetTableFunc does, for each item, and returns what fill returns, leaving
+// the builder as it was in each case. It panics if count or fields is
+// negative. If fill panics, the builder is left recording the item, and
+// mustn't be used again.
 func (b *TableBuilder) SetVectorFunc(count, fields int, fill func(index int, item Item) error) error {
 	if count < 0 {
 		panic("tafla: a vector can't hold " + strconv.Itoa(count) + " items")
@@ -732,7 +745,7 @@ func (b *TableBuilder) writeNested(writer *TableWriter, offsetType OffsetType) {
 
 	start := writer.position
 	end := start + int(b.length)
-	nested := newTableWriter(writer.bytes[start:start:end], int(b.length), int(b.fields), b.layout, b.version)
+	nested := newTableWriter(writer.bytes[start:start:end], int(b.length), int(b.fields), b.layout)
 	if b.valuePerField() {
 		b.writeValues(&nested)
 	} else {
@@ -779,6 +792,9 @@ const (
 	bytesField
 	// data and length hold the items, a []NestedTable
 	vectorField
+	// data and length hold the strings, a []string, and bits the sum of
+	// their byte lengths
+	stringVectorField
 
 	// The tables recorded in place come last, which writeFields tells from
 	// the others in one comparison.
@@ -858,6 +874,9 @@ func (f *field) byteLength(width uint64) uint64 {
 			length += width + nestedLength(item)
 		}
 		return length
+	case stringVectorField:
+		// The count, the end of each string, and the strings
+		return (uint64(f.length)+1)*width + f.bits
 	default:
 		return uint64(f.length)
 	}
@@ -909,6 +928,8 @@ func (f *field) write(writer *TableWriter, index int, offsetType OffsetType) {
 			writeNestedTable(writer, table, offsetType)
 			writer.SetItemEnd(vector, item)
 		}
+	case stringVectorField:
+		writer.SetStringVector(index, unsafe.Slice((*string)(f.data), f.length))
 	case tableInPlaceField, vectorInPlaceField:
 		// Of no fields, when writeValues writes every field
 		f.writeInPlace(writer, index, nil, 0, offsetType)

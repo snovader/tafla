@@ -1,5 +1,5 @@
 """Use from several threads at once, which free-threaded Python runs in
-parallel: readers share a buffer, and a writer, which one thread at a time
+parallel: threads share a reader, and a writer, which one thread at a time
 may use, rejects another's call rather than racing it"""
 
 import sys
@@ -9,7 +9,7 @@ from array import array
 from collections.abc import Callable
 
 import tafla
-from tafla import ByteBuffer, TableBuilder, TableLayout, TableWriter
+from tafla import StringVector, TableBuilder, TableLayout, TableReader, TableWriter
 
 THREADS = 8
 
@@ -44,22 +44,22 @@ def run_together(work: Callable[[], object]) -> list[BaseException]:
     return raised
 
 
-def shared_buffer() -> ByteBuffer:
-    layout = TableLayout(sized=True, versioned=True)
-    builder = TableBuilder(3, layout, 1)
+def shared_reader() -> TableReader:
+    layout = TableLayout(sized=True, version=1)
+    builder = TableBuilder(3, layout)
     builder.set_float64(59.3293)
     builder.set_string("Europe/Stockholm")
     builder.set_float32_array(array("f", range(1000)))
-    return ByteBuffer(builder.bytes(), layout)
+    return TableReader(builder.bytes(), layout)
 
 
 class TestThreads(unittest.TestCase):
-    def test_reads_the_same_values_from_a_buffer_that_threads_share(self) -> None:
-        buffer = shared_buffer()
+    def test_reads_the_same_values_from_a_reader_that_threads_share(self) -> None:
+        reader = shared_reader()
 
         def read() -> None:
             for _ in range(2000):
-                assert buffer.get_float64(buffer.root_offset(0)) == 59.3293
+                assert reader.get_float64(reader.root_offset(0)) == 59.3293
 
         self.assertEqual(run_together(read), [])
 
@@ -68,12 +68,33 @@ class TestThreads(unittest.TestCase):
         "the pure-Python reader slices a string's bytes from the buffer's "
         f"memoryview, {MEMORYVIEW_RACE}",
     )
-    def test_reads_the_same_strings_from_a_buffer_that_threads_share(self) -> None:
-        buffer = shared_buffer()
+    def test_reads_the_same_strings_from_a_reader_that_threads_share(self) -> None:
+        reader = shared_reader()
 
         def read() -> None:
             for _ in range(2000):
-                assert buffer.get_string(buffer.root_offset(1)) == "Europe/Stockholm"
+                assert reader.get_string(reader.root_offset(1)) == "Europe/Stockholm"
+
+        self.assertEqual(run_together(read), [])
+
+    @unittest.skipIf(
+        FREE_THREADED_MEMORYVIEWS and tafla.IMPLEMENTATION == "python",
+        "the pure-Python reader slices the strings' bytes from the buffer's "
+        f"memoryview, {MEMORYVIEW_RACE}",
+    )
+    def test_reads_the_same_vectors_of_strings_from_a_reader_that_threads_share(
+        self,
+    ) -> None:
+        strings = ["Stockholm", "Zürich", "東京", "a" * 40]
+        builder = TableBuilder(1)
+        builder.set_string_vector(strings)
+        reader = TableReader(builder.bytes())
+        vector = StringVector(reader, reader.root_offset(0))
+
+        def read() -> None:
+            for _ in range(500):
+                assert vector.tolist() == strings
+                assert vector[2] == "東京"
 
         self.assertEqual(run_together(read), [])
 
@@ -81,12 +102,12 @@ class TestThreads(unittest.TestCase):
         FREE_THREADED_MEMORYVIEWS,
         f"each reader slices an array from the buffer's memoryview, {MEMORYVIEW_RACE}",
     )
-    def test_reads_the_same_arrays_from_a_buffer_that_threads_share(self) -> None:
-        buffer = shared_buffer()
+    def test_reads_the_same_arrays_from_a_reader_that_threads_share(self) -> None:
+        reader = shared_reader()
 
         def read() -> None:
             for _ in range(2000):
-                assert buffer.get_float32_array(buffer.root_offset(2))[999] == 999
+                assert reader.get_float32_array(reader.root_offset(2))[999] == 999
 
         self.assertEqual(run_together(read), [])
 
@@ -135,8 +156,8 @@ class TestThreads(unittest.TestCase):
             for _ in range(200):
                 writer = TableWriter(1)
                 writer.set_float64_array(0, values)
-                buffer = ByteBuffer(bytes(writer.bytes()))
-                written = buffer.get_float64_array(buffer.root_offset(0))
+                reader = TableReader(bytes(writer.bytes()))
+                written = reader.get_float64_array(reader.root_offset(0))
                 assert len(set(written)) == 1, "the elements of two states"
                 assert len(written) == 1000 + int(written[0]) % 3, "another length"
 

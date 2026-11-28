@@ -19,24 +19,24 @@ repository's first commits, for code built from its source before the release.
   tables of scalars, strings, typed arrays, nested tables, vectors of tables,
   structs and arrays of structs, with a layout that sets the header and the
   offset type (`uint8`, `uint16` or `uint32`). `TableBuilder` and
-  `TableWriter` write tables, and `ByteBuffer` reads them.
+  `TableWriter` write tables, and `TableReader` reads them.
 - The classes that generated code uses have a native implementation, written
   in Rust, which the wheels for Linux, macOS and Windows hold, and a
   pure-Python one, which installs on any other platform.
 - Bounds-checked reads, which fail on malformed input with `DecodeError`.
 - The runtime reads and rebuilds the golden tables of tafla's conformance
   suite byte for byte, as every implementation of the format does.
-- `ByteBuffer.get_vector_item_offset()`, which finds a vector item from the
+- `TableReader.get_vector_item_offset()`, which finds a vector item from the
   count that `get_vector_length()` read, so that a reader of several items
   reads and checks the count once.
-- `ByteBuffer.get_fields()`, which reads every field of a table at once, when
+- `TableReader.get_fields()`, which reads every field of a table at once, when
   its offsets are those that `TableWriter` writes, for the code that tafla-gen
   generates.
-- `TableWriter.write_fields()` and `ByteBuffer.read_fields()`, which write
+- `TableWriter.write_fields()` and `TableReader.read_fields()`, which write
   a message of only the fields that a `FixedFields` describes into bytes of
   its own, and read their values back, each in one call and without a
   writer or a reader, for the code that tafla-gen generates.
-- `ByteBuffer.iter_vector_fields()`, which iterates over the values of a
+- `TableReader.iter_vector_fields()`, which iterates over the values of a
   vector's items as `get_fields()` reads each, reading each item's end when
   it reaches the item, so that the code that tafla-gen generates iterates
   over a vector's values without reading them all at once.
@@ -47,13 +47,37 @@ repository's first commits, for code built from its source before the release.
   the benchmarks' vector of 100 nested tables took 28% to 30% less time so
   with the native classes, and 23% less with the pure-Python ones, holding
   half the memory at its peak.
+- Arrays of bools, stored as `uint8` arrays of 1 and 0:
+  `TableBuilder.set_bool_array()` and `TableWriter.set_bool_array()` write
+  each value's truth, as `bool()` takes it, and `TableReader.get_bool_array()`
+  reads a list of bools, true wherever a byte isn't 0. The native writer
+  converts an exact `list` or `tuple` of bools itself.
+- A vector of strings, which `SPEC.md` adds to the format:
+  `TableBuilder.set_string_vector()` and `TableWriter.set_string_vector()`
+  write one from a sequence of strings, rejecting a lone surrogate as
+  `set_string()` does, `TableReader.get_string_vector()` reads every string
+  into a list, `TableReader.get_string_vector_item()` reads one from its ends,
+  and `StringVector`, which the code that tafla-gen generates returns for a
+  `[string]` field, views one: `len()`, a string by index, and `tolist()`.
 
 ### Changed
 
+- A layout holds its table's version, `TableLayout(version=1)`, rather than
+  only whether the header has a slot for one, and the argument `versioned` is
+  gone. `TableBuilder`, `TableWriter` and `TableWriter.write_fields()` take
+  the version from the layout rather than as an argument of their own, so a
+  version missing from or given for a layout can no longer be written, and
+  `TableLayout` has no type parameter. A version that doesn't fit the offset
+  type raises `ValueError` from `TableLayout()`, once, rather than from each
+  builder. `with_version()` returns a layout for another version of the same
+  format, and `version()` the layout's own. Readers read tables of any
+  version, as before, and `TableReader.read_fields()` still takes the version
+  to check.
 - The project is named tafla rather than buffy.
+- The class that reads a table is `TableReader` rather than `ByteBuffer`.
 - A layout's offset width is its offset type, `uint8`, `uint16` or `uint32`,
   in the API and its errors.
-- `ByteBuffer` reads a vector item in place within its message, as the format
+- `TableReader` reads a vector item in place within its message, as the format
   now specifies, including an item whose offsets point past its end.
 - The native `TableWriter` converts an array from an exact `list` or `tuple`
   of `int`s, `float`s and `bool`s itself, straight into the table's bytes,
@@ -66,14 +90,14 @@ repository's first commits, for code built from its source before the release.
 
 ### Removed
 
-- `ByteBuffer` only reads tables, and its setters are removed, with
+- `TableReader` only reads tables, and its setters are removed, with
   `reset()`. Tables are written with `TableBuilder` or `TableWriter`, and
   structs and other records at fixed offsets with the standard library's
   `struct`.
 
 ### Fixed
 
-- `ByteBuffer` fails with `DecodeError` on huge positions and non-contiguous
+- `TableReader` fails with `DecodeError` on huge positions and non-contiguous
   buffers.
 - `get_vector_offsets()` returns positions past 4 GiB rather than
   overflowing.
@@ -93,5 +117,11 @@ repository's first commits, for code built from its source before the release.
   slots alone are longer than the offset type addresses, as the constructor
   does for the root's header, rather than `MemoryError` or `OverflowError`
   from allocating them, which differed by the count and the implementation.
+- A scalar setter of an integer field raises `ValueError` for a value whose
+  `__index__()` raises an error that `struct` raises itself, `OverflowError`,
+  `IndexError` or `struct.error`, in both implementations, and so do
+  `set_fields()`, `write_table()`, `set_vector_tables()` and `write_fields()`.
+  The native ones raised the value's error as it was, where the pure-Python
+  ones, which can't tell it from `struct`'s, raised `ValueError`.
 
 [Unreleased]: https://github.com/snovader/tafla/commits/main/python

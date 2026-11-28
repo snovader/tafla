@@ -1,7 +1,7 @@
 // Tables read back the values that they were built from. The examples show
 // builders borrowing and owning values, `ArrayView` reading arrays in place or
-// copying them, structs read from their bytes, and vector items found from
-// their ends.
+// copying them, arrays of bools read into bools from their bytes, structs read
+// from their bytes, and vector items found from their ends.
 
 #include <gtest/gtest.h>
 #include <rapidcheck/gtest.h>
@@ -69,12 +69,12 @@ TEST(RoundTrip, OwnedValues) {
     // Moving the builder keeps what it owns where its fields point
     const TableBuilder moved = std::move(builder);
     const auto bytes = moved.to_bytes();
-    const ByteBuffer buffer(bytes, TableLayout());
+    const TableReader reader(bytes, TableLayout());
 
-    EXPECT_EQ(buffer.get_float64_array(buffer.root_offset(0)).to_vector(), (std::vector<double>{1.5, -2.5}));
-    EXPECT_EQ(buffer.get_string(buffer.root_offset(1)), "owned and longer than a short string's buffer");
+    EXPECT_EQ(reader.get_float64_array(reader.root_offset(0)).to_vector(), (std::vector<double>{1.5, -2.5}));
+    EXPECT_EQ(reader.get_string(reader.root_offset(1)), "owned and longer than a short string's buffer");
 
-    const auto vector = buffer.get_vector(buffer.root_offset(2));
+    const auto vector = reader.get_vector(reader.root_offset(2));
     std::vector<std::vector<std::uint8_t>> read;
     for (auto item : vector.items()) {
         read.push_back(vector_of(item));
@@ -95,15 +95,15 @@ TEST(RoundTrip, VectorItemsFoundFromTheirEnds) {
     builder.set_vector(std::move(items));
 
     const auto bytes = builder.to_bytes().to_vector();
-    const ByteBuffer buffer(bytes, TableLayout());
-    const auto position = buffer.root_offset(0);
+    const TableReader reader(bytes, TableLayout());
+    const auto position = reader.root_offset(0);
 
     // The count and the three ends, at 4, then the items, from 20
     EXPECT_EQ(std::vector<std::uint8_t>(bytes.begin() + static_cast<std::ptrdiff_t>(position), bytes.begin() + 20),
               (std::vector<std::uint8_t>{3, 0, 0, 0, 17, 0, 0, 0, 17, 0, 0, 0, 19, 0, 0, 0}));
     EXPECT_EQ(std::vector<std::uint8_t>(bytes.begin() + 20, bytes.end()), (std::vector<std::uint8_t>{1, 2, 3}));
 
-    const auto vector = buffer.get_vector(position);
+    const auto vector = reader.get_vector(position);
     EXPECT_EQ(vector.size(), 3U);
     EXPECT_EQ(vector_of(vector.get(2)), third);
     EXPECT_EQ(vector_of(vector.get(1)), second);
@@ -124,30 +124,30 @@ TEST(RoundTrip, Structs) {
     builder.set_struct_array(points, 6, Alignment::four);
 
     const auto bytes = builder.to_bytes();
-    const ByteBuffer buffer(bytes, TableLayout());
+    const TableReader reader(bytes, TableLayout());
 
     // The struct follows the uint8 at 12 unpadded, at 13
-    auto position = buffer.root_offset(1);
+    auto position = reader.root_offset(1);
     EXPECT_EQ(position, 13U);
-    EXPECT_EQ(vector_of(buffer.get_struct(position, 6)), point(3, 2.5F));
+    EXPECT_EQ(vector_of(reader.get_struct(position, 6)), point(3, 2.5F));
 
     // The array's count is padded from 19 to 20, so that its structs start at
     // 24
-    position = buffer.root_offset(2);
+    position = reader.root_offset(2);
     EXPECT_EQ(position, 20U);
-    EXPECT_EQ(buffer.get_uint32(position), 2U);
+    EXPECT_EQ(reader.get_uint32(position), 2U);
 
-    const auto structs = buffer.get_struct_array(position, 6);
+    const auto structs = reader.get_struct_array(position, 6);
     EXPECT_EQ(vector_of(structs), points);
     std::vector<float> ys;
     for (std::size_t start = 0; start < structs.size(); start += 6) {
-        const ByteBuffer item(structs.subspan(start, 6), TableLayout());
+        const TableReader item(structs.subspan(start, 6), TableLayout());
         ys.push_back(item.get_float32(2));
     }
     EXPECT_EQ(ys, (std::vector<float>{1.5F, -0.25F}));
 
     // Structs of 0 bytes take none, whatever the count
-    EXPECT_TRUE(buffer.get_struct_array(position, 0).empty());
+    EXPECT_TRUE(reader.get_struct_array(position, 0).empty());
 }
 
 TEST(RoundTrip, ArraysInPlaceWhenAligned) {
@@ -161,15 +161,15 @@ TEST(RoundTrip, ArraysInPlaceWhenAligned) {
 
     for (std::size_t byte_offset = 0; byte_offset < 8; ++byte_offset) {
         const AtByteOffset copy(bytes, byte_offset);
-        const ByteBuffer buffer(copy.bytes(), TableLayout());
+        const TableReader reader(copy.bytes(), TableLayout());
 
-        const auto uint8s = buffer.get_uint8_array(buffer.root_offset(0));
+        const auto uint8s = reader.get_uint8_array(reader.root_offset(0));
         EXPECT_GE(uint8s.data(), copy.bytes().data());
         EXPECT_LT(uint8s.data(), copy.bytes().data() + copy.bytes().size());
 
         // The array lies a multiple of 8 bytes from the table's start, and is
         // in place where the host aligns double to the table's offset
-        const auto float64s = buffer.get_float64_array(buffer.root_offset(1));
+        const auto float64s = reader.get_float64_array(reader.root_offset(1));
         const bool in_place = detail::kHostOrder && byte_offset % alignof(double) == 0;
 
         EXPECT_EQ(float64s.as_span().has_value(), in_place) << byte_offset;
@@ -186,6 +186,43 @@ TEST(RoundTrip, ArraysInPlaceWhenAligned) {
         std::reverse(reversed.begin(), reversed.end());
         EXPECT_EQ(bits_of(backwards), bits_of(reversed));
     }
+}
+
+TEST(RoundTrip, ArraysOfBools) {
+    const bool borrowed[] = {true, false, true};
+
+    TableBuilder builder(3, TableLayout());
+    builder.set_bool_array(borrowed);
+    builder.set_bool_array(Bools{false, true});
+    builder.set_bool_array(std::span<const bool>());
+    const auto bytes = builder.to_bytes();
+    const TableReader reader(bytes, TableLayout());
+
+    // A byte of 1 or 0 for each bool, after the count, unpadded
+    EXPECT_EQ(reader.root_offset(1), 19U);
+    EXPECT_EQ(vector_of(reader.get_uint8_array(reader.root_offset(0))), (std::vector<std::uint8_t>{1, 0, 1}));
+    EXPECT_EQ(reader.get_bool_array(reader.root_offset(0)), (Bools{true, false, true}));
+    EXPECT_EQ(reader.get_bool_array(reader.root_offset(1)), (Bools{false, true}));
+    EXPECT_TRUE(reader.get_bool_array(reader.root_offset(2)).empty());
+}
+
+TEST(RoundTrip, BytesOfBoolsOtherThan0And1ReadAsTrueAndRebuildAs1) {
+    TableBuilder builder(1, TableLayout());
+    builder.set_bool_array(Bools{true, false, true, true});
+    const auto written = builder.to_bytes();
+
+    // The bools follow the offset and the count, at 8
+    auto bytes = written.to_vector();
+    const std::vector<std::uint8_t> others{2, 0, 0x80, 0xff};
+    std::ranges::copy(others, bytes.begin() + 8);
+
+    const TableReader reader(bytes, TableLayout());
+    auto bools = reader.get_bool_array(reader.root_offset(0));
+    EXPECT_EQ(bools, (Bools{true, false, true, true}));
+
+    TableBuilder rebuilt(1, TableLayout());
+    rebuilt.set_bool_array(std::move(bools));
+    EXPECT_EQ(rebuilt.to_bytes(), written);
 }
 
 TEST(RoundTrip, BuilderNestedSeveralTimes) {
@@ -215,8 +252,8 @@ TEST(RoundTrip, BuilderNestedSeveralTimes) {
     // The builder is unchanged by nesting
     EXPECT_EQ(nested.to_bytes(), own);
 
-    const ByteBuffer buffer(bytes, TableLayout());
-    const auto vector = buffer.get_vector(buffer.root_offset(1));
+    const TableReader reader(bytes, TableLayout());
+    const auto vector = reader.get_vector(reader.root_offset(1));
     for (auto item : vector.items()) {
         EXPECT_EQ(vector_of(item), own.to_vector());
     }

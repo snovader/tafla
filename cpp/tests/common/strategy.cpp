@@ -1,5 +1,6 @@
 #include "common/strategy.hpp"
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <iterator>
@@ -18,24 +19,25 @@ constexpr unsigned kDepth = 2;
 
 constexpr std::array kOffsetTypes = {OffsetType::uint8, OffsetType::uint16, OffsetType::uint32};
 
-/// The most fields, array elements, characters, structs in an array and
-/// vector items that a table holds, and whether it holds long values. A
-/// table of `uint8` offsets, or nested in one, holds few enough to fit in its
-/// 255 bytes more often than not, and others hold enough for `uint16`
-/// lengths and offsets past 255.
+/// The most fields, array elements, characters, structs in an array, vector
+/// items and strings in a vector of strings that a table holds, and whether
+/// it holds long values. A table of `uint8` offsets, or nested in one, holds
+/// few enough to fit in its 255 bytes more often than not, and others hold
+/// enough for `uint16` lengths and offsets past 255.
 struct Limits {
     std::size_t fields;
     std::size_t elements;
     std::size_t characters;
     std::size_t structs;
     std::size_t items;
+    std::size_t strings;
     bool long_values;
 
     static Limits of(bool small) {
         if (small) {
-            return {5, 6, 6, 2, 2, false};
+            return {5, 6, 6, 2, 2, 3, false};
         }
-        return {8, 24, 16, 6, 4, true};
+        return {8, 24, 16, 6, 4, 6, true};
     }
 };
 
@@ -90,6 +92,15 @@ rc::Gen<T> floats() {
 template <class T>
 rc::Gen<Field> fields_of(rc::Gen<T> values) {
     return rc::gen::map(std::move(values), [](T value) { return Field{std::move(value)}; });
+}
+
+/// Arrays of up to `max` bools, empty too
+rc::Gen<Field> bool_arrays(std::size_t max) {
+    return rc::gen::map(vectors(max, rc::gen::arbitrary<bool>()), [](const std::vector<bool>& values) {
+        Bools bools(values.size());
+        std::ranges::copy(values, bools.begin());
+        return Field{std::move(bools)};
+    });
 }
 
 /// Scalar fields of a type
@@ -206,18 +217,22 @@ rc::Gen<Field> long_array(rc::Gen<T> values) {
     return fields_of(vectors(128 / sizeof(T), 1024 / sizeof(T), std::move(values)));
 }
 
-/// Arrays, strings, structs and arrays of structs of up to about a
-/// kilobyte, past the 64 bytes from which `TableBuilder` keeps a value where
-/// it is, rather than copying it when it's set, as the other values cross
-/// them: a struct of 64 to 160 scalars, of 4.2 bytes on average, is about
-/// 270 to 670 bytes
+/// Arrays, strings, structs, arrays of structs and vectors of strings of up
+/// to about a kilobyte, past the 64 bytes from which `TableBuilder` keeps a
+/// value where it is, rather than copying it when it's set, as the other
+/// values cross them: a struct of 64 to 160 scalars, of 4.2 bytes on
+/// average, is about 270 to 670 bytes
 rc::Gen<Field> long_value() {
+    const auto string_vectors = rc::gen::map(vectors(1, 4, strings(256)), [](std::vector<std::string> strings) {
+        return Field{StringVectorField{std::move(strings)}};
+    });
+
     return rc::gen::oneOf(long_array(integers<std::int8_t>()), long_array(integers<std::uint8_t>()),
                           long_array(integers<std::int16_t>()), long_array(integers<std::uint16_t>()),
                           long_array(integers<std::int32_t>()), long_array(integers<std::uint32_t>()),
                           long_array(integers<std::int64_t>()), long_array(integers<std::uint64_t>()),
                           long_array(float32()), long_array(float64()), fields_of(strings(256)), struct_field(64, 160),
-                          struct_array(48));
+                          struct_array(48), string_vectors);
 }
 
 /// Scalars, arrays, strings and structs, which hold values rather than tables
@@ -232,16 +247,23 @@ rc::Gen<Field> value(Limits limits) {
         fields_of(vectors(elements, integers<std::int16_t>())), fields_of(vectors(elements, integers<std::uint16_t>())),
         fields_of(vectors(elements, integers<std::int32_t>())), fields_of(vectors(elements, integers<std::uint32_t>())),
         fields_of(vectors(elements, integers<std::int64_t>())), fields_of(vectors(elements, integers<std::uint64_t>())),
-        fields_of(vectors(elements, float32())), fields_of(vectors(elements, float64())));
+        fields_of(vectors(elements, float32())), fields_of(vectors(elements, float64())), bool_arrays(elements));
 
-    // Each type of scalar and of array as likely as any other, and strings,
-    // structs and arrays of structs each as likely as three of them
+    // Vectors of strings, empty too, and of empty strings
+    const auto string_vectors =
+        rc::gen::map(vectors(limits.strings, strings(limits.characters)),
+                     [](std::vector<std::string> strings) { return Field{StringVectorField{std::move(strings)}}; });
+
+    // Each type of scalar and of array, bools among them, as likely as any
+    // other, and strings, vectors of strings, structs and arrays of structs
+    // each as likely as three of them
     auto values = rc::gen::weightedOneOf<Field>({
         {10, scalars},
-        {10, arrays},
+        {11, arrays},
         {3, fields_of(strings(limits.characters))},
         {3, struct_field()},
         {3, struct_array(limits.structs)},
+        {3, string_vectors},
     });
     if (!limits.long_values) {
         return values;
@@ -368,6 +390,12 @@ std::uint64_t longest(const Field& field, std::uint64_t width) {
                 std::uint64_t length = width;
                 for (const auto& item : value.items) {
                     length += width + longest_table(item.table);
+                }
+                return length;
+            } else if constexpr (std::is_same_v<T, StringVectorField>) {
+                std::uint64_t length = width;
+                for (const auto& string : value.strings) {
+                    length += width + string.size();
                 }
                 return length;
             } else {

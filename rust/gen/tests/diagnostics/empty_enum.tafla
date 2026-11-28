@@ -1,0 +1,6 @@
+enum Nothing: uint8 {
+}
+
+message Holder {
+    nothing: Nothing;
+}

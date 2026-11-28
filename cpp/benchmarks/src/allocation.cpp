@@ -1,7 +1,8 @@
 // Counts what each benchmark's call allocates: the allocations and
 // reallocations, and the bytes that they ask for, over 100 calls after one,
 // divided among them. A reallocation counts its new size, and freeing isn't
-// counted.
+// counted. `--strings` counts the strings suite's benchmarks rather than the
+// comparison's.
 //
 // It replaces the global `operator new`, as C++ allows, which counts what the
 // libraries allocate in C++, and defines `malloc()`, `calloc()` and
@@ -16,6 +17,8 @@
 #include <cstdio>
 #include <new>
 #include <string>
+#include <string_view>
+#include <vector>
 
 #include "suite.hpp"
 
@@ -134,11 +137,18 @@ void operator delete[](void* pointer, std::size_t) noexcept {
     free(pointer);
 }
 
-int main() {
+int main(int argc, char** argv) {
     using namespace tafla::benchmarks;
 
+    const bool strings = argc == 2 && std::string_view(argv[1]) == "--strings";
+    if (argc > 1 && !strings) {
+        std::fprintf(stderr, "Usage: %s [--strings]\n", argv[0]);
+        return 2;
+    }
+
     const Inputs inputs;
-    const auto all = benchmarks(inputs);
+    const auto workloads = strings ? string_workloads() : std::vector<StringsWorkload>();
+    const auto all = strings ? string_benchmarks(workloads) : benchmarks(inputs);
     constexpr std::size_t calls = 100;
 
     std::printf("Bytes allocated per call, and the allocations and reallocations that ask for them\n");

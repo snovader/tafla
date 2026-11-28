@@ -1,6 +1,7 @@
 # Tokens of tafla schemas, for libFuzzer's -dict option
 "message"
 "struct"
+"enum"
 "table"
 "string"
 "sized"
@@ -29,4 +30,6 @@
 ":"
 ";"
 ","
+"="
+"-"
 "\x0a"

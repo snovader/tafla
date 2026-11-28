@@ -39,7 +39,7 @@ public:
     /// An empty vector
     TableVector() noexcept = default;
 
-    /// Views the items of `vector`, which `ByteBuffer::get_vector()` read
+    /// Views the items of `vector`, which `TableReader::get_vector()` read
     explicit TableVector(Vector vector) noexcept : vector_(vector) {}
 
     /// The number of items
