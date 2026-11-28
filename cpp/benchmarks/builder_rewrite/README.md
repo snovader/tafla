@@ -23,7 +23,9 @@ writes `tafla_raw`, this branch's builder with its buffer allocated by
 `std::make_unique_for_overwrite()` rather than held in a `std::vector`, which
 doesn't zero the room that it grows into, and handed over as `Bytes`.
 `build.sh` compiles with `-O3 -falign-functions=64`, so that a function's
-placement doesn't depend on the code before it.
+placement doesn't depend on the code before it, and links with
+`-no_deduplicate`, so that ld64 doesn't fold the identical code of an A/A
+pair into one function. It's for macOS.
 
 - `timing` times every builder's variant of each row: main's and #212's,
   each table taken with `to_bytes()`, and this branch's, taken with
