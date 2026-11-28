@@ -465,6 +465,14 @@ impl<'a> TableBuilder<'a> {
     /// through it, which wrote a record in 78–80 ns rather than 82–84 ns, a
     /// document of 100 rows in 166–170 ns rather than 178 ns, and recorded
     /// the vector of 100 nested tables in place in 4.4 µs rather than 4.6 µs.
+    // Inlined into each setter, with the field's padding, length and
+    // alignment, which then fold for the setter's kind of field. Called out
+    // of line, it took each field through memory and matched its kind: the
+    // record was written in 84 ns rather than 69 ns, a document of 100 rows
+    // in 169 ns rather than 129 ns, and 16 empty strings in 185 ns rather
+    // than 166 ns.
+    #[allow(clippy::inline_always)]
+    #[inline(always)]
     fn add_field(&mut self, field: Field<'a>) -> Result<(), BuildError> {
         let index = self.set as usize;
         if index == self.fields as usize {
@@ -1009,6 +1017,10 @@ impl<'a> From<Cow<'a, [&'a str]>> for Strs<'a> {
 
 impl Field<'_> {
     /// The alignment that the field needs from the table's start
+    // Inlined, as its padding and length are, into `add_field()`, which is
+    // inlined into each setter, so that they fold for its kind of field
+    #[allow(clippy::inline_always)]
+    #[inline(always)]
     fn alignment(&self) -> Alignment {
         match self {
             Self::Array(array) => array.alignment(),
@@ -1024,6 +1036,8 @@ impl Field<'_> {
 
     /// The padding before the field when it would start at `offset`, which
     /// aligns an array's elements after its count and a nested table's start
+    #[allow(clippy::inline_always)]
+    #[inline(always)]
     fn padding(&self, offset: usize, width: usize) -> usize {
         match self {
             // Wrapping, since only the remainder matters
@@ -1041,6 +1055,8 @@ impl Field<'_> {
     /// The field's byte length after its padding, in u64, which only a
     /// vector that nests a builder many times can overflow, saturating far
     /// past the longest table
+    #[allow(clippy::inline_always)]
+    #[inline(always)]
     fn byte_length(&self, width: usize) -> u64 {
         let width = width as u64;
 
@@ -1161,10 +1177,15 @@ macro_rules! with_elements {
 }
 
 impl Array<'_> {
+    // Inlined, as the field's alignment and length are
+    #[allow(clippy::inline_always)]
+    #[inline(always)]
     fn alignment(&self) -> Alignment {
         with_elements!(self, values => alignment_of(values))
     }
 
+    #[allow(clippy::inline_always)]
+    #[inline(always)]
     fn byte_length(&self) -> usize {
         with_elements!(self, values => size_of_val::<[_]>(values))
     }
