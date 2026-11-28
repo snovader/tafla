@@ -144,6 +144,42 @@ proptest! {
         prop_assert_eq!(items, [bytes.as_slice(); 2]);
     }
 
+    /// A table's bytes are those that `to_bytes()` copies, `finish()` lends
+    /// and `into_bytes()` returns, whatever the builder held before: in a
+    /// buffer that held other bytes, and in a builder that `reset()` starts
+    /// after another table, finished or not, or after a reset that failed
+    #[test]
+    fn test_a_table_is_written_alike_into_any_buffer_and_after_a_reset(
+        table in strategy::table(),
+        before in strategy::table(),
+        set_before in any::<Index>(),
+        garbage in proptest::collection::vec(any::<u8>(), 0..300),
+    ) {
+        let expected = table.to_bytes();
+        let owned = table.build().and_then(TableBuilder::into_bytes);
+        prop_assert_eq!(&owned, &expected);
+        let from_garbage = table
+            .builder_in(garbage)
+            .and_then(|mut builder| table.finish_on(&mut builder).map(<[u8]>::to_vec));
+        prop_assert_eq!(&from_garbage, &expected);
+
+        let Ok(mut builder) = before.builder() else {
+            return Ok(());
+        };
+        // As many of the other table's fields as `set_before` picks, of
+        // which any that fails leaves the builder as it was
+        let set = set_before.index(before.fields.len() + 1);
+        for field in &before.fields[..set] {
+            let _ = field.set(&mut builder);
+        }
+        let _ = builder.reset(usize::MAX, TableLayout::DEFAULT);
+
+        let reused = table
+            .reset(&mut builder)
+            .and_then(|()| table.finish_on(&mut builder).map(<[u8]>::to_vec));
+        prop_assert_eq!(reused, expected);
+    }
+
     /// Tables nested from builders and written in place, with
     /// `set_table_with()` and `set_vector_with()`, write the bytes that their
     /// builders write, and fail as they fail, for tables of any offset type
@@ -572,7 +608,7 @@ impl From<BuildError> for CallerError {
 
 /// Writes a vector of the benchmarks' items, each a float32 and a pair of
 /// float32s, in place
-fn items_in_place(values: &[f32], builder: &mut TableBuilder<'_>) -> Result<Vec<u8>, BuildError> {
+fn items_in_place(values: &[f32], builder: &mut TableBuilder) -> Result<Vec<u8>, BuildError> {
     builder.set_vector_with(values.len(), 2, |index, item| {
         item.set_f32(values[index])?;
         item.set_table_with(2, |pair| {
@@ -707,7 +743,7 @@ fn test_reject_vector_count_too_long_before_writing_items() {
 #[test]
 fn test_reject_vector_items_that_make_the_table_too_long() {
     let layout = TableLayout::DEFAULT.with_offset_type(OffsetType::Uint8);
-    let pairs = |builder: &mut TableBuilder<'_>| {
+    let pairs = |builder: &mut TableBuilder| {
         builder.set_vector_with(2, 1, |_, item| {
             item.set_table_aligned(&[1, 2][..], Alignment::Two)
         })
@@ -736,8 +772,8 @@ fn test_reject_vector_items_that_make_the_table_too_long() {
 #[test]
 fn test_reject_table_in_place_that_makes_its_parent_too_long() {
     let layout = TableLayout::DEFAULT.with_offset_type(OffsetType::Uint8);
-    let column = |builder: &mut TableBuilder<'_>| builder.set_u8_array(vec![1; 200]);
-    let short = |builder: &mut TableBuilder<'_>| {
+    let column = |builder: &mut TableBuilder| builder.set_u8_array(vec![1; 200]);
+    let short = |builder: &mut TableBuilder| {
         builder.set_table_with(1, |table| table.set_u8_array(vec![3; 10]))
     };
 
@@ -764,7 +800,7 @@ fn test_reject_table_in_place_that_makes_its_parent_too_long() {
 /// fill returns, and leaves the builder as it was
 #[test]
 fn test_reject_incomplete_table_in_place() {
-    let pair = |builder: &mut TableBuilder<'_>| {
+    let pair = |builder: &mut TableBuilder| {
         builder.set_table_with(2, |table| {
             table.set_u8(2)?;
             table.set_u8(3)
@@ -808,16 +844,15 @@ fn test_a_builder_is_padded_for_the_tables_nested_in_it_in_place() {
     assert_eq!(buffer.get_f64_array(array).unwrap().to_vec(), [0.5, 1.5]);
 }
 
-/// A float64 array of 40 elements: 320 bytes, which a builder keeps rather
-/// than copying it when it's set
+/// A float64 array of 40 elements: 320 bytes
 fn long_column() -> Vec<f64> {
     (0..40).map(|index| f64::from(index) * 0.5).collect()
 }
 
 /// Writes a table of a uint8, the table that `set_table` sets and another
 /// uint8
-fn nested_between_scalars<'a>(
-    set_table: impl FnOnce(&mut TableBuilder<'a>) -> Result<(), BuildError>,
+fn nested_between_scalars(
+    set_table: impl FnOnce(&mut TableBuilder) -> Result<(), BuildError>,
 ) -> Result<Vec<u8>, BuildError> {
     let mut parent = TableBuilder::new(3, TableLayout::DEFAULT)?;
     parent.set_u8(2)?;
@@ -826,13 +861,12 @@ fn nested_between_scalars<'a>(
     parent.to_bytes()
 }
 
-/// A builder borrowed into its parent lends it the runs that it keeps, those
-/// that it owns too, and an owned builder gives them up, as the parent
-/// copies their bytes, with a sized header's length
+/// A builder nested in its parent, borrowed or owned, is copied in as its
+/// bytes are, with a sized header's length
 #[test]
-fn test_a_nested_builder_is_copied_with_the_values_that_it_keeps() {
+fn test_a_nested_builder_is_copied_with_its_length() {
     let layout = TableLayout::DEFAULT.sized();
-    let nested = || -> Result<TableBuilder<'static>, BuildError> {
+    let nested = || -> Result<TableBuilder, BuildError> {
         let mut nested = TableBuilder::new(3, layout)?;
         nested.set_u8(1)?;
         nested.set_f64_array(long_column())?;
@@ -859,10 +893,10 @@ fn test_a_nested_builder_is_copied_with_the_values_that_it_keeps() {
     );
 }
 
-/// A table written in place that its alignment moves forward moves the runs
-/// that the builder keeps from it, but not those kept before it
+/// A table written in place is moved forward by its padding once its fields
+/// are set, with its values, and the values before it stay
 #[test]
-fn test_a_table_moved_by_its_padding_moves_the_values_kept_from_it() {
+fn test_a_table_in_place_is_moved_by_its_padding() {
     let column = long_column();
     let name = "x".repeat(300);
     let build = |in_place: bool| -> Result<Vec<u8>, BuildError> {
@@ -895,15 +929,11 @@ fn test_a_table_moved_by_its_padding_moves_the_values_kept_from_it() {
 }
 
 /// Writes `depth` tables nested one in another, in place or each from a
-/// builder, each after a uint8 and a string of 300 bytes, which the builder
-/// keeps, around a table of a uint8, a float64 array, which needs each of
-/// them padded, and `strings` strings of 30 bytes, which it copies
+/// builder, each after a uint8 and a string of 300 bytes, around a table of
+/// a uint8, a float64 array, which needs each of them padded, and `strings`
+/// strings of 30 bytes
 fn nested_tables(depth: usize, strings: usize, in_place: bool) -> Result<Vec<u8>, BuildError> {
-    fn level(
-        table: &mut InPlaceTable<'_, '_>,
-        depth: usize,
-        strings: usize,
-    ) -> Result<(), BuildError> {
+    fn level(table: &mut InPlaceTable<'_>, depth: usize, strings: usize) -> Result<(), BuildError> {
         table.set_u8(1)?;
         table.set_str(LONG_NAME)?;
         if depth > 0 {
@@ -917,7 +947,7 @@ fn nested_tables(depth: usize, strings: usize, in_place: bool) -> Result<Vec<u8>
         })
     }
 
-    fn builder(depth: usize, strings: usize) -> Result<TableBuilder<'static>, BuildError> {
+    fn builder(depth: usize, strings: usize) -> Result<TableBuilder, BuildError> {
         let nested = if depth > 0 {
             builder(depth - 1, strings)?
         } else {
@@ -951,10 +981,10 @@ fn nested_tables(depth: usize, strings: usize, in_place: bool) -> Result<Vec<u8>
     root.to_bytes()
 }
 
-/// Tables nested in place one in another, each padded once its fields are
-/// set, are written as builders nested one in another are, those longer
-/// than a segment, whose padding the builder keeps as a segment, and those
-/// shorter, which it moves, and their arrays are aligned from the root
+/// Tables nested in place one in another, each moved by its padding once
+/// its fields are set, and again with each table that holds it, are written
+/// as builders nested one in another are, and their arrays are aligned from
+/// the root
 #[test]
 fn test_tables_nested_in_place_one_in_another_are_each_padded() {
     const DEPTH: usize = 40;
@@ -982,11 +1012,7 @@ fn test_tables_nested_in_place_one_in_another_are_each_padded() {
 #[test]
 fn test_vectors_in_place_in_the_items_of_one_that_makes_its_table_too_long() {
     const ITEMS: usize = 40;
-    fn names<'a>(
-        item: &mut InPlaceTable<'_, 'a>,
-        name: &'a str,
-        count: usize,
-    ) -> Result<(), BuildError> {
+    fn names(item: &mut InPlaceTable<'_>, name: &str, count: usize) -> Result<(), BuildError> {
         item.set_vector_with(count, 1, |_, entry| entry.set_str(name))
     }
     let layout = TableLayout::DEFAULT.with_offset_type(OffsetType::Uint16);
@@ -1087,7 +1113,7 @@ fn test_a_vector_in_place_that_makes_its_table_too_long_runs_every_item() {
     const ITEMS: usize = 330;
     let layout = TableLayout::DEFAULT.with_offset_type(OffsetType::Uint16);
     let values = [7_u8; 200];
-    let column = |item: &mut InPlaceTable<'_, '_>| item.set_u8_array(values.to_vec());
+    let column = |item: &mut InPlaceTable<'_>| item.set_u8_array(values.to_vec());
 
     let mut builder = TableBuilder::new(1, layout).unwrap();
     let mut calls = 0;
@@ -1126,38 +1152,43 @@ fn test_a_vector_in_place_that_makes_its_table_too_long_runs_every_item() {
     assert_eq!(builder.to_bytes(), expected.to_bytes());
 }
 
-/// Tables longer than their `uint32` offsets address are rejected on every
-/// target, those that borrow one array several times too, past 4 GiB, which
-/// a 32-bit `usize` doesn't count
+/// Tables longer than their `uint32` offsets address are rejected before
+/// their values are copied, on every target: a vector of strings that holds
+/// one string of 1 GiB five times, among the builder's fields and in a table
+/// nested in place, which leaves the builder as it was. Its length is
+/// counted past 4 GiB, which a 32-bit `usize` doesn't hold.
 #[test]
 #[cfg_attr(miri, ignore = "allocates 1 GiB")]
-fn test_reject_tables_in_place_past_4_gib_of_borrowed_arrays() {
+fn test_reject_vectors_of_strings_past_4_gib_before_copying_them() {
     const GIB: u64 = 1 << 30;
-    fn twice<'a>(table: &mut InPlaceTable<'_, 'a>, array: &'a [u8]) -> Result<(), BuildError> {
-        table.set_u8_array(array)?;
-        table.set_u8_array(array)
-    }
-    let array = vec![0_u8; 1 << 30];
-
-    let mut builder = TableBuilder::new(5, TableLayout::DEFAULT).unwrap();
-    for _ in 0..3 {
-        builder.set_u8_array(array.as_slice()).unwrap();
-    }
-    // The header's 5 offsets and three arrays, then a table of two
-    let root = 20 + 3 * (4 + GIB);
-    let table = 8 + 2 * (4 + GIB);
-    let too_long = |length| BuildError::TooLong {
-        index: 3,
-        length,
-        offset_type: OffsetType::Uint32,
+    let string = "x".repeat(1 << 30);
+    let strings = [string.as_str(); 5];
+    let too_long = |index, length| {
+        Err(BuildError::TooLong {
+            index,
+            length,
+            offset_type: OffsetType::Uint32,
+        })
     };
 
-    for _ in 0..2 {
-        let error = builder.set_table_with(2, |table| twice(table, &array));
-        assert_eq!(error, Err(too_long(root + table)));
-        let error = builder.set_vector_with(1, 2, |_, item| twice(item, &array));
-        assert_eq!(error, Err(too_long(root + 8 + table)));
-    }
+    let mut builder = TableBuilder::new(2, TableLayout::DEFAULT).unwrap();
+    builder.set_u8(1).unwrap();
+    // The header's 2 offsets and the uint8, then the vector's count, and the
+    // end and bytes of each string
+    let length = 8 + 1 + 4 + 5 * (4 + GIB);
+    assert_eq!(
+        builder.set_str_vector(strings.as_slice()),
+        too_long(1, length)
+    );
+    // The table's offset, and the vector after it
+    let error = builder.set_table_with(1, |table| table.set_str_vector(strings.as_slice()));
+    assert_eq!(error, too_long(0, 4 + 4 + 5 * (4 + GIB)));
+
+    builder.set_str_vector(&["x"; 5][..]).unwrap();
+    let mut expected = TableBuilder::new(2, TableLayout::DEFAULT).unwrap();
+    expected.set_u8(1).unwrap();
+    expected.set_str_vector(&["x"; 5][..]).unwrap();
+    assert_eq!(builder.finish(), expected.finish());
 }
 
 /// A vector written in place whose count and items' ends alone make its
@@ -1190,4 +1221,89 @@ fn test_vector_too_long_before_its_items_reports_its_length_without_them() {
             offset_type: OffsetType::Uint8
         })
     );
+}
+
+/// `finish()` writes a sized header's length, lends the table's bytes, and
+/// fails for a table with fields left to set, as `to_bytes()` and
+/// `into_bytes()` do
+#[test]
+fn test_finish_lends_the_table_and_rejects_an_incomplete_one() {
+    let layout = TableLayout::DEFAULT.sized();
+    let mut builder = TableBuilder::new(2, layout).unwrap();
+    builder.set_u16(1).unwrap();
+    let incomplete = BuildError::Incomplete { set: 1, fields: 2 };
+    assert_eq!(builder.finish(), Err(incomplete));
+    assert_eq!(builder.to_bytes(), Err(incomplete));
+
+    builder.set_str("ab").unwrap();
+    let copied = builder.to_bytes().unwrap();
+    // The length, 2 offsets, the uint16, and the string's count and bytes
+    let expected = [
+        20, 0, 0, 0, 12, 0, 0, 0, 14, 0, 0, 0, 1, 0, 2, 0, 0, 0, b'a', b'b',
+    ];
+    assert_eq!(copied, expected[..]);
+    assert_eq!(builder.finish(), Ok(&expected[..]));
+    assert_eq!(builder.into_bytes(), Ok(expected.to_vec()));
+
+    let incomplete = TableBuilder::new(1, layout).unwrap();
+    assert_eq!(
+        incomplete.into_bytes(),
+        Err(BuildError::Incomplete { set: 0, fields: 1 })
+    );
+}
+
+/// A builder copies each value when it's set, so a value that changes or
+/// is dropped afterwards doesn't change the table
+#[test]
+fn test_values_are_copied_when_they_are_set() {
+    let mut name = String::from("first");
+    let mut column = vec![1.5_f64, 2.5];
+
+    let mut builder = TableBuilder::new(3, TableLayout::DEFAULT).unwrap();
+    builder.set_str(name.as_str()).unwrap();
+    builder.set_f64_array(column.as_slice()).unwrap();
+    builder
+        .set_table_with(1, |table| table.set_str(name.as_str()))
+        .unwrap();
+    name.replace_range(.., "other");
+    column[0] = -1.0;
+    drop(name);
+    drop(column);
+
+    let mut expected = TableBuilder::new(3, TableLayout::DEFAULT).unwrap();
+    expected.set_str("first").unwrap();
+    expected.set_f64_array(vec![1.5, 2.5]).unwrap();
+    expected
+        .set_table_with(1, |table| table.set_str("first"))
+        .unwrap();
+    assert_eq!(builder.finish(), expected.finish());
+}
+
+/// `reset()` with a layout that it can't start leaves the builder as it was,
+/// with its fields and buffer, and `with_buffer()` writes over what the
+/// buffer held
+#[test]
+fn test_a_reset_that_fails_leaves_the_builder_as_it_was() {
+    let layout = TableLayout::DEFAULT.with_offset_type(OffsetType::Uint8);
+    let mut builder = TableBuilder::new(2, layout).unwrap();
+    builder.set_u8(1).unwrap();
+
+    assert!(matches!(
+        builder.reset(300, layout),
+        Err(BuildError::HeaderTooLong { fields: 300, .. })
+    ));
+    assert_eq!(
+        builder.reset(1, layout.with_version(256)),
+        Err(BuildError::VersionTooLarge {
+            version: 256,
+            offset_type: OffsetType::Uint8
+        })
+    );
+    builder.set_u8(2).unwrap();
+    assert_eq!(builder.finish(), Ok(&[2, 3, 1, 2][..]));
+
+    let mut reused = TableBuilder::with_buffer(vec![9; 64], 2, layout).unwrap();
+    reused.set_u8(1).unwrap();
+    reused.set_u8(2).unwrap();
+    assert_eq!(reused.into_bytes(), Ok(vec![2, 3, 1, 2]));
 }

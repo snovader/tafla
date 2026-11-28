@@ -24,9 +24,10 @@ const ITEM_ALIGNMENT: Alignment = Alignment::Four;
 
 /// tafla's runtime, as its README shows.
 ///
-/// Tables are nested from their builders, which borrow the columns, and
-/// arrays are read in place as `ArrayView`s, whose `to_cow()` borrows them
-/// when they're aligned on a little-endian host.
+/// Tables are nested in place, the columns are copied into the builder's
+/// buffer, which `into_bytes()` returns as the table, and arrays are read
+/// in place as `ArrayView`s, whose `to_cow()` borrows them when they're
+/// aligned on a little-endian host.
 ///
 /// The runtime writes tables, and leaves fixed-size records to the standard
 /// library, as its README says. The fixed-size record is written with
@@ -54,7 +55,7 @@ impl Workload<RecordShape> for Tafla {
         builder.set_i64(input.id)?;
         builder.set_str(input.name.as_ref())?;
 
-        Ok(builder.to_bytes()?)
+        Ok(builder.into_bytes()?)
     }
 
     fn deserialize(self, bytes: &[u8]) -> Result<Record<'_>, Error> {
@@ -84,7 +85,7 @@ impl Workload<DocumentShape> for Tafla {
             columns.set_f32_array(input.b.as_ref())
         })?;
 
-        Ok(document.to_bytes()?)
+        Ok(document.into_bytes()?)
     }
 
     fn deserialize(self, bytes: &[u8]) -> Result<Document<'_>, Error> {
@@ -127,7 +128,7 @@ impl Workload<ListShape> for Tafla {
         let mut builder = TableBuilder::new(1, TableLayout::DEFAULT)?;
         builder.set_vector_with(items.len(), 2, |index, item| set_item(item, &items[index]))?;
 
-        Ok(builder.to_bytes()?)
+        Ok(builder.into_bytes()?)
     }
 
     fn deserialize(self, bytes: &[u8]) -> Result<List, Error> {
@@ -158,7 +159,7 @@ impl Workload<StructsShape> for Tafla {
         let mut builder = TableBuilder::new(1, TableLayout::DEFAULT)?;
         builder.set_struct_array(structs, ITEM_SIZE, ITEM_ALIGNMENT)?;
 
-        Ok(builder.to_bytes()?)
+        Ok(builder.into_bytes()?)
     }
 
     fn deserialize(self, bytes: &[u8]) -> Result<List, Error> {
@@ -204,7 +205,7 @@ impl Workload<StringsShape> for Tafla {
             builder.set_str(string.as_ref())?;
         }
 
-        Ok(builder.to_bytes()?)
+        Ok(builder.into_bytes()?)
     }
 
     fn deserialize(self, bytes: &[u8]) -> Result<Strings<'_>, Error> {
@@ -279,7 +280,7 @@ fn open_document(bytes: &[u8]) -> Result<TableReader<'_, true>, DecodeError> {
     Ok(reader)
 }
 
-fn set_item(table: &mut InPlaceTable<'_, '_>, item: &Item) -> Result<(), BuildError> {
+fn set_item(table: &mut InPlaceTable<'_>, item: &Item) -> Result<(), BuildError> {
     table.set_f32(item.value)?;
     table.set_table_with(2, |pair| {
         pair.set_f32(item.first)?;

@@ -10,7 +10,7 @@ use super::description::{
 impl Table {
     /// Starts a builder of the table's layout, version and number of
     /// fields, with no field set
-    pub fn builder<'a>(&self) -> Result<TableBuilder<'a>, BuildError> {
+    pub fn builder(&self) -> Result<TableBuilder, BuildError> {
         let layout = self.layout.unversioned();
         let fields = self.fields.len();
 
@@ -22,8 +22,46 @@ impl Table {
         }
     }
 
-    /// Builds the table, borrowing its values
-    pub fn build(&self) -> Result<TableBuilder<'_>, BuildError> {
+    /// Starts the table in `buffer`, as [`Table::builder()`] does in a
+    /// buffer of its own
+    pub fn builder_in(&self, buffer: Vec<u8>) -> Result<TableBuilder, BuildError> {
+        let layout = self.layout.unversioned();
+        let fields = self.fields.len();
+
+        if self.layout.versioned {
+            let version = self.version.expect("A versioned table has a version");
+            TableBuilder::with_buffer(buffer, fields, layout.with_version(version))
+        } else {
+            TableBuilder::with_buffer(buffer, fields, layout)
+        }
+    }
+
+    /// Starts the table as the next one of `builder`, in its buffer, with no
+    /// field set
+    pub fn reset(&self, builder: &mut TableBuilder) -> Result<(), BuildError> {
+        let layout = self.layout.unversioned();
+        let fields = self.fields.len();
+
+        if self.layout.versioned {
+            let version = self.version.expect("A versioned table has a version");
+            builder.reset(fields, layout.with_version(version))
+        } else {
+            builder.reset(fields, layout)
+        }
+    }
+
+    /// Sets the table's fields on `builder`, started for it, and lends its
+    /// bytes
+    pub fn finish_on<'b>(&self, builder: &'b mut TableBuilder) -> Result<&'b [u8], BuildError> {
+        for field in &self.fields {
+            field.set(builder)?;
+        }
+
+        builder.finish()
+    }
+
+    /// Builds the table, copying its values
+    pub fn build(&self) -> Result<TableBuilder, BuildError> {
         let mut builder = self.builder()?;
         for field in &self.fields {
             field.set(&mut builder)?;
@@ -61,11 +99,11 @@ impl Table {
 /// of the builder's table, writes the tables nested in it in place as
 /// [`Table::to_bytes_in_place()`] does
 macro_rules! set_field_on {
-    ($(#[$doc:meta])* $name:ident, $lifetime:lifetime, $target:ty) => {
+    ($(#[$doc:meta])* $name:ident, $target:ty) => {
         impl Field {
             $(#[$doc])*
-            pub fn $name<$lifetime>(
-                &$lifetime self,
+            pub fn $name(
+                &self,
                 target: &mut $target,
                 in_place: Option<OffsetType>,
             ) -> Result<(), BuildError> {
@@ -141,35 +179,31 @@ macro_rules! set_field_on {
 }
 
 set_field_on!(
-    /// Sets the field on `builder`, which borrows its value, or owns the
-    /// bytes of structs, and with `in_place`, writes the tables nested in
-    /// it in place
+    /// Sets the field on `builder`, which copies its value, and with
+    /// `in_place`, writes the tables nested in it in place
     set_on,
-    'a,
-    TableBuilder<'a>
+    TableBuilder
 );
 
 set_field_on!(
     /// Sets the field on a table that a builder writes in place, as
     /// [`Field::set_on()`] sets it on a builder
     set_in_place,
-    'a,
-    InPlaceTable<'_, 'a>
+    InPlaceTable<'_>
 );
 
 impl Field {
-    /// Sets the field on `builder`, which borrows its value, or owns the
-    /// bytes of structs
-    pub fn set<'a>(&'a self, builder: &mut TableBuilder<'a>) -> Result<(), BuildError> {
+    /// Sets the field on `builder`, which copies its value
+    pub fn set(&self, builder: &mut TableBuilder) -> Result<(), BuildError> {
         self.set_on(builder, None)
     }
 }
 
 /// Sets `fields` on a table that a builder writes in place, writing the
 /// tables nested in them in place in a table of `in_place` offsets
-fn set_fields<'a>(
-    fields: &'a [Field],
-    table: &mut InPlaceTable<'_, 'a>,
+fn set_fields(
+    fields: &[Field],
+    table: &mut InPlaceTable<'_>,
     in_place: Option<OffsetType>,
 ) -> Result<(), BuildError> {
     fields

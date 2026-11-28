@@ -103,9 +103,9 @@ Each crate is used as its documentation shows, and as the TypeScript
 comparison uses its counterpart:
 
 - **tafla** writes nested tables in place among their parent builder's
-  fields, with `set_table_with()` and `set_vector_with()`. The builders
-  borrow the columns and copy each array in bulk into a table of its exact
-  size. Readers check the document's version, and read columns as
+  fields, with `set_table_with()` and `set_vector_with()`. The builder
+  copies each array in bulk into its buffer when it's set, and hands the
+  buffer over as the table with `into_bytes()`. Readers check the document's version, and read columns as
   `ArrayView`s, whose `to_cow()` borrows them. The array of structs is written with `to_le_bytes()` into a `Vec`, which the
   builder takes with `set_struct_array()`, and read from
   `get_struct_array()`'s bytes with `as_chunks()` and `from_le_bytes()`.

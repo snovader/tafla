@@ -235,18 +235,18 @@ pub fn build(header: Header, values: &[Value]) -> Result<Vec<u8>, BuildError> {
     builder.to_bytes()
 }
 
-fn nested(values: &[Value]) -> Result<TableBuilder<'_>, BuildError> {
+fn nested(values: &[Value]) -> Result<TableBuilder, BuildError> {
     let mut builder = TableBuilder::new(values.len(), TableLayout::DEFAULT)?;
     set_all(&mut builder, values)?;
 
     Ok(builder)
 }
 
-fn set_all<'a>(builder: &mut TableBuilder<'a>, values: &'a [Value]) -> Result<(), BuildError> {
+fn set_all(builder: &mut TableBuilder, values: &[Value]) -> Result<(), BuildError> {
     values.iter().try_for_each(|value| set(builder, value))
 }
 
-fn set<'a>(builder: &mut TableBuilder<'a>, value: &'a Value) -> Result<(), BuildError> {
+fn set(builder: &mut TableBuilder, value: &Value) -> Result<(), BuildError> {
     match value {
         Value::Bool(value) => builder.set_u8(u8::from(*value)),
         Value::I8(value) => builder.set_i8(*value),

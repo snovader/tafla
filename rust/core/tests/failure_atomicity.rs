@@ -303,7 +303,7 @@ fn build(table: &Table, plan: Plan) -> Outcome {
 }
 
 /// Starts a builder of `fields` fields in the table's layout
-fn start<'a>(table: &Table, fields: usize) -> Result<TableBuilder<'a>, BuildError> {
+fn start(table: &Table, fields: usize) -> Result<TableBuilder, BuildError> {
     let layout = table.layout.unversioned();
 
     match table.version {
@@ -314,19 +314,19 @@ fn start<'a>(table: &Table, fields: usize) -> Result<TableBuilder<'a>, BuildErro
     }
 }
 
-fn set_on_builder<'a>(
-    builder: &mut TableBuilder<'a>,
+fn set_on_builder(
+    builder: &mut TableBuilder,
     offset_type: OffsetType,
-    field: &'a Field,
+    field: &Field,
     context: &Context,
 ) -> Result<(), Error> {
     set_field!(builder, offset_type, field, context)
 }
 
-fn set_in_place<'a>(
-    table: &mut InPlaceTable<'_, 'a>,
+fn set_in_place(
+    table: &mut InPlaceTable<'_>,
     offset_type: OffsetType,
-    field: &'a Field,
+    field: &Field,
     context: &Context,
 ) -> Result<(), Error> {
     set_field!(table, offset_type, field, context)
@@ -334,10 +334,10 @@ fn set_in_place<'a>(
 
 /// Sets `fields` on a table nested in place in a table of `offset_type`
 /// offsets, failing as the plan says
-fn fill<'a>(
-    table: &mut InPlaceTable<'_, 'a>,
+fn fill(
+    table: &mut InPlaceTable<'_>,
     offset_type: OffsetType,
-    fields: &'a [Field],
+    fields: &[Field],
     context: &Context,
 ) -> Result<(), Error> {
     let call = context.next_fill();
@@ -625,17 +625,15 @@ proptest! {
     }
 }
 
-/// A float64 array of 40 elements: 320 bytes, which the builder keeps as a
-/// segment
+/// A float64 array of 40 elements: 320 bytes
 fn long_column() -> Vec<f64> {
     (0..40).map(|index| f64::from(index) * 0.5).collect()
 }
 
-/// A vector nested in place whose fill panics, after its items' arrays were
-/// kept as segments, more than the builder holds within itself, leaves the
-/// builder as it was, with the segments set before it
+/// A vector nested in place whose fill panics, after its items' long arrays
+/// were written, leaves the builder as it was, with the values set before it
 #[test]
-fn test_a_panic_after_segments_leaves_the_builder_as_it_was() {
+fn test_a_panic_after_long_items_leaves_the_builder_as_it_was() {
     quiet_injected_panics();
     let column = long_column();
     let name = "x".repeat(300);
