@@ -20,7 +20,7 @@ func Example() {
 	if err != nil {
 		panic(err)
 	}
-	_ = series.SetUint32Array(timestamps) // mustn't change until the table is written
+	_ = series.SetUint32Array(timestamps) // copied in
 	_ = series.SetFloat32Array(values)
 
 	builder, err := tafla.NewTableBuilder(3, layout)
@@ -116,6 +116,46 @@ func ExampleTableReader_GetBoolArray() {
 	// Output:
 	// [1 0 1] <nil>
 	// [true false true] <nil>
+}
+
+// A loop that hands each table's bytes back to Reset writes every table
+// into the same bytes, which it allocates once.
+func ExampleTableBuilder_Reset() {
+	readings := []struct {
+		sensor string
+		value  float64
+	}{{"kitchen", 21.75}, {"cellar", 12.5}}
+
+	var builder tafla.TableBuilder
+	var table []byte
+	for _, reading := range readings {
+		err := builder.Reset(table[:0], 2, tafla.TableLayout{})
+		if err == nil {
+			err = errors.Join(builder.SetString(reading.sensor), builder.SetFloat64(reading.value))
+		}
+		if err == nil {
+			table, err = builder.Bytes()
+		}
+		if err != nil {
+			panic(err)
+		}
+
+		// Read, or written out, before the next Reset writes over it
+		reader := tafla.NewTableReader(table, tafla.TableLayout{})
+		sensor, _ := reader.GetString(must(reader.RootOffset(0)))
+		value, _ := reader.GetFloat64(must(reader.RootOffset(1)))
+		fmt.Println(sensor, value, len(table))
+	}
+	// Output:
+	// kitchen 21.75 27
+	// cellar 12.5 26
+}
+
+func must[T any](value T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return value
 }
 
 func ExampleTableBuilder_SetVectorFunc() {

@@ -102,8 +102,9 @@ Each library is used as its documentation shows, and as the TypeScript
 comparison uses its counterpart:
 
 - **tafla** writes nested tables in place into their parent builder's
-  bytes, with `SetTableFunc()` and `SetVectorFunc()`. The builders keep the
-  columns and copy each array in bulk into a table of its exact size.
+  bytes, with `SetTableFunc()` and `SetVectorFunc()`. The builders copy
+  each array in bulk into their buffer, which `Bytes()` returns, without a
+  copy.
   Readers check the document's version, return each read's error as it
   comes, as the runtime's examples do, and read columns as `ArrayView`s, whose
   `Slice()` shares the bytes. The array of structs is written with `encoding/binary` into a slice, which the

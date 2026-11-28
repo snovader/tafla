@@ -2,14 +2,14 @@
 
 package tafla
 
-// The sizes of a TableBuilder's buffer and of the runs that it keeps, with
-// the build tag tafla_builder_stress: it keeps every run, and grows its
-// buffer from a byte, so that its tests run those paths on small tables too.
+// The sizes of a TableBuilder's buffer, with the build tag
+// tafla_builder_stress: it starts empty and grows by the bytes that each
+// write needs, so that its tests write every field into new bytes.
 const (
-	inlineBytes    = 0
-	firstHeapBytes = 1
-	runMin         = 1
-	itemRoom       = 64 << 10
-	tableRunMin    = 16
-	moreRuns       = 1
+	firstCapacity     = 0
+	roomForAField     = 0
+	mostRoomForFields = 0
+	itemRoom          = 0
 )
+
+func grownCapacity(int) int { return 0 }

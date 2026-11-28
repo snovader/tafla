@@ -126,6 +126,13 @@ func (i Item) SetTableFunc(fields int, fill func(table Item) error) error {
 	return i.builder.SetTableFunc(fields, fill)
 }
 
+// SetTableFuncAligned writes a table nested in this one in place, padded
+// for alignment before its fields are set, as
+// [TableBuilder.SetTableFuncAligned] does.
+func (i Item) SetTableFuncAligned(fields int, alignment Alignment, fill func(table Item) error) error {
+	return i.builder.SetTableFuncAligned(fields, alignment, fill)
+}
+
 // SetVectorFunc writes a vector of tables in place, as
 // [TableBuilder.SetVectorFunc] does.
 func (i Item) SetVectorFunc(count, fields int, fill func(index int, item Item) error) error {

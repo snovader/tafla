@@ -12,7 +12,7 @@ import (
 // It's for code that knows a table's fields before it writes them, such as
 // the code that tafla-gen generates, which writes tables straight into bytes
 // of their exact length, rather than into a buffer that grows, as
-// [TableBuilder] does, and then copying them.
+// [TableBuilder] does.
 //
 // The fields are added in order, each with its type's method, which takes
 // what decides its length: nothing for a scalar, the count of an array, the
@@ -418,7 +418,7 @@ func elements(count int) uint64 {
 // a [TableSizer] counted.
 //
 // It writes straight into the table's bytes, rather than into a buffer that
-// grows, as [TableBuilder] does, and then copying them. It comes from
+// grows, as [TableBuilder] does. It comes from
 // [TableSizer.Writer] or [TableSizer.AppendWriter], and takes the fields that
 // the sizer added, in the same order, each with its index in its table.
 //

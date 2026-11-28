@@ -3,9 +3,10 @@
 `github.com/snovader/tafla/go` is tafla's runtime for Go, the package `tafla`.
 It writes and reads binary tables of scalars, strings, vectors of strings,
 arrays, structs and nested tables in tafla's format, which the TypeScript, Python, Java and Rust
-runtimes write and read too. `TableBuilder` writes a table at its exact size,
-copying arrays in bulk, and `TableReader` reads fields back by offset, sharing
-arrays, strings and structs with the bytes. Every read checks that it stays
+runtimes write and read too. `TableBuilder` copies each field into its
+buffer when it's set, arrays in bulk, and hands out the buffer, and
+`TableReader` reads fields back by offset, sharing arrays, strings and
+structs with the bytes. Every read checks that it stays
 within the bytes it was given. It depends only on Go's standard library.
 
 Each release of the module is tagged `go/v<version>`, and
@@ -27,14 +28,14 @@ const formatVersion = 1
 var layout = tafla.TableLayout{}.Sized().WithVersion(formatVersion)
 
 series, err := tafla.NewTableBuilder(2, tafla.TableLayout{})
-err = series.SetUint32Array([]uint32{0, 86_400}) // mustn't change until the table is written
+err = series.SetUint32Array([]uint32{0, 86_400}) // copied in
 err = series.SetFloat32Array([]float32{21.75, 18.5})
 
 builder, err := tafla.NewTableBuilder(3, layout)
 err = builder.SetFloat64(59.3293)
 err = builder.SetString("Europe/Stockholm")
 err = builder.SetTable(series) // its bytes copied in
-bytes, err := builder.Bytes()
+bytes, err := builder.Bytes() // the builder's buffer, not a copy
 
 reader := tafla.NewTableReader(bytes, layout)
 version, err := reader.Version()
@@ -104,34 +105,62 @@ with the code that tafla-gen generates.
 
 ## Sharing and copying
 
-- **Builders write each field when it's set, but keep long values.** A
-  setter writes the field's offset and bytes into a buffer of 128 bytes
-  within the builder, and then into one on the heap, which doubles as it
-  grows, and `Bytes()` copies the table into new bytes of its exact length.
-  Arrays, strings, the strings of a vector of strings, arrays of structs and
-  `TableBytes` of 64 bytes or more are kept until `Bytes()` copies them in,
-  rather than copied when they're set, so their elements must not change
-  until the table is written. A table's length is counted when each field
-  is set, so a value that changed length couldn't be written, but a slice's
-  length can't change.
-- **Nest builders rather than bytes.** `SetTable()` and `SetVector()` take a
-  `*TableBuilder` or `TableBytes`, and copy a builder's bytes into its parent
-  when they're set, without the allocation of its own `Bytes()`. Its parent
-  keeps the long values that it kept. A builder whose bytes and long values
-  would take 128 bytes or more to copy is kept rather than copied, as a copy
-  of the builder, and its table is written when its parent's is, so that
-  nesting builders copies little however deep they're nested.
+- **Builders copy each value when it's set.** A setter copies the field's
+  bytes into the builder's buffer, after those set before it, and writes
+  its offset, so a slice, a string, or a nested builder or its bytes, can
+  change once the setter returns. The buffer starts with room for
+  256 bytes, or 64 a field if that's more, up to 64 KiB, and grows fourfold
+  below 64 KiB and twofold above.
+- **`Bytes()` returns the buffer.** It holds the table, so `Bytes()` returns
+  it without copying it, with its spare capacity. The builder doesn't write
+  to it again unless it's given back, so a table to keep without that room
+  is copied with `bytes.Clone`.
+- **`Reset()` starts the next table in bytes of the caller's.**
+  `Reset(dst, fields, layout)` writes the table after the bytes of `dst`,
+  into its capacity while it has room, as `append` does, and `Bytes()` then
+  returns `dst` with the table appended. Passing back the bytes that
+  `Bytes()` returned, from their start, writes each table of a loop into the
+  same bytes, and a `dst` made with a capacity gives a first large table
+  its room:
+
+  ```go
+  var builder tafla.TableBuilder // a table of no fields, until it's reset
+  var table []byte
+  for _, reading := range readings {
+  	err := builder.Reset(table[:0], 2, layout)
+  	err = builder.SetFloat64(reading.Value)
+  	err = builder.SetString(reading.Sensor)
+  	table, err = builder.Bytes()
+  	_, err = connection.Write(table) // before the next Reset writes over it
+  }
+  ```
+
+  A builder is a value, as `bytes.Buffer` is, so it can live on the stack
+  or in a struct of its own. It isn't copied once it's started, since the
+  copy would share its buffer.
+- **Nested builders and bytes are copied in.** `SetTable()` and
+  `SetVector()` take a `*TableBuilder` or `TableBytes`, and copy the table
+  in when they're set. So builders nested in builders copy each table once
+  for each builder that holds it: a chain of builders, each nested in the
+  next, copies in time that grows with the square of its depth.
 - **Nested tables can be written in place.** `SetTableFunc()` and
   `SetVectorFunc()` write a nested table, or each item of a vector,
-  straight into the builder's bytes, through the `Item` that their
+  straight into the builder's buffer, through the `Item` that their
   function sets the fields on, rather than from a builder of its own, which
   would be copied in. They write the bytes that nested builders write, and
   leave the builder as it was if the function returns an error or leaves
   fields unset. The benchmarks' vector of 100 nested tables took about
   5.8 µs so, in 6 allocations, against 10.3 µs and 204 allocations from a
-  builder per item, and 6.1 µs through FlatBuffers. A table nested from a builder or bytes,
-  with `SetTable()` and `SetVector()`, is still what a table built
-  elsewhere, or reused, needs.
+  builder per item, and 6.1 µs through FlatBuffers. A nested table is
+  padded to its fields' largest alignment, which is known once they're set,
+  so it's moved forward by its padding then, and moved again with each
+  padded table that it's nested in, in time that grows with the square of
+  the depth. `SetTableFuncAligned()` pads it before its fields, for an
+  alignment that its caller gives, so that it isn't moved. The function
+  passed to them moves the builder to the heap, since Go's compiler can't
+  see what it does with it. A table nested from a builder or bytes, with
+  `SetTable()` and `SetVector()`, is still what a table built elsewhere, or
+  reused, needs.
 - **Arrays are read in place.** `TableReader`'s array getters return an
   `ArrayView[T]`, which reads elements from the bytes at any alignment and in
   any host byte order. `AsSlice()` returns them as a slice of the bytes when
@@ -193,7 +222,8 @@ write a table, and leaves the builder as it was:
   `Bytes()`, and nesting a builder, fail with `Incomplete` while fields are
   left to set, as `SetTableFunc()` and `SetVectorFunc()` do for a table that
   their function leaves incomplete. A version that doesn't fit, or a header
-  too long for its offset type, fails the constructor.
+  too long for its offset type, fails the constructor, and `Reset()`, which
+  leaves the builder as it was.
 
 Functions panic only for mistakes of the code that calls them, which no bytes
 can cause, as Go's standard library panics for an index out of range:
@@ -215,7 +245,7 @@ can cause, as Go's standard library panics for an index out of range:
 it's written, as the code that tafla-gen generates writes its tables. The
 sizer counts the table's length from its fields, and its writer writes the
 same fields, in the same order, straight into bytes of that length, rather
-than into a buffer to copy, as `TableBuilder` does.
+than into a buffer that grows, as `TableBuilder` does.
 `TableSizer.AppendWriter()` writes the table after the bytes of a slice, into
 its capacity when it has room, as `append` does, so that a caller can reuse
 bytes.
@@ -293,7 +323,7 @@ The tests in `tests/` are:
 - `conformance_test.go`: reads and rebuilds the conformance suite.
 - `round_trip_test.go`, `format_test.go`, `decode_error_test.go`,
   `string_vector_test.go`, `table_builder_test.go`,
-  `builder_failures_test.go` and
+  `builder_buffer_test.go`, `builder_failures_test.go` and
   `table_writer_test.go`: properties of tables
   built from the conformance suite's descriptions, which
   `tests/internal/tables` parses, generates with rapid, builds and reads, as Rust's `tests/common`
@@ -314,13 +344,11 @@ The property tests run 256 cases each, as proptest does in Rust's, which
 `-rapid.checks` changes, and save a failing case's input under the
 package's `testdata/rapid`, which `.gitignore` leaves out.
 
-`TableBuilder` copies arrays, strings and nested tables' bytes shorter than
-64 bytes when they're set, and keeps longer ones until `Bytes()`, as it keeps
-nested builders that would take 128 bytes or more to copy. The build tag
-`tafla_builder_stress` makes it keep every value and most nested builders,
-and grow its buffer from a byte rather than start with 128 bytes of its own,
-so that `go test -tags tafla_builder_stress ./...` takes those paths with the
-tests' small tables.
+`TableBuilder` writes into a buffer that starts with room for 256 bytes or
+more, so the tests' small tables rarely grow it. The build tag
+`tafla_builder_stress` makes it start empty and grow by the bytes that each
+write needs, so that `go test -tags tafla_builder_stress ./...` writes every
+field of the tests' tables into new bytes.
 
 ### Byte orders and word sizes
 

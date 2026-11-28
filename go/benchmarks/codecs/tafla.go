@@ -9,11 +9,11 @@ import (
 	"github.com/snovader/tafla/go/benchmarks/workloads"
 )
 
-// Tafla writes tables with TableBuilder, recording nested tables in place
-// among their parent builder's fields with SetTableFunc() and SetVectorFunc().
-// The builders write each array in bulk into a table of its exact size. It
-// reads the tables with TableReader's getters, with strings and columns in
-// place.
+// Tafla writes tables with TableBuilder, writing nested tables in place into
+// their parent builder's bytes with SetTableFunc() and SetVectorFunc(). The
+// builders copy each array in bulk into their buffer, which Bytes() returns
+// without a copy. It reads the tables with TableReader's getters, with
+// strings and columns in place.
 type Tafla struct{}
 
 // documentLayout is the document's header: its length and version
