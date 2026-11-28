@@ -11,6 +11,7 @@ pub struct Record<'a> {
     bytes: &'a [u8],
 }
 
+#[allow(clippy::inline_always)]
 impl<'a> Record<'a> {
     const LAYOUT: TableLayout = TableLayout::DEFAULT;
 
@@ -22,6 +23,7 @@ impl<'a> Record<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    #[inline(always)]
     pub fn x(&self) -> Result<f64, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(0)?;
@@ -31,6 +33,7 @@ impl<'a> Record<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    #[inline(always)]
     pub fn y(&self) -> Result<f64, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(1)?;
@@ -40,6 +43,7 @@ impl<'a> Record<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    #[inline(always)]
     pub fn id(&self) -> Result<i64, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(2)?;
@@ -49,6 +53,7 @@ impl<'a> Record<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    #[inline(always)]
     pub fn name(&self) -> Result<&'a str, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(3)?;
@@ -98,6 +103,7 @@ pub struct Document<'a> {
     bytes: &'a [u8],
 }
 
+#[allow(clippy::inline_always)]
 impl<'a> Document<'a> {
     /// The version of the format, which the header carries and [`Self::new`] checks
     pub const FORMAT_VERSION: u32 = 1;
@@ -138,6 +144,7 @@ impl<'a> Document<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    #[inline(always)]
     pub fn x(&self) -> Result<f64, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(0)?;
@@ -147,6 +154,7 @@ impl<'a> Document<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    #[inline(always)]
     pub fn y(&self) -> Result<f64, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(1)?;
@@ -156,6 +164,7 @@ impl<'a> Document<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    #[inline(always)]
     pub fn name(&self) -> Result<&'a str, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(2)?;
@@ -165,6 +174,7 @@ impl<'a> Document<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    #[inline(always)]
     pub fn columns(&self) -> Result<Columns<'a>, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(3)?;
@@ -213,6 +223,7 @@ pub struct Columns<'a> {
     position: usize,
 }
 
+#[allow(clippy::inline_always)]
 impl<'a> Columns<'a> {
     /// Reads the table at `position` in `bytes`, as its parent's getter finds it
     const fn new(bytes: &'a [u8], position: usize) -> Self {
@@ -222,6 +233,7 @@ impl<'a> Columns<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    #[inline(always)]
     pub fn base(&self) -> Result<i64, DecodeError> {
         let reader = TableReader::new(self.bytes, TableLayout::DEFAULT);
         let position = reader.field_offset(self.position, 0)?;
@@ -231,6 +243,7 @@ impl<'a> Columns<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    #[inline(always)]
     pub fn keys(&self) -> Result<ArrayView<'a, u32>, DecodeError> {
         let reader = TableReader::new(self.bytes, TableLayout::DEFAULT);
         let position = reader.field_offset(self.position, 1)?;
@@ -240,6 +253,7 @@ impl<'a> Columns<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    #[inline(always)]
     pub fn a(&self) -> Result<ArrayView<'a, f32>, DecodeError> {
         let reader = TableReader::new(self.bytes, TableLayout::DEFAULT);
         let position = reader.field_offset(self.position, 2)?;
@@ -249,6 +263,7 @@ impl<'a> Columns<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    #[inline(always)]
     pub fn b(&self) -> Result<ArrayView<'a, f32>, DecodeError> {
         let reader = TableReader::new(self.bytes, TableLayout::DEFAULT);
         let position = reader.field_offset(self.position, 3)?;
@@ -297,6 +312,7 @@ pub struct ItemList<'a> {
     bytes: &'a [u8],
 }
 
+#[allow(clippy::inline_always)]
 impl<'a> ItemList<'a> {
     const LAYOUT: TableLayout = TableLayout::DEFAULT;
 
@@ -311,6 +327,7 @@ impl<'a> ItemList<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field, or the vector's count or the ends of its items, lie outside the bytes.
+    #[inline(always)]
     pub fn items(&self) -> Result<ItemVector<'a>, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(0)?;
@@ -360,6 +377,7 @@ pub struct Item<'a> {
     position: usize,
 }
 
+#[allow(clippy::inline_always)]
 impl<'a> Item<'a> {
     /// Reads the table at `position` in `bytes`, as its parent's getter finds it
     const fn new(bytes: &'a [u8], position: usize) -> Self {
@@ -369,6 +387,7 @@ impl<'a> Item<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    #[inline(always)]
     pub fn value(&self) -> Result<f32, DecodeError> {
         let reader = TableReader::new(self.bytes, TableLayout::DEFAULT);
         let position = reader.field_offset(self.position, 0)?;
@@ -378,6 +397,7 @@ impl<'a> Item<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    #[inline(always)]
     pub fn pair(&self) -> Result<Pair<'a>, DecodeError> {
         let reader = TableReader::new(self.bytes, TableLayout::DEFAULT);
         let position = reader.field_offset(self.position, 1)?;
@@ -474,6 +494,7 @@ pub struct Pair<'a> {
     position: usize,
 }
 
+#[allow(clippy::inline_always)]
 impl<'a> Pair<'a> {
     /// Reads the table at `position` in `bytes`, as its parent's getter finds it
     const fn new(bytes: &'a [u8], position: usize) -> Self {
@@ -483,6 +504,7 @@ impl<'a> Pair<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    #[inline(always)]
     pub fn first(&self) -> Result<f32, DecodeError> {
         let reader = TableReader::new(self.bytes, TableLayout::DEFAULT);
         let position = reader.field_offset(self.position, 0)?;
@@ -492,6 +514,7 @@ impl<'a> Pair<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    #[inline(always)]
     pub fn second(&self) -> Result<f32, DecodeError> {
         let reader = TableReader::new(self.bytes, TableLayout::DEFAULT);
         let position = reader.field_offset(self.position, 1)?;
@@ -546,6 +569,7 @@ pub struct Triples<'a> {
     bytes: &'a [u8],
 }
 
+#[allow(clippy::inline_always)]
 impl<'a> Triples<'a> {
     const LAYOUT: TableLayout = TableLayout::DEFAULT;
 
@@ -559,6 +583,7 @@ impl<'a> Triples<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field or its structs lie outside the bytes.
+    #[inline(always)]
     pub fn items(&self) -> Result<TripleArray<'a>, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(0)?;
