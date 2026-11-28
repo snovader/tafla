@@ -156,10 +156,12 @@ repository's first commits, for code built from its source before the release.
   the decoder: reading ASCII of up to 40 or 48 bytes a byte at a time made
   strings of 33 bytes that end in a character of 2 bytes take 1.14–1.20
   times as long.
-- `TableBuilder` writes each field, and its offset, into a buffer when it's
-  set, rather than recording it and writing every field through a
+- `TableBuilder` copies each field, and writes its offset, into a buffer
+  when it's set, rather than recording it and writing every field through a
   `TableWriter` in `bytes()` and `finalize()`, which now copy the table out
-  of the buffer into bytes of its length. The buffer is that of a
+  of the buffer into bytes of its length. The new `finish()` lends the table
+  instead, as a view of the buffer, until a builder of the same arena next
+  writes. The buffer is that of a
   `TableArena`, the builder's new first argument, as in
   `new TableBuilder(TableArena.DEFAULT, 3, layout)`: every builder of an
   arena writes in its buffer, each in bytes of its own, which it gives back
@@ -170,28 +172,27 @@ repository's first commits, for code built from its source before the release.
   tables, `retainedBytes()` is the length of the buffer that an arena
   holds, and `release()` drops it. The builder writes the same bytes as before, and its
   setters throw the same errors and leave it as it was when they throw.
-  Arrays, arrays of structs, structs and tables given as bytes of 1 KiB or
-  more are kept until the table is written and copied into it once; shorter
-  values are copied when they're set, rather than all of them when the table
-  is written, as are arrays of bools of any length, which are converted
-  then. A string, or a vector of strings, is given room in the buffer for
-  its longest UTF-8 rather than counted first. So:
+  Every value is copied when it's set, rather than read when the table is
+  written, so it can change afterwards without changing the table. A
+  string, or a vector of strings, is given room in the buffer for its
+  longest UTF-8 rather than counted first. So:
   - A number for an `int64` field, or a `bigint` for another, throws its
     `TypeError` from the setter, which leaves the builder as it was, rather
-    than from `finalize()`, except in an array of 1 KiB or more.
-  - Only an array of 1 KiB or more whose length has changed when the table
-    is written makes `finalize()` and `bytes()` throw a `RangeError`, with a
-    message of its own, and one whose buffer was transferred throws a
-    `RangeError` rather than a `TypeError`.
+    than from `finalize()`.
+  - An array whose length changes, or whose buffer is transferred, after
+    it's set, no longer makes `finalize()` throw.
   - An array-like whose length isn't a non-negative integer throws its
     `RangeError` from the setter, which leaves the builder as it was.
   - A nested builder is copied into its parent when it's nested, whatever
-    its layout, rather than written into it when the parent is written,
-    unless its table is 128 bytes or longer: its table is then written once,
-    when the parent is, rather than copied into each table that nests it in
-    turn. A parent no longer finalizes a builder that it nests, so setting a
-    field of one afterwards throws the `RangeError` of a table that holds
-    all its fields, rather than the `TypeError` of one that's finalized.
+    its layout, rather than written into it when the parent is written, and
+    so copied again into each table that nests that one in turn. A parent
+    no longer finalizes a builder that it nests, so setting a field of one
+    afterwards throws the `RangeError` of a table that holds all its fields,
+    rather than the `TypeError` of one that's finalized.
+  - A table written in place that needs padding is moved by it once its
+    fields are set, with the tables in it. `setTableInPlace()` takes the
+    alignment as an optional third argument, and pads for it before `fill`
+    runs instead, which is moved past only if its fields need more.
   - A builder that's never written keeps the buffer that it wrote in alive,
     of up to 64 KiB, or of 1 MiB after a table that long. A builder nested
     in another keeps its bytes of the buffer, since it can still be written

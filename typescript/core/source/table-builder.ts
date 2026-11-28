@@ -34,65 +34,13 @@ import type { ElementSize, OffsetSize, OffsetType } from './types.ts';
  */
 const FIELD_ROOM = 16;
 /**
- * The shortest run of bytes, of an array, an array of structs, a struct or a
- * table nested as bytes, that's kept as a segment, which `bytes()` writes
- * once, into the table, rather than copied into the buffer when it's set.
- * Copying every run into the buffer made a document of 100,000 rows take
- * four times as long.
- */
-const SEGMENT_BYTES = 1024;
-/**
- * The shortest table of a complete nested builder that's kept as a segment,
- * and written once, by `bytes()`, rather than copied into its parent. It's
- * no longer than {@link SEGMENT_BYTES}, so a table that kept segments of its
- * own is kept in turn, and tables nested in tables are each written once,
- * rather than copied into each parent. Keeping them from 128 bytes, rather
- * than 256, took 0.92 of the time for 32 builders of a uint32, each nested
- * in the next, and from 64 bytes the same.
- */
-const KEPT_TABLE_BYTES = 128;
-
-// The kinds of segment, which bytes() switches on to write each
-const INT8_ARRAY = 0;
-const UINT8_ARRAY = 1;
-const INT16_ARRAY = 2;
-const UINT16_ARRAY = 3;
-const INT32_ARRAY = 4;
-const UINT32_ARRAY = 5;
-const INT64_ARRAY = 6;
-const UINT64_ARRAY = 7;
-const FLOAT32_ARRAY = 8;
-const FLOAT64_ARRAY = 9;
-/** Bytes copied as they are: a struct, an array of structs or a table */
-const BYTES = 10;
-/** A nested builder's table, a {@link NestedTable} */
-const TABLE = 11;
-
-/**
- * The slots of a segment in `_segments`: the position in the buffer that its
- * bytes go before, their length, its kind, its values and their count
- */
-const SEGMENT_SLOTS = 5;
-
-/**
- * A complete builder's table, kept as a segment of its parent: the bytes
- * that its buffer holds, and its own segments. A complete builder doesn't
- * write its buffer again, nor leave it for another builder once it's kept.
- */
-interface NestedTable {
-    readonly bytes: Uint8Array;
-    readonly base: number;
-    readonly end: number;
-    readonly segments: unknown[] | undefined;
-}
-
-/**
  * The fields of a table that a {@link TableBuilder} writes in place, which
  * its `setTableInPlace()` and `setVectorInPlace()` give to `fill`: the
- * builder itself, without `bytes()` and `finalize()`, whose setters set the
+ * builder itself, without `bytes()`, `finalize()` and `finish()`, whose
+ * setters set the
  * nested table's fields while `fill` runs.
  */
-export type TableItem = Omit<TableBuilder, 'bytes' | 'finalize'>;
+export type TableItem = Omit<TableBuilder, 'bytes' | 'finalize' | 'finish'>;
 
 /**
  * Copies `length` bytes from `from` in one view to `at` in another, four at
@@ -127,28 +75,28 @@ const EMPTY_VIEW = new DataView(EMPTY.buffer);
  * are read back by index with `TableReader.rootOffset()`, or
  * `TableReader.fieldOffset()` for a table nested in another.
  *
- * Setting a field writes it, and its offset, into the builder's bytes of
- * its arena's buffer, which the builders of an arena share, each with bytes
- * of its own. `finalize()` and `bytes()` then copy the table out of them,
- * into bytes of exactly its length, and give the builder's back, so that
- * building tables allocates little more than their bytes. The arena keeps
+ * Setting a field copies it, and writes its offset, into the builder's
+ * bytes of its arena's buffer, which the builders of an arena share, each
+ * with bytes of its own: no value is read after its setter returns, so a
+ * typed array can change afterwards without changing the table. The table
+ * then comes out of those bytes in one of two ways:
+ *
+ * - `bytes()` copies it into bytes of exactly its length, which are the
+ *   caller's, and `finalize()` reads them;
+ * - `finish()` lends it, as a view of the buffer, without copying it, until
+ *   the arena's next table.
+ *
+ * Either gives the builder's bytes back, so that building tables allocates
+ * little more than their bytes, or nothing with `finish()`. The arena keeps
  * the buffer between builders, at up to its `maxRetainedBytes` once a table
  * needed that much; a longer table is written in a buffer of its own.
- * Runs of 1 KiB or more, of arrays, arrays of structs, structs and tables
- * given as bytes, are kept until then instead, and written once, straight
- * into the table's bytes, so they must not change until it's written: an
- * array whose length has changed by then makes `finalize()` and `bytes()`
- * throw a `RangeError`, and leaves the builder unfinalized. Shorter values
- * are copied when they're set.
  *
  * A table nested with `setTable()` or `setVector()` is copied in when it's
- * set, from its bytes or its builder's buffer. A builder whose table is 128
- * bytes or longer is kept instead, and its table written once, by
- * `bytes()`, rather than copied into each table that nests it in turn: a
- * builder doesn't change once its fields are set. `setTableInPlace()` and
- * `setVectorInPlace()` write a nested table, or each item of a vector,
- * among this builder's own fields instead, without a builder of its own, and
- * write the same bytes as nested builders without copying them.
+ * set, from its bytes or its builder's buffer, and the builder can still be
+ * written, or nested again. `setTableInPlace()` and `setVectorInPlace()`
+ * write a nested table, or each item of a vector, among this builder's own
+ * fields instead, without a builder of its own, and write the same bytes as
+ * nested builders without copying them.
  *
  * A setter throws a `RangeError`, and leaves the builder as it was, when its
  * field would make the table longer than the layout's `offsetType`
@@ -160,9 +108,9 @@ const EMPTY_VIEW = new DataView(EMPTY.buffer);
 export class TableBuilder {
     /**
      * The table once written: its bytes, and then the reader of them that
-     * `finalize()` returns
+     * `finalize()` returns, or `null` once `finish()` has lent it
      */
-    declare private _written: Uint8Array | TableReader | undefined;
+    declare private _written: Uint8Array | TableReader | null | undefined;
 
     declare private readonly _layout: TableLayout;
     /** The offset size, the width of offsets, lengths and header slots */
@@ -184,15 +132,6 @@ export class TableBuilder {
     private _capacity = 0;
     /** The bytes of the buffer written so far */
     private _end = 0;
-    /**
-     * The bytes of the segments so far, by which the table's positions after
-     * them are ahead of the buffer's
-     */
-    private _shift = 0;
-    /** The segments, {@link SEGMENT_SLOTS} slots each, once there are any */
-    private _segments: unknown[] | undefined = undefined;
-    /** Whether a parent keeps the builder's bytes as a segment */
-    private _kept = false;
 
     // What the builder counts of the table whose fields it's writing: its
     // own, or, while a `fill` runs, those of the table that it writes in
@@ -260,8 +199,8 @@ export class TableBuilder {
      * Writes the table, once, and returns a `TableReader` that reads it; later
      * calls return the same reader.
      *
-     * @throws {RangeError} If fewer fields were set than the table holds, or
-     * an array kept until now has changed its length.
+     * @throws {RangeError} If fewer fields were set than the table holds.
+     * @throws {TypeError} If `finish()` lent the table.
      */
     finalize(): TableReader {
         const written = this._written ?? this.#write();
@@ -277,14 +216,51 @@ export class TableBuilder {
 
     /**
      * Writes the table, once, as `finalize()` does, and returns its bytes,
-     * which `finalize()` then returns a reader of
+     * which `finalize()` then returns a reader of. They're a copy of the
+     * builder's, of the table's length, and the caller's to keep.
      *
-     * @throws {RangeError} If fewer fields were set than the table holds, or
-     * an array kept until now has changed its length.
+     * @throws {RangeError} If fewer fields were set than the table holds.
+     * @throws {TypeError} If `finish()` lent the table.
      */
     bytes(): Uint8Array {
         const written = this._written ?? this.#write();
         return written instanceof TableReader ? written.bytes() : written;
+    }
+
+    /**
+     * Writes the table and lends it, as a view of the arena's buffer, without
+     * copying it. The view holds the table until a builder of the same arena
+     * next writes in its buffer: one that's made afterwards, or any that
+     * sets a field. So use it, or copy it, before building the next table,
+     * as a loop that writes each table out as it's built does. A table
+     * longer than the arena keeps is lent from a buffer of its own, which
+     * nothing else writes, with that buffer's spare room after it.
+     *
+     * The builder's table is then lent, and can't be written again, nor
+     * nested. After `bytes()` or `finalize()`, `finish()` returns the bytes
+     * that they copied instead.
+     *
+     * @throws {RangeError} If fewer fields were set than the table holds.
+     * @throws {TypeError} If `finish()` lent the table already.
+     */
+    finish(): Uint8Array {
+        if (this._written !== undefined) {
+            return this.bytes();
+        }
+
+        this.#assertComplete();
+        const length = this._end;
+        const bytes = this._bytes;
+        const base = this._base;
+        if (this._layout.sized()) {
+            setSlot(bytes, base, this._size, length);
+        }
+
+        const table = bytes.subarray(base, base + length);
+        this.#release();
+        this._written = null;
+
+        return table;
     }
 
     // Each scalar is checked and given room before it's written, and its
@@ -393,16 +369,6 @@ export class TableBuilder {
      */
     setInt8Array(values: ArrayLike<number> | Int8Array): void {
         const count = values.length;
-        if (count * SIZEOF_8 >= SEGMENT_BYTES) {
-            this.#addSegment(
-                INT8_ARRAY,
-                values,
-                count,
-                count * SIZEOF_8,
-                SIZEOF_8
-            );
-            return;
-        }
 
         const elements = this.#startArray(count, count * SIZEOF_8, SIZEOF_8);
         setInt8Elements(this._bytes, this._base + elements, values, count);
@@ -416,16 +382,6 @@ export class TableBuilder {
      */
     setUint8Array(values: ArrayLike<number> | Uint8Array): void {
         const count = values.length;
-        if (count * SIZEOF_8 >= SEGMENT_BYTES) {
-            this.#addSegment(
-                UINT8_ARRAY,
-                values,
-                count,
-                count * SIZEOF_8,
-                SIZEOF_8
-            );
-            return;
-        }
 
         const elements = this.#startArray(count, count * SIZEOF_8, SIZEOF_8);
         setUint8Elements(this._bytes, this._base + elements, values, count);
@@ -439,16 +395,6 @@ export class TableBuilder {
      */
     setInt16Array(values: ArrayLike<number> | Int16Array): void {
         const count = values.length;
-        if (count * SIZEOF_16 >= SEGMENT_BYTES) {
-            this.#addSegment(
-                INT16_ARRAY,
-                values,
-                count,
-                count * SIZEOF_16,
-                SIZEOF_16
-            );
-            return;
-        }
 
         const elements = this.#startArray(count, count * SIZEOF_16, SIZEOF_16);
         setInt16Elements(this._bytes, this._base + elements, values, count);
@@ -462,16 +408,6 @@ export class TableBuilder {
      */
     setUint16Array(values: ArrayLike<number> | Uint16Array): void {
         const count = values.length;
-        if (count * SIZEOF_16 >= SEGMENT_BYTES) {
-            this.#addSegment(
-                UINT16_ARRAY,
-                values,
-                count,
-                count * SIZEOF_16,
-                SIZEOF_16
-            );
-            return;
-        }
 
         const elements = this.#startArray(count, count * SIZEOF_16, SIZEOF_16);
         setUint16Elements(this._bytes, this._base + elements, values, count);
@@ -485,16 +421,6 @@ export class TableBuilder {
      */
     setInt32Array(values: ArrayLike<number> | Int32Array): void {
         const count = values.length;
-        if (count * SIZEOF_32 >= SEGMENT_BYTES) {
-            this.#addSegment(
-                INT32_ARRAY,
-                values,
-                count,
-                count * SIZEOF_32,
-                SIZEOF_32
-            );
-            return;
-        }
 
         const elements = this.#startArray(count, count * SIZEOF_32, SIZEOF_32);
         setInt32Elements(this._bytes, this._base + elements, values, count);
@@ -508,16 +434,6 @@ export class TableBuilder {
      */
     setUint32Array(values: ArrayLike<number> | Uint32Array): void {
         const count = values.length;
-        if (count * SIZEOF_32 >= SEGMENT_BYTES) {
-            this.#addSegment(
-                UINT32_ARRAY,
-                values,
-                count,
-                count * SIZEOF_32,
-                SIZEOF_32
-            );
-            return;
-        }
 
         const elements = this.#startArray(count, count * SIZEOF_32, SIZEOF_32);
         setUint32Elements(this._bytes, this._base + elements, values, count);
@@ -531,16 +447,6 @@ export class TableBuilder {
      */
     setInt64Array(values: ArrayLike<bigint> | BigInt64Array): void {
         const count = values.length;
-        if (count * SIZEOF_64 >= SEGMENT_BYTES) {
-            this.#addSegment(
-                INT64_ARRAY,
-                values,
-                count,
-                count * SIZEOF_64,
-                SIZEOF_64
-            );
-            return;
-        }
 
         const elements = this.#startArray(count, count * SIZEOF_64, SIZEOF_64);
         setInt64Elements(this._bytes, this._base + elements, values, count);
@@ -554,16 +460,6 @@ export class TableBuilder {
      */
     setUint64Array(values: ArrayLike<bigint> | BigUint64Array): void {
         const count = values.length;
-        if (count * SIZEOF_64 >= SEGMENT_BYTES) {
-            this.#addSegment(
-                UINT64_ARRAY,
-                values,
-                count,
-                count * SIZEOF_64,
-                SIZEOF_64
-            );
-            return;
-        }
 
         const elements = this.#startArray(count, count * SIZEOF_64, SIZEOF_64);
         setUint64Elements(this._bytes, this._base + elements, values, count);
@@ -577,16 +473,6 @@ export class TableBuilder {
      */
     setFloat32Array(values: ArrayLike<number> | Float32Array): void {
         const count = values.length;
-        if (count * SIZEOF_32 >= SEGMENT_BYTES) {
-            this.#addSegment(
-                FLOAT32_ARRAY,
-                values,
-                count,
-                count * SIZEOF_32,
-                SIZEOF_32
-            );
-            return;
-        }
 
         const elements = this.#startArray(count, count * SIZEOF_32, SIZEOF_32);
         setFloat32Elements(this._bytes, this._base + elements, values, count);
@@ -600,16 +486,6 @@ export class TableBuilder {
      */
     setFloat64Array(values: ArrayLike<number> | Float64Array): void {
         const count = values.length;
-        if (count * SIZEOF_64 >= SEGMENT_BYTES) {
-            this.#addSegment(
-                FLOAT64_ARRAY,
-                values,
-                count,
-                count * SIZEOF_64,
-                SIZEOF_64
-            );
-            return;
-        }
 
         const elements = this.#startArray(count, count * SIZEOF_64, SIZEOF_64);
         setFloat64Elements(this._bytes, this._base + elements, values, count);
@@ -644,7 +520,7 @@ export class TableBuilder {
         const units = string.length;
         const at = this._end;
         const start = at + this._size;
-        const before = at + this._shift - this._table + this._size;
+        const before = at - this._table + this._size;
 
         // With room for its longest UTF-8, 3 bytes for each UTF-16 code
         // unit, a string needs no count, which took 10-14 times as long as
@@ -682,7 +558,7 @@ export class TableBuilder {
         const count = strings.length;
         const size = this._size;
         const at = this._end;
-        const before = at + this._shift - this._table;
+        const before = at - this._table;
         const ends = (count + 1) * size;
 
         // With room for each string's longest UTF-8, 3 bytes for each UTF-16
@@ -753,11 +629,6 @@ export class TableBuilder {
         assertAlignment(alignment);
 
         const byteLength = bytes.length;
-        if (byteLength >= SEGMENT_BYTES) {
-            this.#addSegment(BYTES, bytes, count, byteLength, alignment);
-            return;
-        }
-
         const elements = this.#startArray(count, byteLength, alignment);
         copyBytes(bytes, 0, byteLength, this._bytes, this._base + elements);
         this.#endArray(count, elements, byteLength, alignment);
@@ -771,9 +642,9 @@ export class TableBuilder {
      * A builder must have all its fields set. Its table is written as
      * `bytes()` would write it, header included, so its layout may have a
      * header or another offset type, but without bytes of its own: copied
-     * in from its buffer, or, if it's 128 bytes or longer, kept until this
-     * table is written. It can still be finalized or nested elsewhere too,
-     * since a complete builder doesn't change.
+     * in from its buffer. It can still be written or nested elsewhere too,
+     * since a complete builder doesn't change, but not once `finish()` has
+     * lent its table.
      *
      * The nested table's typed arrays are aligned from its own start, so it's
      * padded to start at a multiple of `alignment`, which they need to be read
@@ -784,6 +655,7 @@ export class TableBuilder {
      *
      * @throws {RangeError} If the builder has fields left to set, or
      * `alignment` isn't 1, 2, 4 or 8.
+     * @throws {TypeError} If `finish()` lent the builder's table.
      */
     setTable(
         table: TableBuilder | Uint8Array,
@@ -796,7 +668,7 @@ export class TableBuilder {
 
         const byteLength = TableBuilder.#lengthOf(table);
         const end = this._end;
-        const pad = padding(end + this._shift - this._table, alignment);
+        const pad = padding(end - this._table, alignment);
         const index = this.#check(pad, byteLength);
 
         const at = end + pad;
@@ -827,7 +699,6 @@ export class TableBuilder {
 
         const index = this.#check(0, byteLength);
         const at = this.#reserve(size + count * size);
-        const position = at + this._shift;
 
         this.#setOffset(index, at);
         this.#setUnsigned(at, count);
@@ -835,10 +706,7 @@ export class TableBuilder {
 
         for (let i = 0; i < count; i++) {
             this.#append(vector[i]);
-            this.#setUnsigned(
-                at + (i + 1) * size,
-                this._end + this._shift - position
-            );
+            this.#setUnsigned(at + (i + 1) * size, this._end - at);
         }
 
         this._count = index + 1;
@@ -853,56 +721,78 @@ export class TableBuilder {
      * alignment, as `setTable()` pads a builder by default, and into the same
      * bytes, which a nested builder writes into a buffer of its own first.
      *
-     * The item is this builder, whose setters set the nested table's fields
-     * until `fill` returns. The table can't be finalized or nested meanwhile.
+     * The table's alignment is known once its fields are set, so a table
+     * that needs padding is moved by it then, with the tables nested in it,
+     * which are moved again with each table padded around them. A caller
+     * that knows the alignment, which the table's arrays and nested tables
+     * fix, can give it as `alignment`: the table is then padded for it
+     * before `fill` runs, and not moved. If its fields need more, it's moved
+     * as without it; if they need less, it stays padded for `alignment`, as
+     * `setTable()` pads a builder for an `alignment` given to it.
      *
-     * @throws {RangeError} If `fields` isn't a non-negative integer, `fill`
-     * leaves fields of the table unset, or as the other setters throw.
+     * The item is this builder, whose setters set the nested table's fields
+     * until `fill` returns. The table can't be written or nested meanwhile.
+     *
+     * @throws {RangeError} If `fields` isn't a non-negative integer,
+     * `alignment` isn't 1, 2, 4 or 8, `fill` leaves fields of the table
+     * unset, or as the other setters throw.
      * @throws What `fill` throws. Either way, the builder is left as it was.
      */
-    setTableInPlace(fields: number, fill: (table: TableItem) => void): void {
+    setTableInPlace(
+        fields: number,
+        fill: (table: TableItem) => void,
+        alignment: ElementSize = SIZEOF_8
+    ): void {
         this.#checkRoom();
+        assertAlignment(alignment);
         const header = nestedHeaderLength(fields, this._layout);
 
-        // Where the table starts, unpadded, and what to restore after it
+        // Where the table starts, padded for the alignment given, and what
+        // to restore after it
         const parentFields = this._fields;
         const index = this._count;
         const parentTable = this._table;
         const slots = this._slots;
-        const alignment = this._alignment;
+        const parentAlignment = this._alignment;
         const nesting = this._nesting;
         const at = this._end;
-        const shift = this._shift;
-        const segments = this._segments?.length ?? 0;
-        const start = at + shift;
+        const start = at + padding(at - parentTable, alignment);
 
+        this.#pad(start);
         this.#startTable(fields, header);
         try {
             fill(this);
             this.#assertSet();
         } catch (error) {
-            this.#restore(parentFields, index, parentTable, slots, alignment);
+            this.#restore(
+                parentFields,
+                index,
+                parentTable,
+                slots,
+                parentAlignment
+            );
             this._nesting = nesting;
-            this.#truncate(at, shift, segments);
+            this._end = at;
             throw error;
         }
 
-        const length = this._end + this._shift - start;
-        const tableAlignment = this._alignment;
-        this.#restore(parentFields, index, parentTable, slots, alignment);
+        const length = this._end - start;
+        const needed = this._alignment;
+        const tableAlignment = needed > alignment ? needed : alignment;
+        this.#restore(parentFields, index, parentTable, slots, parentAlignment);
         this._nesting = nesting;
 
-        // Its alignment is known once its fields are set, so it's padded
-        // from the parent's start then, as a nested builder is
+        // Padded from the parent's start once its alignment is known, as a
+        // nested builder is, unless the alignment given was enough
         const pad = padding(start - parentTable, tableAlignment);
         const total = start - parentTable + pad + length;
         if (!(total <= this._maxLength)) {
-            this.#truncate(at, shift, segments);
+            this._end = at;
             throw tooLong(index, total, this._layout.offsetType());
         }
 
         if (pad !== 0) {
-            this.#moveTable(at, segments, pad);
+            this.#moveTable(start, pad);
         }
 
         this.#setUnsigned(
@@ -939,11 +829,8 @@ export class TableBuilder {
         const header = nestedHeaderLength(fields, this._layout);
         const index = this._count;
         const at = this._end;
-        const shift = this._shift;
         const parentTable = this._table;
-        const position = at + shift;
-        const headers =
-            position - parentTable + size + count * size + count * header;
+        const headers = at - parentTable + size + count * size + count * header;
         if (!(headers <= this._maxLength)) {
             throw tooLong(index, headers, this._layout.offsetType());
         }
@@ -952,7 +839,6 @@ export class TableBuilder {
         const slots = this._slots;
         const alignment = this._alignment;
         const nesting = this._nesting;
-        const segments = this._segments?.length ?? 0;
 
         const ends = at + size;
         this.#reserve(size + count * size);
@@ -966,27 +852,24 @@ export class TableBuilder {
                 this.#assertSet();
                 this._nesting = nesting;
 
-                this.#setUnsigned(
-                    ends + item * size,
-                    this._end + this._shift - position
-                );
+                this.#setUnsigned(ends + item * size, this._end - at);
             }
         } catch (error) {
             this.#restore(parentFields, index, parentTable, slots, alignment);
             this._nesting = nesting;
-            this.#truncate(at, shift, segments);
+            this._end = at;
             throw error;
         }
 
         this.#restore(parentFields, index, parentTable, slots, alignment);
 
-        const length = this._end + this._shift - parentTable;
+        const length = this._end - parentTable;
         if (!(length <= this._maxLength)) {
-            this.#truncate(at, shift, segments);
+            this._end = at;
             throw tooLong(index, length, this._layout.offsetType());
         }
 
-        this.#setUnsigned(slots + index * size, position - parentTable);
+        this.#setUnsigned(slots + index * size, at - parentTable);
         this._count = index + 1;
     }
 
@@ -1000,7 +883,7 @@ export class TableBuilder {
 
         this._fields = fields;
         this._count = 0;
-        this._table = at + this._shift;
+        this._table = at;
         this._slots = at;
         this._alignment = SIZEOF_8;
         this._end = at + header;
@@ -1027,25 +910,10 @@ export class TableBuilder {
     }
 
     /**
-     * Removes what was written from `end` in the buffer, with `shift` bytes
-     * of segments before it, and the segments from slot `segments` on,
-     * which releases their values
-     */
-    #truncate(end: number, shift: number, segments: number): void {
-        this._end = end;
-        this._shift = shift;
-
-        if (this._segments !== undefined) {
-            this._segments.length = segments;
-        }
-    }
-
-    /**
      * Moves the table written in place from `at` forward by `pad` bytes of
-     * padding, with its segments from slot `segments` on. Its offsets count
-     * from its own start, so none changes.
+     * padding. Its offsets count from its own start, so none changes.
      */
-    #moveTable(at: number, segments: number, pad: number): void {
+    #moveTable(at: number, pad: number): void {
         const end = this.#reserve(pad);
         const bytes = this._bytes;
         const base = this._base;
@@ -1053,17 +921,6 @@ export class TableBuilder {
         bytes.copyWithin(base + at + pad, base + at, base + end);
         bytes.fill(0, base + at, base + at + pad);
         this._end = end + pad;
-
-        const list = this._segments;
-        if (list !== undefined) {
-            for (
-                let slot = segments;
-                slot < list.length;
-                slot += SEGMENT_SLOTS
-            ) {
-                (list[slot] as number) += pad;
-            }
-        }
     }
 
     /**
@@ -1083,7 +940,7 @@ export class TableBuilder {
     ): number {
         assertCount(count);
         const start = this._end + this._size;
-        const pad = padding(start + this._shift - this._table, alignment);
+        const pad = padding(start - this._table, alignment);
         this.#check(pad, this._size + byteLength);
 
         const elements = start + pad;
@@ -1114,69 +971,16 @@ export class TableBuilder {
         this.#alignTo(alignment);
     }
 
-    /**
-     * Writes an array's padding, offset and count, and keeps its elements as
-     * a segment that `bytes()` writes after the count
-     */
-    #addSegment(
-        kind: number,
-        values: unknown,
-        count: number,
-        byteLength: number,
-        alignment: ElementSize
-    ): void {
-        assertCount(count);
-        const end = this._end;
-        const size = this._size;
-        const pad = padding(end + size + this._shift - this._table, alignment);
-        const index = this.#check(pad, size + byteLength);
-
-        const at = end + pad;
-        this.#reserve(pad + size);
-        this.#pad(at);
-        this.#setOffset(index, at);
-        this.#setUnsigned(at, count);
-        this._end = at + size;
-        this.#pushSegment(kind, values, count, byteLength);
-        this._count = index + 1;
-        this.#alignTo(alignment);
-    }
-
-    /** Keeps a segment of `byteLength` bytes at the end of the buffer */
-    #pushSegment(
-        kind: number,
-        values: unknown,
-        count: number,
-        byteLength: number
-    ): void {
-        this._segments ??= [];
-
-        this._segments.push(this._end, byteLength, kind, values, count);
-        this._shift += byteLength;
-    }
-
-    /**
-     * Appends bytes, as a segment when they're long, or else copied into the
-     * buffer
-     */
+    /** Copies bytes to the end of the buffer */
     #appendBytes(bytes: Uint8Array, byteLength: number): void {
-        if (byteLength >= SEGMENT_BYTES) {
-            this.#pushSegment(BYTES, bytes, byteLength, byteLength);
-            return;
-        }
-
         const at = this.#reserve(byteLength);
         copyBytes(bytes, 0, byteLength, this._bytes, this._base + at);
         this._end = at + byteLength;
     }
 
     /**
-     * Appends a table: its bytes, or a complete builder's table, with its
-     * length written into a sized header. The builder's buffer is copied in,
-     * unless its table is {@link KEPT_TABLE_BYTES} or longer: then it's kept
-     * as a segment, so that a table nested in tables nested in others is
-     * written once, by `bytes()`, rather than copied into each parent in
-     * turn. A shorter table has no segments, since none is shorter.
+     * Appends a table: its bytes, or a complete builder's table, copied
+     * from its buffer, with its length written into a sized header
      */
     #append(table: TableBuilder | Uint8Array): void {
         if (!(table instanceof TableBuilder)) {
@@ -1192,22 +996,8 @@ export class TableBuilder {
         }
 
         const length = table._end;
-        const tableLength = length + table._shift;
         if (table._layout.sized()) {
-            setSlot(table._bytes, table._base, table._size, tableLength);
-        }
-
-        if (tableLength >= KEPT_TABLE_BYTES) {
-            const nested: NestedTable = {
-                bytes: table._bytes,
-                base: table._base,
-                end: length,
-                segments: table._segments
-            };
-
-            table._kept = true;
-            this.#pushSegment(TABLE, nested, 0, tableLength);
-            return;
+            setSlot(table._bytes, table._base, table._size, length);
         }
 
         const at = this.#reserve(length);
@@ -1261,10 +1051,7 @@ export class TableBuilder {
 
     /** Writes the offset of field `index`, which starts at `at` in the buffer */
     #setOffset(index: number, at: number): void {
-        this.#setUnsigned(
-            this._slots + index * this._size,
-            at + this._shift - this._table
-        );
+        this.#setUnsigned(this._slots + index * this._size, at - this._table);
     }
 
     /**
@@ -1392,8 +1179,9 @@ export class TableBuilder {
         table.#assertComplete();
         /* oxlint-disable eslint/no-underscore-dangle -- another builder's own fields, which the rule allows only after `this` */
         const written = table._written;
-        if (written === undefined) {
-            return table._end + table._shift;
+        // A lent table, null, failed #assertComplete()
+        if (written == null) {
+            return table._end;
         }
         /* oxlint-enable eslint/no-underscore-dangle */
 
@@ -1403,11 +1191,18 @@ export class TableBuilder {
     }
 
     /**
-     * @throws {TypeError} If a table is being written in place, whose fields
-     * the builder is counting rather than its own.
+     * @throws {TypeError} If `finish()` lent the table, or a table is being
+     * written in place, whose fields the builder is counting rather than its
+     * own.
      * @throws {RangeError} If the table has fields left to set.
      */
     #assertComplete(): void {
+        if (this._written === null) {
+            throw new TypeError(
+                "The table was lent by finish(), and can't be written again or nested"
+            );
+        }
+
         if (this._nesting !== 0) {
             throw new TypeError(
                 "A table can't be finalized or nested while a table is recorded in place in it"
@@ -1471,16 +1266,16 @@ export class TableBuilder {
         const index = this.#checkRoom();
         this.#checkLength(
             index,
-            this._end + this._shift - this._table + padding + byteLength
+            this._end - this._table + padding + byteLength
         );
 
         return index;
     }
 
     /**
-     * Writes the table into bytes of its exact length: the builder's bytes,
-     * with the segments between them, and the length in a sized header. It
-     * then gives the builder's bytes back, unless a parent keeps them.
+     * Writes the table into bytes of its exact length, a copy of the
+     * builder's, with the length in a sized header, and gives the builder's
+     * bytes back.
      *
      * A table is copied out of a buffer of the builder's own, longer than
      * its arena keeps, too, rather than cut from it by `transfer()`.
@@ -1490,32 +1285,33 @@ export class TableBuilder {
      * 2.2 times in Node 24, and 100 short strings 1.12–1.14. Copying it took
      * as long as cutting it.
      *
-     * @throws {RangeError} If fewer fields were set than the table holds, or
-     * an array kept as a segment has changed its length.
+     * @throws {RangeError} If fewer fields were set than the table holds.
+     * @throws {TypeError} If `finish()` lent the table.
      */
     #write(): Uint8Array {
         this.#assertComplete();
 
-        const length = this._end + this._shift;
-        const segments = this._segments;
-        let table: Uint8Array;
-        const bytes = this._bytes;
+        const length = this._end;
         const base = this._base;
-        if (segments !== undefined && segments.length > 0) {
-            table = new Uint8Array(length);
-            writeRuns(table, 0, bytes, base, this._end, segments);
-        } else {
-            table = bytes.slice(base, base + length);
-        }
-
+        const table = this._bytes.slice(base, base + length);
         if (this._layout.sized()) {
             setSlot(table, 0, this._size, length);
         }
 
-        // Release the builder's bytes, unless a parent keeps them, and the
-        // values, which may be large arrays
+        this.#release();
+        this._written = table;
+
+        return table;
+    }
+
+    /**
+     * Gives the builder's bytes back to its arena, which the next builder
+     * takes, or lets the buffer of its own go
+     */
+    #release(): void {
         const arena = this._arena;
-        if (bytes === arena.bytes && !this._kept) {
+        const base = this._base;
+        if (this._bytes === arena.bytes) {
             const live = arena.live - 1;
             arena.live = live;
             if (live === 0) {
@@ -1524,136 +1320,9 @@ export class TableBuilder {
                 arena.top = base;
             }
         }
+
         this._bytes = EMPTY;
         this._view = EMPTY_VIEW;
-        this._segments = undefined;
-        this._written = table;
-
-        return table;
-    }
-}
-
-/**
- * Writes a buffer's first `end` bytes, with the segments between them, from
- * `start` in the table, and the bytes and segments of a nested builder's
- * table in turn
- *
- * @throws {RangeError} If an array has changed its length.
- */
-function writeRuns(
-    table: Uint8Array,
-    start: number,
-    bytes: Uint8Array,
-    base: number,
-    end: number,
-    segments: unknown[] | undefined
-): void {
-    let from = 0;
-    let position = start;
-    if (segments !== undefined) {
-        for (let slot = 0; slot < segments.length; slot += SEGMENT_SLOTS) {
-            const at = segments[slot] as number;
-            const byteLength = segments[slot + 1] as number;
-            const kind = segments[slot + 2] as number;
-            const values = segments[slot + 3];
-
-            copyBytes(bytes, base + from, base + at, table, position);
-            position += at - from;
-            from = at;
-
-            if (kind === TABLE) {
-                const nested = values as NestedTable;
-                writeRuns(
-                    table,
-                    position,
-                    nested.bytes,
-                    nested.base,
-                    nested.end,
-                    nested.segments
-                );
-            } else {
-                writeSegment(
-                    table,
-                    position,
-                    kind,
-                    values,
-                    segments[slot + 4] as number,
-                    byteLength
-                );
-            }
-            position += byteLength;
-        }
-    }
-
-    copyBytes(bytes, base + from, base + end, table, position);
-}
-
-/**
- * Writes a segment's values, `byteLength` bytes of them, at `position` in the
- * table
- *
- * @throws {RangeError} If an array no longer holds `count` elements, or bytes
- * `byteLength` bytes, as when their buffer was transferred.
- */
-function writeSegment(
-    table: Uint8Array,
-    position: number,
-    kind: number,
-    values: unknown,
-    count: number,
-    byteLength: number
-): void {
-    const expected = kind === BYTES ? byteLength : count;
-    const length = (values as ArrayLike<unknown>).length;
-    if (length !== expected) {
-        throw new RangeError(
-            `An array of ${expected} elements held ${length} when the table was written`
-        );
-    }
-
-    switch (kind) {
-        case INT8_ARRAY:
-            setInt8Elements(table, position, values as Int8Array, count);
-            break;
-
-        case UINT8_ARRAY:
-            setUint8Elements(table, position, values as Uint8Array, count);
-            break;
-
-        case INT16_ARRAY:
-            setInt16Elements(table, position, values as Int16Array, count);
-            break;
-
-        case UINT16_ARRAY:
-            setUint16Elements(table, position, values as Uint16Array, count);
-            break;
-
-        case INT32_ARRAY:
-            setInt32Elements(table, position, values as Int32Array, count);
-            break;
-
-        case UINT32_ARRAY:
-            setUint32Elements(table, position, values as Uint32Array, count);
-            break;
-
-        case INT64_ARRAY:
-            setInt64Elements(table, position, values as BigInt64Array, count);
-            break;
-
-        case UINT64_ARRAY:
-            setUint64Elements(table, position, values as BigUint64Array, count);
-            break;
-
-        case FLOAT32_ARRAY:
-            setFloat32Elements(table, position, values as Float32Array, count);
-            break;
-
-        case FLOAT64_ARRAY:
-            setFloat64Elements(table, position, values as Float64Array, count);
-            break;
-
-        default:
-            table.set(values as Uint8Array, position);
     }
 }
 

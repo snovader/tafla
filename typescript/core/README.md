@@ -44,8 +44,9 @@ writing any of it.
 it's written, as the code that tafla-gen generates writes its tables. The
 sizer counts the table's length from its fields, and its writer writes the
 same fields, in the same order, into bytes of that length. `TableBuilder`
-writes each field into a buffer as the field is set, and then copies the
-table out of it into bytes of its length, and the two write the same bytes.
+copies each field into a buffer as the field is set, and then copies the
+table out of it into bytes of its length with `bytes()`, or lends it in
+place with `finish()`, and the two write the same bytes.
 
 A builder writes in the buffer of the `TableArena` that it's given, in bytes
 of its own, which it gives back when its table is written. The arena keeps
@@ -66,6 +67,23 @@ const builder = new TableBuilder(arena, 3, LAYOUT);
 and `arena.release()` drops it, as after a burst of long tables. A builder
 that's never written keeps the buffer that it wrote in alive. An arena
 belongs to the thread that created it.
+
+`finish()` lends the table rather than copying it: a view of the arena's
+buffer, which holds the table until a builder of the same arena next
+writes, whether it's made afterwards or sets a field. A program that sends
+or stores each table before it builds the next takes it so; one that keeps
+the table, or hands it to code that reads it later, such as a stream that
+may write it after the call returns, takes a copy with `bytes()`:
+
+```ts
+for (const item of items) {
+    const builder = new TableBuilder(arena, 3, LAYOUT);
+    builder.setUint32(item.id);
+    builder.setString(item.name);
+    builder.setFloat64Array(item.values);
+    writeSync(fd, builder.finish());
+}
+```
 
 The sizer's `writer()` writes into new bytes, and `writer(bytes)` into the
 start of `bytes`, such as bytes that a program reuses for each table it
@@ -185,6 +203,13 @@ byte; its README describes them. This package writes them, and
   leaves fields unset. A table built elsewhere, or reused, is still nested
   from its builder or its bytes.
 
+  A table's padding is known once its fields are set, so a table that needs
+  padding is moved by it then, with the tables in it, which are moved again
+  with each padded table around them. `setTableInPlace(fields, fill,
+  alignment)` pads it for the alignment that its arrays and nested tables
+  fix, which a caller who knows them gives, before `fill` runs, and doesn't
+  move it.
+
   ```ts
   builder.setVectorInPlace(items.length, 2, (item, index) => {
       item.setFloat32(items[index].value);
@@ -200,8 +225,7 @@ byte; its README describes them. This package writes them, and
   of each, and allocated 14 KB on V8's heap rather than 42 KB and 90 KB.
 - **Nest builders rather than bytes.** `setTable()` and `setVector()` copy
   a `TableBuilder`'s table into its parent from the builder's bytes of the
-  buffer, without bytes of its own, or, if it's 128 bytes or longer, keep the
-  builder and write its table once, into the parent's bytes. A table nested
+  buffer, without bytes of its own. A table nested
   as bytes was copied out of a builder into bytes of its own first. In
   Node 26, the vector of 100 tables that each nest another took 13 µs from
   builders and 24 µs from bytes. In Node 27, the comparison suite's document
@@ -250,7 +274,7 @@ setters and typed arrays convert it:
 | A fraction or `NaN` for an integer field                                | Truncated: 1.5 is 1, and `NaN` is 0.                                                                                                |
 | A number too large for a `float32`                                      | Infinity of its sign. Other numbers round to the nearest `float32`.                                                                 |
 | A lone surrogate in a string                                            | U+FFFD.                                                                                                                             |
-| A `number` for an `int64` or `uint64`, or a `bigint` for any other type | Throws a `TypeError` from the setter, or from a builder's `finalize()` for an array of 1 KiB or more, which it writes then.         |
+| A `number` for an `int64` or `uint64`, or a `bigint` for any other type | Throws a `TypeError` from the setter.                                                                                               |
 
 ## Validation and errors
 
@@ -283,12 +307,10 @@ Using the API wrongly throws other errors, whatever the bytes:
 - `TableBuilder` throws a `RangeError` for more or fewer fields than it was
   created with. A field that would make the table too long for its offset
   type throws a `RangeError` from its setter and isn't added. A field set
-  after `finalize()` throws a `TypeError`. A builder keeps arrays, arrays of
-  structs, structs and tables given as bytes of 1 KiB or more, and copies
-  them into the table when it's written, so they must not change until
-  then: `finalize()` and `bytes()` throw a `RangeError`, and leave the
-  builder unfinalized, when such an array has changed its length since it
-  was set. Shorter values are copied when they're set.
+  after `finalize()` throws a `TypeError`. A builder copies each value when
+  it's set, so a value can change afterwards without changing the table.
+  Once `finish()` has lent a builder's table, `bytes()`, `finalize()`,
+  `finish()` and nesting the builder throw a `TypeError`.
 - `TableSizer` throws as `TableBuilder`'s constructor does for its header,
   and its `byteLength()` and `writer()` throw a `RangeError` for a
   table too long for its offset type, and `writer(bytes)` for a table longer
