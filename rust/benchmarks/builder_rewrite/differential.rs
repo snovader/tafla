@@ -1,5 +1,5 @@
-//! The rewritten `TableBuilder` writes the bytes that main's writes, and
-//! fails as it fails: for every table of the conformance suite, and for
+//! The runtime's `TableBuilder`, which writes into one buffer, and #217's
+//! rewrite write the bytes that main's builder writes, and fail as it fails: for every table of the conformance suite, and for
 //! generated tables, built in every offset type so that their fields often
 //! pass its limits, with fields set past the table's count or left unset,
 //! and with tables nested in place whose fills fail, panic or leave fields
@@ -27,7 +27,10 @@ use common::{
 };
 use proptest::{option, prelude::*, sample::select};
 use serde_json::Value;
-use tafla::{BuildError, InPlaceTable, NestedTable, OffsetType, TableBuilder, TableLayout, main_builder};
+use tafla::{
+    BuildError, InPlaceTable, NestedTable, OffsetType, TableBuilder, TableLayout, declared_builder,
+    early_builder, main_builder, rewrite_builder,
+};
 
 const CONFORMANCE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../conformance");
 
@@ -417,19 +420,51 @@ driver!(
 );
 
 driver!(
+    rewrite<'a>,
+    builder: rewrite_builder::TableBuilder<'a>,
+    in_place: rewrite_builder::InPlaceTable<'_, 'a>,
+    nested: rewrite_builder::NestedTable<'a>,
+    new: rewrite_builder::TableBuilder::new,
+);
+
+driver!(
     direct<'a>,
-    builder: TableBuilder<'a>,
-    in_place: InPlaceTable<'_, 'a>,
+    builder: TableBuilder,
+    in_place: InPlaceTable<'_>,
     nested: NestedTable<'a>,
     new: TableBuilder::new,
 );
 
-/// Builds `table` with main's builder and with the rewrite, and checks
-/// that they did the same
+driver!(
+    early<'a>,
+    builder: early_builder::TableBuilder,
+    in_place: early_builder::InPlaceTable<'_>,
+    nested: early_builder::NestedTable<'a>,
+    new: early_builder::TableBuilder::new,
+);
+
+driver!(
+    declared<'a>,
+    builder: declared_builder::TableBuilder,
+    in_place: declared_builder::InPlaceTable<'_>,
+    nested: declared_builder::NestedTable<'a>,
+    new: declared_builder::TableBuilder::new,
+);
+
+/// Builds `table` with main's builder, with #217's and with the runtime's,
+/// which writes into one buffer, and its variants, and checks that they did
+/// the same. The variant of declared alignments declares none here, so it
+/// moves each table in place that needs padding, as the runtime's does.
 fn check(table: &Table, plan: Plan) -> Result<(), TestCaseError> {
     let (expected, _) = table_builder::build(table, plan);
     let (outcome, _) = direct::build(table, plan);
     prop_assert_eq!(&outcome, &expected, "{:?}", plan);
+    let (outcome, _) = rewrite::build(table, plan);
+    prop_assert_eq!(&outcome, &expected, "#217: {:?}", plan);
+    let (outcome, _) = early::build(table, plan);
+    prop_assert_eq!(&outcome, &expected, "early moves: {:?}", plan);
+    let (outcome, _) = declared::build(table, plan);
+    prop_assert_eq!(&outcome, &expected, "declared alignment: {:?}", plan);
 
     Ok(())
 }
