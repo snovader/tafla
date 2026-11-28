@@ -54,10 +54,10 @@
 // Builders write each field when it's set, but keep long values: a setter of
 // an array, a string, a vector of strings or the bytes of structs or of a
 // nested table may keep the slice or strings until the table is written,
-// rather than copy them, so a slice's elements must not change in between. A nested builder is copied into
-// its parent when it's set, and its parent keeps what it kept, unless that's
-// long: then its parent keeps a copy of the builder, and writes its table
-// along with its own.
+// rather than copy them, so a slice's elements must not change in between.
+// A nested builder is copied into its parent when it's set, and its parent
+// keeps what it kept, unless that's long: then its parent keeps a copy of the
+// builder, and writes its table along with its own.
 // [TableBuilder.SetTableFunc] and [TableBuilder.SetVectorFunc] write a
 // nested table, or each item of a vector, straight into the builder's own
 // bytes, without a builder of its own, nor copying it.
