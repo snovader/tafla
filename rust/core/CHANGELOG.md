@@ -139,6 +139,15 @@ first commits, for code built from its source before the release.
   in place, was written in 149 ns rather than 188 ns, in 1,680 bytes in 2
   allocations rather than 1,872 bytes in 3. The record was written in the
   same time, in 444 bytes rather than 252.
+- `TableBuilder`'s setters record their field inline, with the checks of its
+  padding and length, which then fold for the setter's kind of field. LLVM
+  called the recording out of line, which took each field through memory and
+  matched its kind. The benchmarks' record was written in 69 ns rather than
+  84 ns, their document of 100 rows in 129 ns rather than 169 ns, the vector
+  of 100 nested tables recorded in place in 3.8 µs rather than 4.7 µs, and
+  tables of 16 strings in 0.89 to 0.94 of the time. The array of 100 structs
+  and the document of 100,000 rows took as long as before. Its bytes and
+  errors are unchanged.
 
 ### Fixed
 
