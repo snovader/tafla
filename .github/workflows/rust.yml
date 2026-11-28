@@ -53,24 +53,60 @@ jobs:
               - "conformance/**"
               - "rust/**"
               - "schemas/**"
+              # The generator's distribution on PyPI, and the script that
+              # tests its wheels
+              - "python/gen/**"
+              - "python/scripts/test-gen-wheels.sh"
               # The generator's golden files of the other targets, in their
               # languages' test trees, and not the tests beside them
               - "cpp/tests/generated/*/**"
+              - "csharp/tests/Tafla.Generated/*/**"
               - "go/tests/generated/*/**"
               - "java/core/src/test/java/io/github/snovader/tafla/test/generated/*/**"
               - "python/core/tests/generated/*/**"
+              - "swift/Tests/Generated/*/**"
               - "typescript/core/test/generated/*/**"
+              # The C# tests' own schema and its generated code, which
+              # tests/csharp_schemas.rs checks
+              - "csharp/tests/names.tafla"
+              - "csharp/tests/names/**"
               # The other comparison suites' schemas and generated code
               - "cpp/benchmarks/workloads.tafla"
               - "cpp/benchmarks/generated/tafla/**"
+              - "csharp/benchmarks/workloads.tafla"
+              - "csharp/benchmarks/Tafla.Benchmarks/Generated/TaflaGen/**"
               - "go/benchmarks/workloads.tafla"
               - "go/benchmarks/generated/tafla/**"
               - "java/benchmarks/src/main/tafla/workloads.tafla"
               - "java/benchmarks/src/main/java/io/github/snovader/tafla/benchmarks/generated/tafla/**"
               - "python/benchmarks/src/tafla_benchmarks/generated/workloads.tafla"
               - "python/benchmarks/src/tafla_benchmarks/generated/tafla/**"
+              - "swift/benchmarks/workloads.tafla"
+              - "swift/benchmarks/Sources/GeneratedTafla/**"
               - "typescript/benchmarks/comparison/workloads.tafla"
               - "typescript/benchmarks/comparison/generated/tafla/**"
+              # The strings suites' schemas and generated code
+              - "cpp/benchmarks/strings.tafla"
+              - "cpp/benchmarks/generated/strings/**"
+              - "java/benchmarks/src/main/tafla/strings.tafla"
+              - "java/benchmarks/src/main/java/io/github/snovader/tafla/benchmarks/generated/strings/**"
+              - "typescript/benchmarks/strings/strings.tafla"
+              - "typescript/benchmarks/strings/generated/tafla/**"
+              # The lists suites' schemas and generated code
+              - "cpp/benchmarks/lists.tafla"
+              - "cpp/benchmarks/generated/lists/**"
+              - "csharp/benchmarks/lists.tafla"
+              - "csharp/benchmarks/Tafla.Benchmarks/Generated/Lists/**"
+              - "go/benchmarks/lists.tafla"
+              - "go/benchmarks/generated/lists/**"
+              - "java/benchmarks/src/main/tafla/lists.tafla"
+              - "java/benchmarks/src/main/java/io/github/snovader/tafla/benchmarks/generated/lists/**"
+              - "python/benchmarks/src/tafla_benchmarks/generated/lists.tafla"
+              - "python/benchmarks/src/tafla_benchmarks/generated/lists/**"
+              - "swift/benchmarks/lists.tafla"
+              - "swift/benchmarks/Sources/GeneratedLists/**"
+              - "typescript/benchmarks/strings/lists/lists.tafla"
+              - "typescript/benchmarks/strings/lists/generated/**"
             # The runtime and what its tests read, which the jobs that test only
             # the runtime, under Miri and on a 32-bit target, run for
             runtime:
@@ -294,8 +330,14 @@ jobs:
       - name: Print encoded sizes
         run: cargo run -p tafla-benchmarks --bin encoding
 
+      - name: Print the strings' encoded sizes
+        run: cargo run -p tafla-benchmarks --bin encoding -- --strings
+
       - name: Print allocations
         run: cargo run --release -p tafla-benchmarks --bin allocation
+
+      - name: Print the strings' allocations
+        run: cargo run --release -p tafla-benchmarks --bin allocation -- --strings
 
   wasm:
     name: WebAssembly
@@ -333,11 +375,48 @@ jobs:
       - name: Check that the module has no imports and generates the golden files
         run: node gen/tests/wasm/check.mjs target/wasm32-unknown-unknown/wasm/tafla_gen.wasm
 
+  # The generator's distribution on PyPI, as it'd be published: the source
+  # distribution, and a wheel that maturin builds from it, as pip does where
+  # no published wheel fits, whose command generates the golden Python
+  pypi:
+    name: Package for PyPI
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: python/gen
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      # Without a cache, since the wheel builds from the source distribution,
+      # in a directory of uv's
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          cache: false
+
+      # Without uv's cache, which the job would save under the key of the
+      # Python workflow's jobs
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v10.4.0
+        with:
+          enable-cache: false
+          python-version: "3.14"
+
+      - name: Build the source distribution, and a wheel from it
+        run: uv build --out-dir dist
+
+      - name: Test the wheel
+        run: ../scripts/test-gen-wheels.sh dist
+
   # The check that the main branch's ruleset requires. It passes when every job
   # passed, or was skipped because the change doesn't touch Rust.
   checks:
     name: Rust checks
-    needs: [changes, formatting, lint, test, miri, i686, benchmark, wasm]
+    needs: [changes, formatting, lint, test, miri, i686, benchmark, wasm, pypi]
     # Runs after a failure too, since GitHub counts a skipped required check as
     # passed
     if: always()

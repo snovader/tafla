@@ -2,7 +2,7 @@
 
 Binary tables of scalars, strings and typed arrays, in tafla's format.
 `TableBuilder` writes a table, checking each field as it's set and copying
-typed arrays in bulk, and `ByteBuffer` reads fields back by offset, with
+typed arrays in bulk, and `TableReader` reads fields back by offset, with
 arrays as views of the bytes. Every read checks that it stays within the
 bytes it was given. `TableWriter` writes a table as the code that tafla-gen
 generates writes its tables, without `TableBuilder`'s checks, since the
@@ -10,32 +10,32 @@ generated calls follow from the schema.
 
 ```pycon
 >>> from array import array
->>> from tafla import ByteBuffer, TableBuilder, TableLayout
+>>> from tafla import TableReader, TableBuilder, TableLayout
 
->>> LAYOUT = TableLayout(sized=True, versioned=True)  # shared by writers and readers
+>>> LAYOUT = TableLayout(sized=True, version=1)  # shared by writers and readers
 >>> series = TableBuilder(2)
 >>> series.set_uint32_array(array("I", [0, 86400]))  # copied as bytes
 >>> series.set_float32_array([21.75, 18.5])  # a list is converted first
 
->>> builder = TableBuilder(3, LAYOUT, 1)
+>>> builder = TableBuilder(3, LAYOUT)
 >>> builder.set_float64(59.3293)
 >>> builder.set_string("Europe/Stockholm")
 >>> builder.set_table(series)  # copied into the table
 >>> data = builder.bytes()
 
->>> buffer = ByteBuffer(data, LAYOUT)
->>> buffer.get_version()
+>>> reader = TableReader(data, LAYOUT)
+>>> reader.get_version()
 1
->>> buffer.get_string(buffer.root_offset(1))
+>>> reader.get_string(reader.root_offset(1))
 'Europe/Stockholm'
->>> table = buffer.root_offset(2)
->>> buffer.get_float32_array(buffer.field_offset(table, 1)).tolist()
+>>> table = reader.root_offset(2)
+>>> reader.get_float32_array(reader.field_offset(table, 1)).tolist()
 [21.75, 18.5]
 ```
 
-The package's docstring, `help(tafla)`, has a longer example, with structs
-and a vector of tables written in place, and describes the format and how
-each value converts to its field's type. The tests run both examples as
+The package's docstring, `help(tafla)`, has a longer example, with structs,
+a vector of tables written in place and a vector of strings, and describes
+the format and how each value converts to its field's type. The tests run both examples as
 doctests.
 
 tafla's classes are native, written in Rust, in the wheels for common

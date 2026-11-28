@@ -9,7 +9,7 @@ from pathlib import Path
 from tafla import DecodeError
 from tests.tables import (
     Description,
-    TableReader,
+    DescriptionReader,
     build_table,
     build_table_in_place,
     comparable_field,
@@ -62,7 +62,7 @@ class TestConformance(unittest.TestCase):
             with self.subTest(case["name"]):
                 fields = VALID_CASES[case["case"]]["table"]["fields"]
                 layout = VALID_CASES[case["case"]]["table"]["layout"]
-                reader = TableReader(read_bytes(case["file"]), layout)
+                reader = DescriptionReader(read_bytes(case["file"]), layout)
 
                 for index in range(case["field"]):
                     read = reader.read_root_field(index, fields[index])

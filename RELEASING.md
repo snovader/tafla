@@ -8,23 +8,40 @@ not of their versions. A change to the format changes every implementation,
 as [AGENTS.md](AGENTS.md) describes, and each releases it in a version of its
 own.
 
-| Package      | Published as                                           | Version                        | Changelog                      |
-| ------------ | ------------------------------------------------------ | ------------------------------ | ------------------------------ |
-| `typescript` | `tafla` on npm                                         | `typescript/core/package.json` | `typescript/core/CHANGELOG.md` |
-| `python`     | `tafla` on PyPI                                        | `python/core/pyproject.toml`   | `python/core/CHANGELOG.md`     |
-| `java`       | `io.github.snovader.tafla:tafla` on Maven Central      | `java/core/build.gradle.kts`   | `java/core/CHANGELOG.md`       |
-| `rust`       | `tafla` on crates.io                                   | `rust/core/Cargo.toml`         | `rust/core/CHANGELOG.md`       |
-| `tafla-gen`  | `tafla-gen` on crates.io                               | `rust/gen/Cargo.toml`          | `rust/gen/CHANGELOG.md`        |
-| `go`         | `github.com/snovader/tafla/go` on the Go module proxy  | Its tag, `go/v<version>`       | `go/CHANGELOG.md`              |
+| Package      | Published as                                           | Version                         | Changelog                      |
+| ------------ | ------------------------------------------------------ | ------------------------------- | ------------------------------ |
+| `typescript` | `tafla` on npm                                         | `typescript/core/package.json`  | `typescript/core/CHANGELOG.md` |
+| `python`     | `tafla` on PyPI                                        | `python/core/pyproject.toml`    | `python/core/CHANGELOG.md`     |
+| `java`       | `io.github.snovader.tafla:tafla` on Maven Central      | `java/core/build.gradle.kts`    | `java/core/CHANGELOG.md`       |
+| `rust`       | `tafla` on crates.io                                   | `rust/core/Cargo.toml`          | `rust/core/CHANGELOG.md`       |
+| `tafla-gen`  | `tafla-gen` on crates.io and PyPI, `@tafla/gen` on npm, `Tafla.Gen` on NuGet | `rust/gen/Cargo.toml` | `rust/gen/CHANGELOG.md` |
+| `go`         | `github.com/snovader/tafla/go` on the Go module proxy  | Its tag, `go/v<version>`        | `go/CHANGELOG.md`              |
+| `swift`      | `https://github.com/snovader/tafla.git` for SwiftPM    | Its tag, `<version>`            | `swift/CHANGELOG.md`           |
+| `csharp`     | `Tafla` on NuGet                                       | `csharp/src/Tafla/Tafla.csproj` | `csharp/CHANGELOG.md`          |
 
 The C++ headers aren't published yet, and have no version.
 
 [The release workflow](.github/workflows/release.yml) releases one package at
 a time. A run on `main`, for a package and its version, checks the package,
 builds its artifacts, and publishes them, and then tags the commit
-`<package>/v<version>`, such as `python/v0.2.0`. Each registry has jobs of its
-own, and a job that fails can be run again. A version that a registry has
-published can't be published again.
+`<package>/v<version>`, such as `python/v0.2.0`, or for the Swift package
+`<version>` alone, such as `0.2.0`. Each registry has jobs of its own, and a
+job that fails can be run again. A version that a registry has published
+can't be published again.
+
+## tafla-gen's packages
+
+tafla-gen is one generator with one version and one changelog, which each
+registry's package of it carries: the crate `tafla-gen` on crates.io, which
+is its source, `@tafla/gen` on npm, which runs its WebAssembly module,
+`tafla-gen` on PyPI, whose wheels hold its command,
+`io.github.snovader.tafla:tafla-gen` on Maven Central, a jar that runs the
+module compiled to classes of the JVM, and `Tafla.Gen` on NuGet, which holds
+its command for each host.
+`scripts/version.sh tafla-gen` writes the version into each package's
+manifest, and a release of `tafla-gen` publishes them all, each in a job of
+its own, and tags the commit once every one of them has published. A fix to
+one package alone is still a release of them all.
 
 ## Versions that depend on each other
 
@@ -56,6 +73,34 @@ Go requires the major version at the end of the module path, as in
 `github.com/snovader/tafla/go/v2`, in `go/go.mod` and every import of it, and
 the workflow's Go check fails until they have it.
 
+## The Swift package
+
+SwiftPM resolves a package from the manifest at the root of its repository,
+and its versions from tags such as `0.1.0` or `v0.1.0`, but not
+`swift/v0.1.0`. So the repository's root holds a manifest of its own,
+`Package.swift`, and each release of the Swift package is tagged `<version>`,
+without a `v`, since the go command would read a tag `v<version>` as a
+version of a module at the root. The tags of that form are the Swift
+package's alone. A package depends on it by the repository's URL, and SwiftPM
+clones the repository and builds the library from `swift/`.
+
+The root's manifest declares the library, `Tafla`, from the sources in
+`swift/`, and nothing else: not the tests, nor their dependency,
+PropertyBased, nor the fuzz targets and the benchmarks, which are packages of
+their own in `swift/Fuzz` and `swift/benchmarks` that aren't published.
+`swift/Package.swift`, from which the package is developed and
+tested, declares the same library with its tests. The workflow checks that
+the two declare the same library, platforms and settings, and a pull request
+that changes either runs a dry run of the Swift package.
+
+The tag publishes the package, as Go's does: SwiftPM records the commit of
+each version that it resolves, and fails if the version's tag names another
+commit later, so the workflow pushes the tag, once a package that depends on
+the Swift package has built it from the tag in the run's checkout, rather
+than a person pushing it first. The package records no version, since its tag
+is its version, so its release names the version, and `scripts/version.sh` has
+none to set. Unlike Go's, a major version changes nothing but the tag.
+
 ## The Python distributions
 
 PyPI's `tafla` has a native implementation, written in Rust, and a pure-Python
@@ -77,6 +122,52 @@ one. The release publishes:
 `python/scripts/test-wheels.sh` tests each wheel on its own, in each Python
 that it's for, and the job that publishes them runs once every one has passed.
 
+## tafla-gen's Python distributions
+
+PyPI's `tafla-gen`, in `python/gen`, holds the generator's command and no
+Python. The release publishes:
+
+- A wheel for each of the platforms of `tafla`'s native wheels, Linux as
+  manylinux and `musllinux_1_2`, which holds the command built with
+  `--locked` from the Rust workspace's lock file. It serves every Python,
+  since the command links none.
+- The source distribution, which holds the crate's sources, and from which
+  pip builds the command with cargo on any other platform. maturin leaves the
+  workspace's other members out of it, so cargo resolves it anew rather than
+  with `--locked`. The command has no dependencies, so it builds the same,
+  but cargo reads the index of crates.io for the tests' dependencies, which
+  it doesn't build.
+
+`python/scripts/test-gen-wheels.sh` tests each wheel on its own: its command
+prints the wheel's version, and generates the golden Python of the example
+schemas.
+
+## The NuGet package
+
+NuGet's `Tafla` holds the C# runtime's assembly for .NET 10, its XML
+documentation, `csharp/src/Tafla/README.md`, which the package's page shows,
+and the license. Its symbols are in a `.snupkg` of their own, which the
+release publishes with it, and whose Source Link finds the sources of the
+release's commit on GitHub. The release builds them with
+`ContinuousIntegrationBuild`, which maps the paths that they record, so that
+the commit builds the same assembly wherever the same SDK builds it.
+`csharp/scripts/test-package.sh` tests the package as a project that uses it
+would, compiled just in time and with Native AOT.
+
+NuGet's `Tafla.Gen` is tafla-gen for .NET projects, which a release of
+tafla-gen publishes at tafla-gen's version, beside the crate:
+`scripts/version.sh tafla-gen` writes the version into
+`csharp/src/Tafla.Gen/Tafla.Gen.csproj` too. It holds no assembly, but the
+tafla-gen command of each host, Linux, macOS and Windows on x64 and Arm64, in
+`tools/<host>/`, and the MSBuild targets in `build/` that generate a
+project's schemas' code with the host's command when the project builds, as
+`csharp/src/Tafla.Gen/README.md`, which the package's page shows, describes.
+The release builds each command on a runner of its host, with
+`csharp/scripts/build-gen.sh`, packs them, and tests the package on every
+host with `csharp/scripts/test-gen-package.sh`, as a project that uses it
+would, before it publishes it. The commit is tagged once every registry
+has the version.
+
 ## Releasing a version
 
 1. Set the package's version, which writes it into its manifest and the lock
@@ -87,13 +178,13 @@ that it's for, and the job that publishes them runs once every one has passed.
    ```
 
    `scripts/version.sh python` prints the version, and fails if those files
-   disagree on it. The Go module has no version to set.
+   disagree on it. The Go module and the Swift package have no version to set.
 
 2. In the package's changelog, rename the Unreleased section to the version
    and its date, such as `## [0.2.0] - 2026-11-20`, and start a new Unreleased
    section above it. Update the links at the end, which compare the package's
-   tags, such as `python/v0.1.0...python/v0.2.0`, and the last tag with
-   `main`.
+   tags, such as `python/v0.1.0...python/v0.2.0`, or the Swift package's
+   `0.1.0...0.2.0`, and the last tag with `main`.
 
 3. Open a pull request with both. The release workflow builds the package, as
    a release of the version would, without publishing it.
@@ -118,16 +209,23 @@ tag find the tag that they pushed before.
 
 A dry run checks a package and builds its artifacts without publishing them:
 the npm package, the Python distributions for every platform, each tested,
-the crates, the Maven repository, signed with a throwaway key, or the Go
-module, which the go command fetches from a tag `go/v<version>` in the run's
-checkout. It uploads them to the workflow run.
+the crates, the Maven repository, signed with a throwaway key, the NuGet
+package and its symbols, tested, or the Go module, which the go command
+fetches from a tag `go/v<version>` in the run's checkout. It uploads them to
+the workflow run. The Swift package has no artifact but its tag: a package
+that depends on it builds it from a tag `<version>` in the run's checkout, on
+Linux with Swift 6.2 and 6.4 and on macOS, once its checks have passed on
+each.
 
 A pull request runs one for each package whose version it changes. One that
 changes the workflow, `.github/actions/release-tag` or `scripts/version.sh`
 runs one for every package, and one that changes
-`python/scripts/test-wheels.sh` or `go/go.mod` runs one for Python or Go. The
-Go module has no version until its release names one, so a pull request's dry
-run of it takes the first version of its major version, such as `0.0.0`.
+`python/scripts/test-wheels.sh`, `go/go.mod`, or either of the Swift
+package's manifests, `Package.swift` and `swift/Package.swift`, runs one for
+Python, Go or Swift. The Go module has no version until its release names
+one, so a pull request's dry run of it takes the first version of its major
+version, such as `0.0.0`, and one of the Swift package, which has none
+either, takes `0.0.0`.
 Every pull request checks that each package's manifest and lock files agree
 on its version.
 
@@ -139,17 +237,17 @@ for every platform. To run one sooner, run the Release workflow by hand with
 ## Setting up the registries
 
 The workflow's publishing jobs run in the GitHub environments `npm`, `pypi`,
-`crates-io`, `maven-central` and `go-proxy`, which can hold their secrets and
-require an approval before a job runs.
+`crates-io`, `maven-central`, `go-proxy`, `swift-package` and `nuget`, which
+can hold their secrets and require an approval before a job runs.
 
 - **npm** trusts a publisher only for a package that exists. Publish the first
   release with an `NPM_TOKEN` secret, a granular access token that may publish
   `tafla`. Then add a trusted publisher on the package's settings page, with
   the repository `snovader/tafla`, the workflow `release.yml` and the
   environment `npm`, and delete the secret.
-- **PyPI**: add a pending trusted publisher for the project `tafla`, with the
-  repository `snovader/tafla`, the workflow `release.yml` and the environment
-  `pypi`. No secret is needed.
+- **PyPI**: add a pending trusted publisher for each of the projects `tafla`
+  and `tafla-gen`, with the repository `snovader/tafla`, the workflow
+  `release.yml` and the environment `pypi`. No secret is needed.
 - **crates.io** also trusts a publisher only for a crate that exists. Publish
   the first release of each crate with a `CARGO_REGISTRY_TOKEN` secret, a
   token with the `publish-new` and `publish-update` scopes. Then add a trusted
@@ -165,18 +263,35 @@ require an approval before a job runs.
   key is on a key server such as `keys.openpgp.org`, and `SIGNING_PASSWORD` is
   its passphrase. The workflow publishes the deployment once the portal has
   validated it.
+- **NuGet**: sign in to nuget.org with the account that is to own `Tafla`
+  and `Tafla.Gen`,
+  and add a trusted publishing policy, from the account's Trusted Publishing
+  page, with the repository owner `snovader`, the repository `tafla`, the
+  workflow file `release.yml` and the environment `nuget`, which may push new
+  packages and new versions of them. Unlike npm and crates.io, nuget.org
+  trusts a publisher for an account rather than a package, so the policy
+  publishes the first release too, and no API key is needed. The workflow
+  exchanges its OIDC token for a key of the account that owns the policy,
+  whose nuget.org user name, its profile name rather than its email address,
+  is the `NUGET_USER` secret.
 - **Go module proxy**: no account or secret is needed. Make the `go-proxy`
   environment require an approval, from a required reviewer, since its job
   pushes the tag that publishes the module for good, and no secret stands in
   its way as the other registries' do.
+- **SwiftPM** needs no account or secret either. Make the `swift-package`
+  environment require an approval, from a required reviewer, since its job
+  pushes the tag that publishes the package, as Go's does. The
+  [Swift Package Index](https://swiftpackageindex.com/add-a-package) lists the
+  package's versions once the package is added to it, which is optional.
 
-The workflow pushes every release's tag, `<package>/v<version>`, with its
-token. Before the first release:
+The workflow pushes every release's tag, `<package>/v<version>`, or the Swift
+package's `<version>`, with its token. Before the first release:
 
-- Add `refs/tags/*/v*` to a ruleset that protects tags from updates and
-  deletion, since a tag records the commit that a version was published from,
-  and the Go module proxy and the checksum database keep the module that a
-  tag named first. If the ruleset also restricts creating tags, let GitHub
-  Actions create them.
+- Add `refs/tags/*/v*`, and `refs/tags/*.*.*` for the Swift package's tags, to
+  a ruleset that protects tags from updates and deletion, since a tag records
+  the commit that a version was published from, the Go module proxy and the
+  checksum database keep the module that a tag named first, and SwiftPM fails
+  for a version whose tag has moved. If the ruleset also restricts creating
+  tags, let GitHub Actions create them.
 - Limit each environment's deployment branches to `main`, as the workflow
   publishes only from `main`.

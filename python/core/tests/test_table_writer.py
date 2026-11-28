@@ -1,11 +1,12 @@
 import unittest
 from collections.abc import Callable
-from typing import Any, cast
+from struct import error as StructError
+from typing import Any, cast, override
 
 from hypothesis import assume, given
 from hypothesis.strategies import booleans, integers, one_of, sampled_from
 
-from tafla import FixedFields, TableBuilder, TableLayout, TableWriter
+from tafla import FixedFields, TableBuilder, TableLayout, TableReader, TableWriter
 from tests.byte_order import big_endian_host
 from tests.descriptions import tables
 from tests.tables import (
@@ -16,6 +17,7 @@ from tests.tables import (
     Placement,
     build_table,
     build_table_in_place,
+    is_typed_array,
     nested_in_place,
     offset_size_of,
     read_table,
@@ -54,7 +56,7 @@ def byte_swapped_arrays(data: memoryview[int], table: Description) -> bytes:
 
     def swap(placement: Placement) -> None:
         kind = placement.field["type"]
-        if not kind.endswith("[]") or kind == "struct[]":
+        if not is_typed_array(kind):
             return
 
         size = ELEMENT_SIZES[kind.removesuffix("[]")]
@@ -268,21 +270,44 @@ class TestTableLength(unittest.TestCase):
 
 
 class TestVersions(unittest.TestCase):
-    def test_rejects_the_versions_that_table_builder_rejects(self) -> None:
-        versioned = TableLayout(versioned=True, offset_type="uint8")
-        cases: list[tuple[TableLayout, int | None, type[Exception]]] = [
-            (TableLayout.DEFAULT, 1, TypeError),
-            (versioned, None, TypeError),
-            (versioned, 256, ValueError),
-            (versioned, -1, ValueError),
+    def test_writes_the_layouts_version_as_table_builder_does(self) -> None:
+        cases: list[tuple[OffsetType, int]] = [
+            ("uint8", 0),
+            ("uint8", 255),
+            ("uint16", 65_535),
         ]
+        for offset_type, version in cases:
+            with self.subTest(offset_type=offset_type, version=version):
+                layout = TableLayout(version=version, offset_type=offset_type)
 
-        for layout, version, error in cases:
-            with self.subTest(layout=layout, version=version):
-                with self.assertRaises(error):
-                    TableBuilder(0, cast(Any, layout), cast(Any, version))
-                with self.assertRaises(error):
-                    TableWriter(0, cast(Any, layout), cast(Any, version))
+                written = bytes(TableWriter(0, layout).bytes())
+
+                self.assertEqual(written, bytes(TableBuilder(0, layout).bytes()))
+                self.assertEqual(TableReader(written, layout).get_version(), version)
+
+
+class Unconvertible:
+    """An object whose conversion to an integer or a float raises ``error``"""
+
+    def __init__(self, error: type[Exception]) -> None:
+        self.error = error
+
+    def __index__(self) -> int:
+        raise self.error("no index")
+
+    def __float__(self) -> float:
+        raise self.error("no float")
+
+    @override
+    def __repr__(self) -> str:
+        return f"Unconvertible({self.error.__name__})"
+
+
+class Truthless:
+    """An object whose truth, as ``bool()`` takes it, raises"""
+
+    def __bool__(self) -> bool:
+        raise KeyError("no truth")
 
 
 class TestValues(unittest.TestCase):
@@ -344,6 +369,83 @@ class TestValues(unittest.TestCase):
                 getattr(writer, setter)(0, value)
                 self.assertEqual(bytes(writer.bytes()), bytes(builder.bytes()))
                 self.assertTrue(bytes(writer.bytes()).endswith(expected))
+
+    def test_raises_for_a_value_whose_conversion_raises_as_the_package_docstring_states(
+        self,
+    ) -> None:
+        """Regression: the native setters of integers raised the error of a
+        value's ``__index__()`` as it was, even one that ``struct`` raises
+        itself, which the pure-Python ones raise as ``ValueError``"""
+        cases: list[tuple[str, type[Exception], type[Exception]]] = [
+            *(
+                (setter, error, ValueError)
+                for setter in ("set_int16", "set_uint64")
+                for error in (OverflowError, IndexError, StructError)
+            ),
+            # Another error of its own
+            ("set_int16", KeyError, KeyError),
+            # struct raises its own error for a float, whatever the value's
+            ("set_float64", OverflowError, ValueError),
+            ("set_float64", KeyError, ValueError),
+            # And array() the value's
+            ("set_int16_array", OverflowError, OverflowError),
+            ("set_float64_array", KeyError, KeyError),
+        ]
+        for setter, raised, expected in cases:
+            value: object = Unconvertible(raised)
+            if setter.endswith("_array"):
+                value = [value]
+            with self.subTest(setter=setter, raised=raised):
+                builder = TableBuilder(1)
+                with self.assertRaises(expected) as built:
+                    getattr(builder, setter)(value)
+                    builder.finalize()
+                writer = TableWriter(1)
+                with self.assertRaises(expected) as written:
+                    getattr(writer, setter)(0, value)
+
+                self.assertIs(type(written.exception), type(built.exception))
+                self.assertEqual(str(written.exception), str(built.exception))
+                # A scalar that raised wrote nothing
+                if not setter.endswith("_array"):
+                    self.assertEqual(
+                        bytes(writer.bytes()), bytes(TableWriter(1).bytes())
+                    )
+
+    def test_writes_a_byte_of_1_or_0_for_each_values_truth_as_table_builder_does(
+        self,
+    ) -> None:
+        # Values of any type, which the setters take as bool() takes them
+        values: list[Any] = [True, False, 2, 0, None, "x", [], 0.5]
+        # The field's offset, then the count and a byte for each value
+        expected = bytes([4, 0, 0, 0, 8, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1])
+
+        for name, convert in [("list", list), ("tuple", tuple), ("iterator", iter)]:
+            with self.subTest(values=name):
+                builder = TableBuilder(1)
+                builder.set_bool_array(convert(values))
+                writer = TableWriter(1)
+                writer.set_bool_array(0, convert(values))
+
+                self.assertEqual(bytes(builder.bytes()), expected)
+                self.assertEqual(bytes(writer.bytes()), expected)
+
+    def test_raises_the_error_of_a_value_whose_truth_raises_and_writes_nothing(
+        self,
+    ) -> None:
+        values: list[Any] = [True, Truthless()]
+
+        builder = TableBuilder(1)
+        with self.assertRaisesRegex(KeyError, "no truth"):
+            builder.set_bool_array(values)
+        writer = TableWriter(1)
+        with self.assertRaisesRegex(KeyError, "no truth"):
+            writer.set_bool_array(0, values)
+
+        # Neither recorded nor wrote any of the field
+        builder.set_bool_array([])
+        self.assertEqual(bytes(builder.bytes()), bytes([4, 0, 0, 0, 0, 0, 0, 0]))
+        self.assertEqual(bytes(writer.bytes()), bytes(4))
 
     def test_raises_type_error_for_a_struct_that_isnt_c_contiguous_as_table_builder_does(
         self,

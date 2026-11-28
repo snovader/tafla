@@ -6,12 +6,13 @@ import java.nio.*;
 /**
  * Writes values little-endian into bytes, for {@link TableWriter}: the elements of arrays, from
  * {@code position}, and scalars. Arrays of the elements' own Java type are
- * copied in bulk, and unsigned ones are narrowed element by element, as a cast would. Callers
- * check that the values fit; a write past the end throws an {@link IndexOutOfBoundsException}.
+ * copied in bulk, unsigned ones are narrowed element by element, as a cast would, and bools are
+ * written as 1 and 0. Callers check that the values fit; a write past the end throws an
+ * {@link IndexOutOfBoundsException}.
  */
 final class Elements {
     // Views of byte arrays as arrays of wider values, which read and write at any index,
-    // little-endian, and throw an IndexOutOfBoundsException past the end. ByteBuffer reads through
+    // little-endian, and throw an IndexOutOfBoundsException past the end. TableReader reads through
     // them too.
     static final VarHandle INT16 = MethodHandles.byteArrayViewVarHandle(short[].class, ByteOrder.LITTLE_ENDIAN);
     static final VarHandle INT32 = MethodHandles.byteArrayViewVarHandle(int[].class, ByteOrder.LITTLE_ENDIAN);
@@ -68,18 +69,30 @@ final class Elements {
     }
 
     /**
+     * Writes bools as bytes of 1 and 0, in a loop, since the JDK has no bulk conversion from a
+     * {@code boolean[]}: {@code System.arraycopy()} and {@code MemorySegment.copy()} reject one. It
+     * wrote 1,000 bools in 0.16 µs, as fast as the loop of {@link #setUint8} wrote 1,000
+     * {@code uint8}s, where {@link #setInt8} copied 1,000 bytes in 0.015 µs, in JDK 25.
+     */
+    static void setBool(byte[] bytes, int position, boolean[] values) {
+        for (int i = 0; i < values.length; i++) {
+            bytes[position + i] = (byte) (values[i] ? 1 : 0);
+        }
+    }
+
+    /**
      * {@return a little-endian view of the {@code byteLength} bytes from {@code position}}, whose
      * typed views copy arrays in bulk
      */
-    private static java.nio.ByteBuffer view(byte[] bytes, int position, int byteLength) {
+    private static ByteBuffer view(byte[] bytes, int position, int byteLength) {
         // A typed view starts at the buffer's position, which wrap() sets to the offset
-        return java.nio.ByteBuffer.wrap(bytes, position, byteLength).order(ByteOrder.LITTLE_ENDIAN);
+        return ByteBuffer.wrap(bytes, position, byteLength).order(ByteOrder.LITTLE_ENDIAN);
     }
 
     /**
      * Loads {@code jdk.internal.foreign.MemorySessionImpl}, a class in the signature of the JDK's
      * {@code ScopedMemoryAccess.copyMemory()}, in which the bulk copies of NIO's typed views end,
-     * those of {@link ByteBuffer}'s array getters too. C2 inlines that copy into a caller only if
+     * those of {@link TableReader}'s array getters too. C2 inlines that copy into a caller only if
      * the class is loaded when it compiles the caller. HotSpot loads it only when it queues the
      * copy itself for compilation, which grows hot as early as its callers do. A caller compiled
      * before then calls the copy, and allocates the two views, for every array, as

@@ -80,26 +80,33 @@ impl Alignment {
 /// The header and offset type of a table.
 ///
 /// A format creates its layout once and passes it to both the `TableBuilder`
-/// that writes the table and the `ByteBuffer` that reads it, so that the two
+/// that writes the table and the `TableReader` that reads it, so that the two
 /// can't disagree. Nested tables use [`TableLayout::DEFAULT`].
 ///
-/// `VERSIONED` says whether the header has a slot for a version, so that the
-/// compiler requires a version exactly where a versioned table is built, and
-/// offers `ByteBuffer::version()` only where there is one.
+/// `VERSIONED` says whether the header holds a version, so that the compiler
+/// offers the layout's `version()` and `TableReader::version()` only where
+/// there is one. A layout with a version is the layout of that version of
+/// the format: its builders and writers write the version, and its readers
+/// read tables of any version, so that a program can read a table's version
+/// before it chooses how to read the fields. The layouts of a format's
+/// versions should differ in the version only.
 ///
 /// ```
 /// use tafla::{OffsetType, TableLayout};
 ///
-/// const LAYOUT: TableLayout<true> = TableLayout::DEFAULT.sized().versioned();
+/// const LAYOUT: TableLayout<true> = TableLayout::DEFAULT.sized().with_version(1);
 /// const FRAME: TableLayout = TableLayout::DEFAULT.with_offset_type(OffsetType::Uint8);
 ///
 /// assert_eq!(LAYOUT.header_size(), 8);
+/// assert_eq!(LAYOUT.version(), 1);
 /// assert_eq!(FRAME.header_size(), 0);
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct TableLayout<const VERSIONED: bool = false> {
     sized: bool,
     offset_type: OffsetType,
+    /// The version, which is zero when the layout has none
+    version: u32,
 }
 
 impl TableLayout {
@@ -107,19 +114,40 @@ impl TableLayout {
     pub const DEFAULT: Self = Self {
         sized: false,
         offset_type: OffsetType::Uint32,
+        version: 0,
     };
+}
 
-    /// Adds a slot for a version to the header, after the length when
-    /// sized. Readers can check it before reading any field.
-    pub const fn versioned(self) -> TableLayout<true> {
-        TableLayout {
-            sized: self.sized,
-            offset_type: self.offset_type,
-        }
+impl TableLayout<true> {
+    /// The version that builders and writers write to the header
+    pub const fn version(self) -> u32 {
+        self.version
     }
 }
 
 impl<const VERSIONED: bool> TableLayout<VERSIONED> {
+    /// Puts `version` in a slot of the header, after the length when sized,
+    /// which builders and writers write there. Readers can check the version
+    /// that a table holds, with `TableReader::version()`, before reading any
+    /// field.
+    ///
+    /// A version must fit in the layout's offset type, which
+    /// [`TableLayout::with_offset_type()`] may set later, so the builders
+    /// and sizers check it, and return [`BuildError::VersionTooLarge`].
+    #[must_use]
+    pub const fn with_version(self, version: u32) -> TableLayout<true> {
+        TableLayout {
+            sized: self.sized,
+            offset_type: self.offset_type,
+            version,
+        }
+    }
+
+    /// The version to write to the header, when it has a slot for one
+    pub(crate) const fn header_version(self) -> Option<u32> {
+        if VERSIONED { Some(self.version) } else { None }
+    }
+
     /// Starts the header with the table's total byte length
     #[must_use]
     pub const fn sized(self) -> Self {
@@ -189,17 +217,17 @@ impl<const VERSIONED: bool> TableLayout<VERSIONED> {
     }
 }
 
-impl TableLayout<true> {
-    /// Checks that `version` fits in the header's slot
+impl<const VERSIONED: bool> TableLayout<VERSIONED> {
+    /// Checks that the layout's version fits in the header's slot
     ///
     /// # Errors
     ///
     /// [`BuildError::VersionTooLarge`] if it doesn't fit in the layout's
     /// offset type.
-    pub(crate) const fn check_version(self, version: u32) -> Result<(), BuildError> {
-        if version > self.offset_type.max_value() {
+    pub(crate) const fn check_version(self) -> Result<(), BuildError> {
+        if self.version > self.offset_type.max_value() {
             return Err(BuildError::VersionTooLarge {
-                version,
+                version: self.version,
                 offset_type: self.offset_type,
             });
         }
@@ -263,7 +291,7 @@ mod tests {
         );
         assert_eq!(
             layout
-                .versioned()
+                .with_version(0)
                 .with_offset_type(OffsetType::Uint16)
                 .header_size(),
             2
@@ -271,11 +299,11 @@ mod tests {
         assert_eq!(
             layout
                 .sized()
-                .versioned()
+                .with_version(0)
                 .with_offset_type(OffsetType::Uint16)
                 .header_size(),
             4
         );
-        assert_eq!(layout.sized().versioned().header_size(), 8);
+        assert_eq!(layout.sized().with_version(0).header_size(), 8);
     }
 }

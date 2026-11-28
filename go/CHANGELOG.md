@@ -20,7 +20,7 @@ first commits, for code built from its source before the release.
   tables of scalars, strings, typed arrays, nested tables, vectors of tables,
   structs and arrays of structs, with a layout that sets the header and the
   offset type (`uint8`, `uint16` or `uint32`). `TableBuilder` and
-  `TableWriter` write tables, and `ByteBuffer` reads them.
+  `TableWriter` write tables, and `TableReader` reads them.
 - Bounds-checked reads, which fail on malformed input with a `*DecodeError`.
 - The runtime reads and rebuilds the golden tables of tafla's conformance
   suite byte for byte, as every implementation of the format does.
@@ -31,27 +31,52 @@ first commits, for code built from its source before the release.
   the benchmarks' vector of 100 nested tables takes about 5.8 µs so, in 6
   allocations, rather than 10.3 µs and 204 from a builder per item.
 - `Uint32FieldOffset()` reads the offset of a field of a table whose offsets
-  are uint32s, as `ByteBuffer.FieldOffset()` does, in a function small enough
+  are uint32s, as `TableReader.FieldOffset()` does, in a function small enough
   to inline, for the getters that tafla-gen generates, which know each
   field's slot.
 - `StructsInPlace()` returns the bytes of an array of structs as Go structs
   in place, where they're aligned to the struct in memory on a little-endian
   host, for the code that tafla-gen generates, which calls it only for
   structs that lie in memory as their bytes do.
+- Arrays of bools, stored as `uint8` arrays of 1 and 0:
+  `TableBuilder.SetBoolArray()`, `Item.SetBoolArray()`,
+  `TableSizer.AddBoolArray()`, `TableWriter.SetBoolArray()` and
+  `TableReader.GetBoolArray()`, which reads them into new bools, true where
+  a byte isn't 0.
+- Vectors of strings, which `SPEC.md` adds to the format, and which a
+  schema declares as `[string]`. `TableReader.GetStringVector()` returns a
+  `StringVector`, whose `Get()` reads one string from its ends without
+  reading the others, and whose `Strings()` reads every string into a
+  `[]string`, checking them as one run of UTF-8. Both return strings that
+  share the bytes, and fail with a `*DecodeError` for a string that isn't
+  valid UTF-8 on its own. `TableBuilder.SetStringVector()`,
+  `Item.SetStringVector()`, `TableSizer.AddStringVector()` and
+  `TableWriter.SetStringVector()` write one from a `[]string`.
 
 ### Changed
 
+- A layout holds its table's version, `TableLayout{}.WithVersion(1)`,
+  rather than only whether the header has a slot for one, and `Versioned()`
+  is gone. `NewTableBuilder()`, `NewTableSizer()` and `AppendTable()` write
+  the layout's version, in place of `NewVersionedTableBuilder()`,
+  `NewVersionedTableSizer()` and `AppendVersionedTable()`, so a version
+  missing from or given for a layout can no longer be written, and those
+  panics are gone. They fail with VersionTooLarge for a version that doesn't
+  fit the layout's offset type, as before. `TableLayout.Version()` returns a
+  layout's version, and readers read tables of any version, as before.
 - The project is named tafla rather than buffy.
+- The type that reads a table is `TableReader` rather than `ByteBuffer`, and
+  `NewTableReader()` creates it.
 - A layout's offset width is its offset type, `uint8`, `uint16` or `uint32`,
   in the API and its errors.
-- `ByteBuffer` reads a vector item in place within its message, as the format
+- `TableReader` reads a vector item in place within its message, as the format
   now specifies, including an item whose offsets point past its end.
 - `TableWriter`'s array setters no longer move the writer to the heap where
   they're inlined into their caller. They passed the writer to a generic
   function, which Go's compiler assumes keeps it when it's called from
   another package. The code that tafla-gen generates writes the Go
   comparison suite's document in 1 allocation rather than 2.
-- `ByteBuffer.RootOffset()` and `FieldOffset()` read uint32 offsets as
+- `TableReader.RootOffset()` and `FieldOffset()` read uint32 offsets as
   `Uint32FieldOffset()` does, in one call rather than two, and leave the
   other offset types to the general case. They return the same positions
   and errors. The benchmarks' hand-written reader of the record takes about

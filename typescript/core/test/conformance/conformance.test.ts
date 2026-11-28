@@ -1,16 +1,16 @@
 import { readdir, readFile } from 'node:fs/promises';
-import { describe, expect, it } from 'vitest';
-import { DecodeError } from 'tafla';
+import { describe, expect, it } from 'hypotes';
+import { DecodeError, TableReader } from 'tafla';
 import { SUITE } from './cases.ts';
 import type { Suite, ValidCase } from './description.ts';
-import { SUITE_DIRECTORY, writeSuite } from './files.ts';
-import { buildTable, readTable, TableReader } from './tables.ts';
+import { writeSuite, SUITE_DIRECTORY } from './files.ts';
+import { buildTable, readTable, DescriptionReader } from './tables.ts';
 
 const directory = SUITE_DIRECTORY;
 
 // The checked-in suite, which the other implementations of tafla load too
 const json = await readFile(new URL('cases.json', directory), 'utf8');
-const suite: Suite = JSON.parse(json);
+const suite = JSON.parse(json) as Suite;
 const tables = await readTables();
 
 async function readTables(): Promise<Map<string, Uint8Array>> {
@@ -29,7 +29,7 @@ async function readTables(): Promise<Map<string, Uint8Array>> {
 
 function validCaseNamed(name: string): ValidCase {
     const validCase = suite.valid.find(validCase => validCase.name === name);
-    if (validCase === undefined) {
+    if (validCase == null) {
         throw new Error(`There's no valid case ${name}`);
     }
 
@@ -38,7 +38,7 @@ function validCaseNamed(name: string): ValidCase {
 
 function bytesOf(file: string): Uint8Array {
     const bytes = tables.get(file);
-    if (bytes === undefined) {
+    if (bytes == null) {
         throw new Error(`Missing ${file}`);
     }
 
@@ -83,7 +83,7 @@ describe('invalid cases', () => {
         'should read $name up to field $field and then throw DecodeError',
         ({ file, case: name, field }) => {
             const { table } = validCaseNamed(name);
-            const reader = new TableReader(bytesOf(file), table.layout);
+            const reader = new DescriptionReader(bytesOf(file), table.layout);
 
             for (let index = 0; index < field; index++) {
                 const read = reader.readRootField(index, table.fields[index]);
@@ -94,3 +94,30 @@ describe('invalid cases', () => {
         }
     );
 });
+
+describe('the vector of strings', () => {
+    it('should hold the bytes of a vector of items that are each string’s UTF-8', () => {
+        // What a vector of strings adds to the format is how its items are
+        // read, so the builders that write vectors from bytes write it too
+        const { table } = validCaseNamed('string-vectors');
+        const [strings] = table.fields;
+        if (strings.type !== 'string[]') {
+            throw new Error('The first field of string-vectors is its strings');
+        }
+
+        const encoder = new TextEncoder();
+        const built = buildTable({ ...table, fields: [strings] }).bytes();
+        const reader = new DescriptionReader(built, table.layout);
+        const items = strings.value.map(string => encoder.encode(string));
+
+        expect(itemsOf(built)).toStrictEqual(items);
+        expect(reader.readRootField(0, strings)).toStrictEqual(strings);
+    });
+});
+
+/** The items of the vector that is the first field of a table of `bytes` */
+function itemsOf(bytes: Uint8Array): Uint8Array[] {
+    const reader = new TableReader(bytes);
+
+    return reader.getVector(reader.rootOffset(0)).map(item => item.slice());
+}

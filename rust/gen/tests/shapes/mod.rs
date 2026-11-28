@@ -9,7 +9,7 @@ pub mod generated;
 
 use generated::{
     Columns, ColumnsFields, Document, DocumentFields, Item, ItemFields, ItemList, ItemListFields,
-    Pair, PairFields, Point, PointFields, Sample,
+    Pair, PairFields, Point, PointFields, Sample, Step, Task, TaskFields,
 };
 
 use crate::tables::{Fields, Value, table, to_vec, vector};
@@ -66,6 +66,16 @@ fn read_pair(pair: &Pair) -> Fields {
     vec![pair.first().map(Value::f32), pair.second().map(Value::f32)]
 }
 
+/// Reads each enum as the integer that stores it
+pub fn read_task(task: &Task) -> Fields {
+    vec![
+        task.priority().map(|priority| Value::I8(priority.0)),
+        task.history().map(to_vec).map(Value::U16Array),
+        task.step().map(|step| Value::Struct(describe_step(step))),
+        task.name().map(Value::string),
+    ]
+}
+
 // The values of the fields, of their types in the schema
 
 pub fn describe_point(fields: &PointFields) -> Vec<Value> {
@@ -118,5 +128,24 @@ pub fn describe_sample(sample: &Sample) -> Vec<Value> {
         Value::U32(sample.key),
         Value::f32(sample.a),
         Value::f32(sample.b),
+    ]
+}
+
+/// The values of a `Task`, whose enums are the integers that store them
+pub fn describe_task(fields: &TaskFields) -> Vec<Value> {
+    vec![
+        Value::I8(fields.priority.0),
+        Value::U16Array(fields.history.to_vec()),
+        Value::Struct(describe_step(fields.step)),
+        Value::string(fields.name),
+    ]
+}
+
+/// The scalars of a `Step`, its enums as the integers that store them
+pub fn describe_step(step: Step) -> Vec<Value> {
+    vec![
+        Value::U16(step.state.0),
+        Value::I8(step.priority.0),
+        Value::U32(step.seconds),
     ]
 }

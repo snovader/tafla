@@ -1,4 +1,5 @@
-// The workloads' messages, the same as the TypeScript comparison's. proto3 packs
+// The workloads' messages, the same as the TypeScript comparison's, and the
+// strings suite's, the same as TypeScript's strings suite's. proto3 packs
 // repeated scalars by default.
 syntax = "proto3";
 
@@ -32,3 +33,6 @@ message Triple { float value = 1; float first = 2; float second = 3; }
 message Triples { repeated Triple items = 1; }
 
 message Sample { uint32 key = 1; float a = 2; float b = 3; }
+
+// The strings suite's 16 strings, as a repeated string
+message Strings { repeated string items = 1; }

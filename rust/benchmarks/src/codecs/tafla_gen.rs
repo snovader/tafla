@@ -5,6 +5,13 @@
 #[path = "tafla_gen/workloads.rs"]
 mod generated;
 
+// The code that tafla-gen generates from `strings.tafla`, the strings
+// comparison's schema, which lies apart from the workloads' code since each
+// directory holds one schema's generated code and nothing else
+#[allow(clippy::nursery)]
+#[path = "tafla_gen_strings/strings.rs"]
+mod strings;
+
 use std::borrow::Cow;
 
 use tafla::DecodeError;
@@ -13,8 +20,10 @@ use self::generated::{
     ColumnsFields, DocumentFields, ItemFields, ItemList, ItemListFields, PairFields, RecordFields,
     Triple, Triples, TriplesFields,
 };
+use self::strings::StringsFields;
 use crate::codec::{Codec, DocumentWorkload, Error, Workload};
 use crate::item_access::{ItemAccess, no_items, sum_item};
+use crate::string_workloads::{COUNT, Strings, StringsShape};
 use crate::workloads::{
     Document, DocumentShape, Item, List, ListShape, Record, RecordShape, Sample, SampleShape,
     StructsShape, sum_column,
@@ -179,6 +188,81 @@ impl Workload<SampleShape> for TaflaGen {
             key: sample.key,
             a: sample.a,
             b: sample.b,
+        })
+    }
+}
+
+/// The table of 16 string fields that the `Tafla` codec writes, whose
+/// generated fields borrow the strings, and whose getters read each string
+/// with `get_str()`
+impl Workload<StringsShape> for TaflaGen {
+    type Bytes = Vec<u8>;
+
+    fn serialize(self, input: &Strings<'_>) -> Result<Vec<u8>, Error> {
+        let strings: [&str; COUNT] = input.items.each_ref().map(AsRef::as_ref);
+        let [
+            s0,
+            s1,
+            s2,
+            s3,
+            s4,
+            s5,
+            s6,
+            s7,
+            s8,
+            s9,
+            s10,
+            s11,
+            s12,
+            s13,
+            s14,
+            s15,
+        ] = strings;
+
+        let fields = StringsFields {
+            s0,
+            s1,
+            s2,
+            s3,
+            s4,
+            s5,
+            s6,
+            s7,
+            s8,
+            s9,
+            s10,
+            s11,
+            s12,
+            s13,
+            s14,
+            s15,
+        };
+
+        Ok(fields.serialize()?)
+    }
+
+    fn deserialize(self, bytes: &[u8]) -> Result<Strings<'_>, Error> {
+        let table = strings::Strings::new(bytes);
+
+        Ok(Strings {
+            items: [
+                Cow::Borrowed(table.s0()?),
+                Cow::Borrowed(table.s1()?),
+                Cow::Borrowed(table.s2()?),
+                Cow::Borrowed(table.s3()?),
+                Cow::Borrowed(table.s4()?),
+                Cow::Borrowed(table.s5()?),
+                Cow::Borrowed(table.s6()?),
+                Cow::Borrowed(table.s7()?),
+                Cow::Borrowed(table.s8()?),
+                Cow::Borrowed(table.s9()?),
+                Cow::Borrowed(table.s10()?),
+                Cow::Borrowed(table.s11()?),
+                Cow::Borrowed(table.s12()?),
+                Cow::Borrowed(table.s13()?),
+                Cow::Borrowed(table.s14()?),
+                Cow::Borrowed(table.s15()?),
+            ],
         })
     }
 }

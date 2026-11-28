@@ -2,8 +2,8 @@
 // macros that compilers predefine outside strict ISO modes, such as GNU's
 // `linux` and `unix`, and those of C's, glibc's and Windows' headers, such as
 // `EOF`, `major()` and `min()`, which this test defines as those would.
-// The generated code renames fields and namespaces of their names, and the
-// runtime calls `(std::min)()` rather than `std::min()`.
+// The generated code renames fields, enum values and namespaces of their
+// names, and the runtime calls `(std::min)()` rather than `std::min()`.
 
 #include <gtest/gtest.h>
 
@@ -91,6 +91,25 @@ TEST(Macros, FieldsNamedAfterMacrosAreWrittenAndRead) {
     EXPECT_EQ(macros.small_(), 12);
     EXPECT_EQ(macros.interface_().min_().to_vector(), (std::vector<float>{1.5F, -2.0F}));
     EXPECT_EQ(macros.interface_().max_().to_vector(), (std::vector<float>{3.0F}));
+}
+
+TEST(Macros, EnumValuesNamedAfterMacrosAreTheirIntegers) {
+    static_assert(static_cast<std::uint8_t>(generated::Host::linux_) == 0);
+    static_assert(static_cast<std::uint8_t>(generated::Host::unix_) == 1);
+    static_assert(static_cast<std::uint8_t>(generated::Host::min_) == 2);
+    static_assert(static_cast<std::uint8_t>(generated::Host::max_) == 3);
+    static_assert(static_cast<std::uint8_t>(generated::Host::major_) == 4);
+    static_assert(static_cast<std::uint8_t>(generated::Host::near_) == 5);
+    static_assert(static_cast<std::uint8_t>(generated::Host::small_) == 6);
+    static_assert(static_cast<std::uint8_t>(generated::Host::interface_) == 7);
+
+    // A message of only fields of fixed size, which the generated code writes
+    // whole rather than through a writer
+    const auto bytes = generated::PlatformFields{.host = generated::Host::interface_}.serialize();
+    TableBuilder builder(1, generated::Platform::LAYOUT);
+    builder.set_uint8(7);
+    EXPECT_EQ(bytes, builder.to_bytes());
+    EXPECT_EQ(generated::Platform(bytes).host(), generated::Host::interface_);
 }
 
 }  // namespace

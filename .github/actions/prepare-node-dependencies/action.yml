@@ -42,7 +42,7 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       run: yarn install --immutable --inline-builds
 
-    # Save before checks so test or audit failures don't discard downloaded packages.
+    # Save before checks so check or test failures don't discard downloaded packages.
     # Only on main, whose caches every branch restores; a pull request's would
     # serve only its own reruns.
     - name: Save Yarn packages

@@ -1,16 +1,24 @@
 from array import array
 from collections.abc import Buffer, Callable, Collection, Iterable, Sequence
+from itertools import accumulate
 from operator import index as _index
-from struct import Struct, error as StructError
-from typing import TYPE_CHECKING, Any, Literal, overload
+from struct import Struct, error as StructError, pack
+from typing import TYPE_CHECKING, Any
 
 from . import elements
-from .byte_buffer import ByteBuffer
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
-from .elements import as_elements, byte_view, little_endian_bytes, struct_count
+from .elements import (
+    as_elements,
+    bool_bytes,
+    byte_view,
+    little_endian_bytes,
+    str_vector_error,
+    struct_count,
+)
 from .errors import describe_int
 from .layout import MAX_LENGTHS, TableLayout, header_length, padding_to
 from .structs import (
+    OFFSET_CODES,
     OFFSET_STRUCTS,
     float32,
     float64,
@@ -23,6 +31,7 @@ from .structs import (
     uint32,
     uint64,
 )
+from .table_reader import TableReader
 from .types import ElementSize, TypeCode
 
 # Zeros by their number: those that pad a field to its alignment, and those
@@ -32,8 +41,10 @@ _ZEROS = tuple(bytes(length) for length in range(16 * SIZEOF_32 + 1))
 
 # What Struct.pack() raises for a value that its format can't hold: struct.error
 # for an integer out of range or of another type, and OverflowError for a float
-# too large for a float32
-_VALUE_ERRORS = (StructError, OverflowError)
+# too large for a float32. A value's own __index__() may raise one of them, or
+# IndexError, which the setters can't tell from struct's, so they raise
+# ValueError for it as TableWriter's setters do.
+_VALUE_ERRORS = (StructError, OverflowError, IndexError)
 
 # Encodes a string as UTF-8 as str's own method, so that a subclass's encode()
 # isn't called, and anything but a str raises TypeError, as the native builder
@@ -74,10 +85,11 @@ class TableBuilder:
     """Builds a table: a header with one offset per field, after the table's
     total length and version when its layout has them, followed by the fields
     in the order they're set. Arrays, strings and vectors start with their
-    count, and a vector then holds the end of each item. Arrays of scalars and
-    of structs are padded so their elements are aligned from the start of the
-    table. Fields are read back by index with ``ByteBuffer.root_offset()``, or
-    ``ByteBuffer.field_offset()`` for a table nested in another.
+    count, and a vector, of tables or of strings, then holds the end of each
+    item. Arrays of scalars and of structs are padded so their elements are
+    aligned from the start of the table. Fields are read back by index with
+    ``TableReader.root_offset()``, or ``TableReader.field_offset()`` for a
+    table nested in another.
 
     Setting a field writes it, and its offset, at the end of the table's
     bytes, so ``finalize()`` only writes the table's length into a sized
@@ -135,38 +147,20 @@ class TableBuilder:
     __padding: int
     # The checkpoint of the innermost table being written in place, or None
     __checkpoint: list[Any] | None
-    # The table once written: its bytes, and then the buffer of them that
+    # The table once written: its bytes, and then the reader of them that
     # finalize() returns
-    __written: memoryview[int] | ByteBuffer | None
+    __written: memoryview[int] | TableReader | None
 
-    @overload
-    def __init__(
-        self, fields: int, layout: TableLayout[Literal[False]] = TableLayout.DEFAULT
-    ) -> None: ...
-
-    @overload
-    def __init__(
-        self, fields: int, layout: TableLayout[Literal[True]], version: int
-    ) -> None: ...
-
-    def __init__(
-        self,
-        fields: int,
-        layout: TableLayout = TableLayout.DEFAULT,
-        version: int | None = None,
-    ) -> None:
+    def __init__(self, fields: int, layout: TableLayout = TableLayout.DEFAULT) -> None:
         """``fields`` is the number of fields that the table will hold, and
-        ``layout`` its header and offset type, which its readers must use too.
-        ``version`` is written to the header, and required when the layout is
-        versioned. Readers can check it with ``ByteBuffer.get_version()``
-        before reading any field.
+        ``layout`` its header and offset type, which its readers must use too,
+        with the version to write to the header when it has one. Readers can
+        check it with ``TableReader.get_version()`` before reading any field.
 
-        Raises ``TypeError`` if ``version`` is given for a layout without a
-        version slot, or missing for one with it. Raises ``ValueError`` if
-        ``version`` doesn't fit in the layout's offset type, or the header
-        alone is longer than the layout addresses.
+        Raises ``ValueError`` if the header alone is longer than the layout
+        addresses.
         """
-        length = header_length(fields, layout, version)
+        length = header_length(fields, layout)
         data = bytearray(length)
         # A negative number of fields that a header's slots outnumber, as
         # bytearray() rejects a negative length
@@ -193,12 +187,13 @@ class TableBuilder:
         self.__checkpoint = None
         self.__written = None
 
+        version = layout.version()
         if version is not None:
             self.__length.pack_into(data, size if sized else 0, version)
 
-    def finalize(self) -> ByteBuffer:
-        """Finishes the table, once, and returns a ``ByteBuffer`` that reads
-        it; later calls return the same buffer.
+    def finalize(self) -> TableReader:
+        """Finishes the table, once, and returns a ``TableReader`` that reads
+        it; later calls return the same reader.
 
         Raises ``ValueError`` if fewer fields were set than the table holds,
         or if it's called while ``fill`` sets the fields of a table nested in
@@ -207,23 +202,23 @@ class TableBuilder:
         written = self.__written
         if written is None:
             written = self.__write()
-        elif isinstance(written, ByteBuffer):
+        elif isinstance(written, TableReader):
             return written
 
-        buffer = ByteBuffer(written, self.__layout)
-        self.__written = buffer
+        reader = TableReader(written, self.__layout)
+        self.__written = reader
 
-        return buffer
+        return reader
 
     def bytes(self) -> memoryview[int]:
         """Finishes the table, once, as ``finalize()`` does, and returns its
-        bytes, without the buffer that ``finalize()`` creates. Raises as
+        bytes, without the reader that ``finalize()`` creates. Raises as
         ``finalize()`` does."""
         written = self.__written
         if written is None:
             return self.__write()
 
-        return written.bytes() if isinstance(written, ByteBuffer) else written
+        return written.bytes() if isinstance(written, TableReader) else written
 
     def __write(self) -> memoryview[int]:
         """Writes the table's length into a sized header, and returns a view of
@@ -381,6 +376,12 @@ class TableBuilder:
         takes several times as long."""
         self.__set_array("d", SIZEOF_64, values)
 
+    def set_bool_array(self, values: Iterable[bool]) -> None:
+        """Sets an array of bools, which is written as a ``uint8`` array: 1 for
+        each value that's true, as ``bool()`` takes it, and 0 for each that's
+        false. A value whose truth can't be taken raises its error."""
+        self.__set_array("B", SIZEOF_8, bool_bytes(values))
+
     def set_string(self, string: str) -> None:
         """Writes ``string`` as UTF-8. Raises ``UnicodeEncodeError``, a
         ``ValueError``, if it has a lone surrogate, which UTF-8 can't encode."""
@@ -400,6 +401,45 @@ class TableBuilder:
         self.__length.pack_into(data, self.__slots + index * size, offset)
         data += self.__length.pack(byte_length)
         data += encoded
+        self.__index = index + 1
+
+    def set_string_vector(self, strings: Iterable[str]) -> None:
+        """Writes a vector of strings, each as UTF-8, after the end of each,
+        which lets readers find any string without reading the others. It
+        takes no more bytes for each string than the end of it, where a
+        vector of tables of one string each takes each table's offset and the
+        string's count too.
+
+        Raises ``UnicodeEncodeError``, a ``ValueError``, if a string has a
+        lone surrogate, which UTF-8 can't encode, and ``TypeError`` for a
+        ``str``, which is a sequence of its characters.
+        """
+        if isinstance(strings, str):
+            raise str_vector_error()
+
+        # Each string is encoded as str's own method encodes it, in order,
+        # which raises the error of the first that can't be
+        encoded = list(map(_encode, strings))
+        count = len(encoded)
+        index = self.__index
+        if index == self.__fields:
+            raise self.__full()
+
+        data = self.__data
+        size = self.__size
+        head = (count + 1) * size
+        # The ends, after the count in place of the first string's start,
+        # which they count from
+        ends = list(accumulate(map(len, encoded), initial=head))
+        offset = len(data) - self.__base
+        length = offset + ends[-1]
+        if length > self.__max_length:
+            raise self.__too_long(index, length)
+
+        ends[0] = count
+        self.__length.pack_into(data, self.__slots + index * size, offset)
+        data += pack(f"<{count + 1}{OFFSET_CODES[size]}", *ends)
+        data += b"".join(encoded)
         self.__index = index + 1
 
     def set_struct(self, data: Buffer) -> None:
@@ -465,7 +505,7 @@ class TableBuilder:
         self, table: TableBuilder | Buffer, alignment: ElementSize | None = None
     ) -> None:
         """Embeds a table, from its builder or its bytes, without a length
-        prefix. Readers find its fields with ``ByteBuffer.field_offset()`` from
+        prefix. Readers find its fields with ``TableReader.field_offset()`` from
         the field's offset, so its layout must be ``TableLayout.DEFAULT``.
 
         A builder must have all its fields set, and is copied as the bytes
@@ -1015,7 +1055,7 @@ class TableBuilder:
         has fields left to set, or is writing a table in place."""
         written = table.__written
         if written is not None:
-            return written.bytes() if isinstance(written, ByteBuffer) else written
+            return written.bytes() if isinstance(written, TableReader) else written
 
         if table.__slots != table.__header_size:
             raise _written_in_place_error()

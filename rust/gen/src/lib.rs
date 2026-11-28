@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 
 mod check;
+pub mod cli;
 mod diagnostic;
 mod generate;
 mod lexer;

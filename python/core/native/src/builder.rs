@@ -19,7 +19,7 @@
 //!   by truncating the bytes to where it started.
 //!
 //! `bytes()` moves the bytes into a `_Table`, which exports them, so that the
-//! builder holds no buffer of itself, which a `ByteBuffer` that `finalize()`
+//! builder holds no buffer of itself, which a `TableReader` that `finalize()`
 //! keeps would hold in a cycle with it.
 
 use std::cell::Cell;
@@ -38,7 +38,7 @@ use crate::layout::{Layout, Shape, shape_of};
 use crate::little_endian_host;
 use crate::python::{Int, buffer_bytes, contiguous_error, objects, utf8, with_bytes};
 use crate::values::{self, Kind};
-use crate::writer::{alignment, header_length};
+use crate::writer::{STR_VECTOR_MESSAGE, alignment, header_length};
 
 /// The bytes of a written table, which ``TableBuilder.bytes()`` returns a
 /// view of
@@ -104,11 +104,11 @@ thread_local! {
     static SPARE: Cell<Vec<Checkpoint>> = const { Cell::new(Vec::new()) };
 }
 
-/// The table once written: its bytes, and the ``ByteBuffer`` of them that
+/// The table once written: its bytes, and the ``TableReader`` of them that
 /// ``finalize()`` creates
 struct Written {
     table: Py<Table>,
-    buffer: Option<Py<PyAny>>,
+    reader: Option<Py<PyAny>>,
 }
 
 /// A vector's item as `set_vector()` takes it from the iterator: a builder,
@@ -832,7 +832,7 @@ impl TableBuilder {
         let table = Py::new(py, Table { data })?;
         self.written = Some(Written {
             table: table.clone_ref(py),
-            buffer: None,
+            reader: None,
         });
         Ok(table)
     }
@@ -1035,21 +1035,15 @@ array_setters!(
 #[pymethods]
 impl TableBuilder {
     /// ``fields`` is the number of fields that the table will hold, and
-    /// ``layout`` its header and offset type, which its readers must use too.
-    /// ``version`` is written to the header, and required when the layout is
-    /// versioned.
+    /// ``layout`` its header and offset type, which its readers must use too,
+    /// with the version to write to the header when it has one.
     #[new]
-    #[pyo3(signature = (fields, layout = None, version = None))]
-    fn new(
-        fields: &Bound<'_, PyAny>,
-        layout: Option<&Bound<'_, PyAny>>,
-        version: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<Self> {
+    #[pyo3(signature = (fields, layout = None))]
+    fn new(fields: &Bound<'_, PyAny>, layout: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
         let fields = Int::new(fields)?;
         let parsed = layout.map(PyAnyMethods::extract::<Layout>).transpose()?;
         let shape = shape_of(parsed.as_ref());
-        let version = version.map(Int::new).transpose()?;
-        let length = header_length(shape, &fields, version.as_ref())?;
+        let length = header_length(shape, &fields)?;
         // A negative number of fields that a header's slots outnumber, as
         // bytearray() rejects a negative length
         let Some(field_count) = fields.index() else {
@@ -1057,10 +1051,9 @@ impl TableBuilder {
         };
 
         let mut data = Bytes::zeroed(length)?;
-        if let Some(version) = version.and_then(|version| version.index()) {
+        if let Some(version) = shape.version {
             let slot = if shape.sized { shape.size() } else { 0 };
-            #[allow(clippy::cast_possible_truncation)]
-            let bytes = (version as u32).to_le_bytes();
+            let bytes = version.to_le_bytes();
             data.as_mut_slice()[slot..slot + shape.size()].copy_from_slice(&bytes[..shape.size()]);
         }
 
@@ -1080,34 +1073,34 @@ impl TableBuilder {
         })
     }
 
-    /// Finishes the table, once, and returns a ``ByteBuffer`` that reads it;
-    /// later calls return the same buffer.
+    /// Finishes the table, once, and returns a ``TableReader`` that reads it;
+    /// later calls return the same reader.
     fn finalize<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, PyAny>> {
         let py = slf.py();
         let mut builder = slf.try_borrow_mut()?;
         if let Some(Written {
-            buffer: Some(buffer),
+            reader: Some(reader),
             ..
         }) = &builder.written
         {
-            return Ok(buffer.bind(py).clone());
+            return Ok(reader.bind(py).clone());
         }
 
         let table = builder.write(py)?;
         let view = memoryview(table.bind(py))?;
-        let byte_buffer = py.get_type::<crate::reader::ByteBuffer>();
-        let buffer = match &builder.layout {
-            Some(layout) => byte_buffer.call1((view, layout.bind(py)))?,
-            None => byte_buffer.call1((view,))?,
+        let table_reader = py.get_type::<crate::reader::TableReader>();
+        let reader = match &builder.layout {
+            Some(layout) => table_reader.call1((view, layout.bind(py)))?,
+            None => table_reader.call1((view,))?,
         };
         if let Some(written) = &mut builder.written {
-            written.buffer = Some(buffer.clone().unbind());
+            written.reader = Some(reader.clone().unbind());
         }
-        Ok(buffer)
+        Ok(reader)
     }
 
     /// Finishes the table, once, as ``finalize()`` does, and returns its
-    /// bytes, without the buffer that ``finalize()`` creates
+    /// bytes, without the reader that ``finalize()`` creates
     fn bytes<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, PyAny>> {
         let py = slf.py();
         let table = slf.try_borrow_mut()?.write(py)?;
@@ -1125,6 +1118,65 @@ impl TableBuilder {
         self.write_slot(self.slots + index * size, offset);
         self.push_count(encoded.len());
         self.data.push_within(encoded);
+        self.index = index + 1;
+        Ok(())
+    }
+
+    /// Writes an array of bools as a ``uint8`` array: 1 for each value
+    /// that's true, as ``bool()`` takes it, and 0 for each that's false
+    fn set_bool_array(&mut self, py: Python<'_>, values: &Bound<'_, PyAny>) -> PyResult<()> {
+        // An exact list or tuple of bools straight into the bytes, as the
+        // writer converts it, and any other values as bool() takes them, as
+        // the pure-Python builder converts them. A builder that holds all its
+        // fields raises once they're converted.
+        if self.index < self.fields && self.set_sequence('?', 1, values)? {
+            return Ok(());
+        }
+        let elements = objects(py)?.bool_bytes.bind(py).call1((values,))?;
+        with_bytes(&elements, |bytes| self.write_array(bytes, 1))
+    }
+
+    /// Writes a vector of strings, each as UTF-8, after the end of each,
+    /// which lets readers find any string without reading the others.
+    /// Raises ``TypeError`` for a ``str``, which is a sequence of its
+    /// characters.
+    fn set_string_vector(&mut self, strings: &Bound<'_, PyAny>) -> PyResult<()> {
+        if strings.is_instance_of::<PyString>() {
+            return Err(PyTypeError::new_err(STR_VECTOR_MESSAGE));
+        }
+
+        // Each string is checked and encoded in order, which raises the
+        // error of the first that can't be, as the pure-Python builder's
+        // encoding does. CPython keeps the UTF-8 of a string outside ASCII
+        // with it, so that it's encoded once.
+        let mut items = Vec::new();
+        let mut byte_length = 0_usize;
+        for item in strings.try_iter()? {
+            let string = item?.cast_into::<PyString>()?;
+            byte_length = byte_length.saturating_add(utf8(&string)?.len());
+            items.push(string);
+        }
+
+        let index = self.next_index()?;
+        let size = self.size();
+        let head = size.saturating_mul(items.len().saturating_add(1));
+        let offset = self.offset();
+        self.check_length(
+            index,
+            offset.saturating_add(head).saturating_add(byte_length),
+        )?;
+
+        self.room(head + byte_length)?;
+        self.write_slot(self.slots + index * size, offset);
+        self.push_count(items.len());
+        let mut end = head;
+        for string in &items {
+            end += utf8(string)?.len();
+            self.push_count(end);
+        }
+        for string in &items {
+            self.data.push_within(utf8(string)?);
+        }
         self.index = index + 1;
         Ok(())
     }

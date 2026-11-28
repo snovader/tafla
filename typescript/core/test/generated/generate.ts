@@ -1,9 +1,9 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import {
+    writeShapesCases,
     SHAPES_CASES,
-    SHAPES_DIRECTORY,
-    writeShapesCases
-} from './shapesCases.ts';
+    SHAPES_DIRECTORY
+} from './shapes-cases.ts';
 
 // Writes the cases of the generated code to conformance/generated at the root
 // of the repository; `yarn conformance:generate` runs it after the suite's

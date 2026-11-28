@@ -7,6 +7,7 @@
 
 #include <rapidcheck.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -34,6 +35,15 @@ rc::Gen<std::vector<T>> arrays(rc::Gen<T> values, std::size_t max = 24) {
                            rc::gen::mapcat(rc::gen::inRange<std::size_t>(0, max + 1), [values](std::size_t count) {
                                return rc::gen::container<std::vector<T>>(count, values);
                            }));
+}
+
+/// Arrays of up to `max` bools
+inline rc::Gen<Bools> bools(std::size_t max = 24) {
+    return rc::gen::map(arrays(rc::gen::arbitrary<bool>(), max), [](const std::vector<bool>& values) {
+        Bools bools(values.size());
+        std::ranges::copy(values, bools.begin());
+        return bools;
+    });
 }
 
 /// Strings of characters of one to four bytes in UTF-8, and U+FEFF

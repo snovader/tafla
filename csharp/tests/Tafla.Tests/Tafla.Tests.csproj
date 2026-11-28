@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <!-- The conformance suite, and property and example tests of the runtime's public API -->
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <IsPackable>false</IsPackable>
+        <IsTestProject>true</IsTestProject>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <!-- The tests document themselves by their names -->
+        <NoWarn>$(NoWarn);CS1591</NoWarn>
+        <!-- RoundTripTests reads tables in native memory, through spans of pointers -->
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="CsCheck" />
+        <PackageReference Include="xunit.v3" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../../src/Tafla/Tafla.csproj" />
+        <ProjectReference Include="../Tafla.Generated/Tafla.Generated.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Using Include="Xunit" />
+    </ItemGroup>
+</Project>

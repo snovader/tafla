@@ -327,6 +327,6 @@ pub fn memory_error() -> PyErr {
 }
 
 #[cold]
-fn frozen() -> PyErr {
+pub fn frozen() -> PyErr {
     PyBufferError::new_err("Existing exports of data: object cannot be re-sized")
 }

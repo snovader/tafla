@@ -47,7 +47,8 @@ Value array_value(const std::vector<T>& values) {
     return value;
 }
 
-/// Returns the value of a field that holds one rather than tables
+/// Returns the value of a field that holds one rather than tables or the ends
+/// of a vector
 std::optional<Value> value_of(const Field& field) {
     return std::visit(
         [&field](const auto& value) -> std::optional<Value> {
@@ -56,6 +57,13 @@ std::optional<Value> value_of(const Field& field) {
                 return Value{false, 1, 0, field.scalar_bytes()};
             } else if constexpr (std::is_same_v<T, Bool>) {
                 return Value{false, 1, 0, {static_cast<std::uint8_t>(value.value ? 1 : 0)}};
+            } else if constexpr (std::is_same_v<T, Bools>) {
+                // A byte of 1 or 0 for each bool, unpadded
+                Value array{true, 1, value.size(), {}};
+                for (const bool bool_value : value) {
+                    array.bytes.push_back(bool_value ? 1 : 0);
+                }
+                return array;
             } else if constexpr (std::is_same_v<T, std::string>) {
                 return Value{true, 1, value.size(), std::vector<std::uint8_t>(value.begin(), value.end())};
             } else if constexpr (std::is_same_v<T, Struct>) {
@@ -67,7 +75,8 @@ std::optional<Value> value_of(const Field& field) {
                     array.bytes.insert(array.bytes.end(), bytes.begin(), bytes.end());
                 }
                 return array;
-            } else if constexpr (std::is_same_v<T, TableField> || std::is_same_v<T, VectorField>) {
+            } else if constexpr (std::is_same_v<T, TableField> || std::is_same_v<T, VectorField> ||
+                                 std::is_same_v<T, StringVectorField>) {
                 return std::nullopt;
             } else {
                 return array_value(value);
@@ -207,6 +216,12 @@ void find_tables(std::span<const std::uint8_t> bytes, const Table& table,
                 end += find_nested(bytes, end, item, tables);
             }
             length = end - position;
+        } else if (const auto* strings = std::get_if<StringVectorField>(&field.value)) {
+            // The strings follow the count and the ends
+            length = (strings->strings.size() + 1) * width;
+            for (const auto& string : strings->strings) {
+                length += string.size();
+            }
         } else {
             length = value_of(field)->byte_length(width);
         }
@@ -284,9 +299,11 @@ RC_GTEST_PROP(Format, ArraysStartAtAMultipleOfTheirAlignment, ()) {
 }
 
 /// Scalars hold their values' little-endian bytes, structs their scalars',
-/// arrays and strings their counts' and their elements', and vectors their
+/// arrays and strings their counts' and their elements', arrays of bools a
+/// byte of 1 or 0 for each, and vectors their
 /// counts' and their items' ends', which count from the vector's position,
-/// after the ends
+/// after the ends, and vectors of strings their counts' and their strings'
+/// ends, and then the strings' UTF-8, one after another
 RC_GTEST_PROP(Format, ValuesAreLittleEndian, ()) {
     const auto table = *strategy::table();
     const auto bytes = to_bytes(table);
@@ -312,6 +329,20 @@ RC_GTEST_PROP(Format, ValuesAreLittleEndian, ()) {
 
                     const auto position = (index + 1) * width;
                     RC_ASSERT(range(value, position, position + width) == slot_bytes(end, width));
+                }
+            } else if (const auto* strings = std::get_if<StringVectorField>(&field.field->value)) {
+                const auto count = strings->strings.size();
+                RC_ASSERT(range(value, 0, width) == slot_bytes(count, width));
+
+                auto start = (count + 1) * width;
+                for (std::size_t index = 0; index < count; ++index) {
+                    const auto& string = strings->strings[index];
+                    const auto end = start + string.size();
+
+                    const auto position = (index + 1) * width;
+                    RC_ASSERT(range(value, position, position + width) == slot_bytes(end, width));
+                    RC_ASSERT(range(value, start, end) == std::vector<std::uint8_t>(string.begin(), string.end()));
+                    start = end;
                 }
             }
         }

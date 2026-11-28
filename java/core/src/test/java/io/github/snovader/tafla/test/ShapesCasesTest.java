@@ -87,6 +87,7 @@ public class ShapesCasesTest {
             case "Document" -> Document.serialize(documentOf(fields));
             case "ItemList" -> ItemList.serialize(itemListOf(fields));
             case "Sample" -> sampleOf(fields).serialize();
+            case "Task" -> Task.serialize(taskOf(fields));
             default -> throw unknownType(shapesCase);
         };
     }
@@ -103,6 +104,7 @@ public class ShapesCasesTest {
             case "Document" -> describeDocument(documentOf(fields));
             case "ItemList" -> describeItemList(itemListOf(fields));
             case "Sample" -> describeSample(sampleOf(fields));
+            case "Task" -> describeTask(taskOf(fields));
             default -> throw unknownType(shapesCase);
         };
     }
@@ -116,6 +118,7 @@ public class ShapesCasesTest {
             case "Document" -> describeDocument(readDocument(new Document(bytes)));
             case "ItemList" -> describeItemList(readItemList(new ItemList(bytes)));
             case "Sample" -> describeSample(Sample.read(bytes, 0));
+            case "Task" -> describeTask(readTask(new Task(bytes)));
             default -> throw unknownType(shapesCase);
         };
     }
@@ -165,7 +168,28 @@ public class ShapesCasesTest {
         return new Sample(uint32(json, "key"), float32(json, "a"), float32(json, "b"));
     }
 
-    // Values, which JSON holds as cases.json does
+    private static Task.Fields taskOf(JsonObject json) {
+        return new Task.Fields(
+            int8(json, "priority"),
+            ScalarType.toInts(DescriptionJson.readValues(ScalarType.UINT16, json.getJsonArray("history"))),
+            stepOf(json.getJsonObject("step")),
+            json.getString("name")
+        );
+    }
+
+    private static Step stepOf(JsonObject json) {
+        return new Step(uint16(json, "state"), int8(json, "priority"), uint32(json, "seconds"));
+    }
+
+    // Values, which JSON holds as cases.json does, and enums as their integers
+
+    private static byte int8(JsonObject json, String name) {
+        return (byte) DescriptionJson.readValue(ScalarType.INT8, valueOf(json, name));
+    }
+
+    private static int uint16(JsonObject json, String name) {
+        return (int) DescriptionJson.readValue(ScalarType.UINT16, valueOf(json, name));
+    }
 
     private static long uint32(JsonObject json, String name) {
         return DescriptionJson.readValue(ScalarType.UINT32, valueOf(json, name));

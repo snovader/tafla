@@ -119,3 +119,56 @@ fn go_reads_an_array_in_place_only_where_its_struct_lies_as_its_bytes() {
         );
     }
 }
+
+/// An enum is a Go type of its integer type, which lies in memory as the
+/// integer does, so an array of a struct of enums is read in place where
+/// one of their integer types would be
+const ENUMS: &str = "\
+message Arrays {
+    aligned: [Aligned];
+    odd: [Odd];
+}
+
+/// At 0, 4, 6 and 7
+struct Aligned {
+    wide: Wide;
+    narrow: Narrow;
+    single: Single;
+    pair: Pair;
+}
+
+struct Pair {
+    single: Single;
+}
+
+/// A Narrow at 1
+struct Odd {
+    single: Single;
+    narrow: Narrow;
+}
+
+enum Wide: uint32 {
+    one = 1;
+}
+
+enum Narrow: int16 {
+    one = 1;
+}
+
+enum Single: uint8 {
+    one = 1;
+}
+";
+
+#[test]
+fn go_reads_an_array_of_a_struct_of_enums_in_place_as_one_of_their_integer_types() {
+    let target = Target::from_name("go").unwrap();
+    let files = compile("in_place.tafla", ENUMS, target, &Options::default()).unwrap();
+    let go: String = files.into_iter().map(|file| file.contents).collect();
+
+    assert_eq!(
+        as_slice_returns(&go, "Aligned"),
+        "return tafla.StructsInPlace[Aligned](v.bytes)"
+    );
+    assert_eq!(as_slice_returns(&go, "Odd"), "return nil, false");
+}

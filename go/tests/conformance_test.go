@@ -7,6 +7,7 @@ package tafla_test
 import (
 	"bytes"
 	"errors"
+	"slices"
 	"testing"
 
 	tafla "github.com/snovader/tafla/go"
@@ -84,5 +85,37 @@ func TestConformanceReadsInvalidTablesUpToTheFieldThatFails(t *testing.T) {
 		if !errors.As(err, &decodeError) {
 			t.Errorf("%s/%d: %v rather than a decode error", invalid.Name, invalid.Field, err)
 		}
+	}
+}
+
+// What a vector of strings adds to the format is how its items are read, so
+// the vector of strings that is the first field of string-vectors, built
+// alone, holds the bytes of a vector whose items are each string's UTF-8
+func TestConformanceVectorOfStringsHoldsAVectorOfEachStringsUTF8(t *testing.T) {
+	table := loadSuite(t).TableOf("string-vectors")
+	values, ok := table.Fields[0].(tables.StringVector)
+	if !ok {
+		t.Fatalf("the first field of string-vectors is %+v", table.Fields[0])
+	}
+
+	built, err := tables.Table{Layout: table.Layout, Fields: []tables.Field{values}}.Bytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader := tafla.NewTableReader(built, table.Layout.TableLayout())
+	vector := must(reader.GetVector(must(reader.RootOffset(0))))
+
+	var items []string
+	for item, err := range vector.Items() {
+		check(t, err)
+		items = append(items, string(item))
+	}
+	if !slices.Equal(items, values) {
+		t.Errorf("read the items %q rather than %q", items, values)
+	}
+
+	read, err := tables.ReadRootField(built, table.Layout, 0, values)
+	if err != nil || !tables.EqualFields(read, values) {
+		t.Errorf("read %+v, %v", read, err)
 	}
 }

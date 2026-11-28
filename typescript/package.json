@@ -4,27 +4,36 @@
   "type": "module",
   "workspaces": [
     "benchmarks",
-    "core"
+    "core",
+    "gen"
   ],
   "scripts": {
-    "bench": "vitest bench --run --reporter=verbose",
-    "bench:compare": "node --conditions=tafla-source benchmarks/comparison/main.ts",
-    "conformance:generate": "node --conditions=tafla-source core/test/conformance/generate.ts && node --conditions=tafla-source core/test/generated/generate.ts",
-    "format:check": "biome format .",
-    "format:write": "yarn format:check --write",
-    "lint:check": "biome lint .",
-    "lint:write": "yarn lint:check --write",
-    "package:check": "yarn workspace tafla pack -o ../.cache/tafla.tgz && attw --profile esm-only .cache/tafla.tgz && publint core && node core/test/dist.ts",
-    "test": "vitest run",
+    "bench": "node --no-strip-types --import @snovader/node-hooks/register bundle.ts node --no-strip-types --import @snovader/node-hooks/register --conditions=tafla-bundle benchmarks/fields/main.ts",
+    "bench:compare": "node --no-strip-types --import @snovader/node-hooks/register bundle.ts node --no-strip-types --import @snovader/node-hooks/register --conditions=tafla-bundle benchmarks/comparison/main.ts",
+    "bench:strings": "node --no-strip-types --import @snovader/node-hooks/register bundle.ts node --no-strip-types --import @snovader/node-hooks/register --conditions=tafla-bundle benchmarks/strings/main.ts",
+    "bench:lists": "node --no-strip-types --import @snovader/node-hooks/register bundle.ts node --no-strip-types --import @snovader/node-hooks/register --conditions=tafla-bundle benchmarks/strings/lists/main.ts",
+    "bench:list-layouts": "node --no-strip-types --import @snovader/node-hooks/register bundle.ts node --no-strip-types --import @snovader/node-hooks/register --conditions=tafla-bundle benchmarks/strings/lists/layouts-main.ts",
+    "conformance:generate": "node --no-strip-types --import @snovader/node-hooks/register --conditions=tafla-source core/test/conformance/generate.ts && node --no-strip-types --import @snovader/node-hooks/register --conditions=tafla-source core/test/generated/generate.ts",
+    "format:check": "oxfmt --check",
+    "format:write": "oxfmt",
+    "lint:check": "oxlint",
+    "lint:write": "oxlint --fix",
+    "package:check": "yarn workspace tafla build && node --no-strip-types --import @snovader/node-hooks/register core/test/dist.ts",
+    "test": "node --no-strip-types --import @snovader/node-hooks/register bundle.ts node --no-strip-types --import @snovader/node-hooks/register --conditions=tafla-bundle --test --test-isolation=none 'core/test/**/!(big-endian).test.ts' && node --no-strip-types --import @snovader/node-hooks/register --conditions=tafla-source --import hypotes/register --test core/test/big-endian.test.ts",
+    "test:gen": "yarn workspace @tafla/gen build && node --no-strip-types --import @snovader/node-hooks/register --import hypotes/register --test 'gen/test/**/*.test.ts'",
+    "test:watch": "node --no-strip-types --import @snovader/node-hooks/register --conditions=tafla-source --import hypotes/register --test --watch 'core/test/**/*.test.ts'",
     "typecheck": "tsc -b"
   },
   "devDependencies": {
-    "@arethetypeswrong/cli": "^0.18.5",
-    "@biomejs/biome": "^2.6.6",
+    "@snovader/node-hooks": "^0.2.0",
+    "@snovader/oxc-config": "^0.3.0",
+    "@snovader/tsconfig": "^0.1.0",
     "@types/node": "^26.6.6",
-    "publint": "^0.3.25",
-    "typescript": "^7.0.2",
-    "vite": "^8.3.7",
-    "vitest": "^5.1.0"
+    "hypotes": "^0.3.1",
+    "oxfmt": "^0.79.0",
+    "oxlint": "^1.95.0",
+    "oxlint-tsgolint": "^7.0.2008",
+    "rolldown": "^1.3.3",
+    "typescript": "^7.0.2"
   }
 }

@@ -36,7 +36,7 @@ TAFLA_ALWAYS_INLINE std::size_t read_slot(const std::uint8_t* bytes, OffsetType 
 /// A vector read from a table: its items, which are tables.
 ///
 /// The vector holds its count, the end of each item, counted from the
-/// vector's position, and then the items. `ByteBuffer::get_vector()` checks
+/// vector's position, and then the items. `TableReader::get_vector()` checks
 /// that the ends lie within the bytes, and each item is checked when it's
 /// read, so reading one can throw a `DecodeError`. `get()` and
 /// `get_in_place()` find any item from its end and the one before it,
@@ -44,10 +44,10 @@ TAFLA_ALWAYS_INLINE std::size_t read_slot(const std::uint8_t* bytes, OffsetType 
 ///
 /// An item that has no header and its parent's offset type is read in
 /// place: from the bytes that `get_in_place()` returns, which start where it
-/// does and end where its parent's do, with a `ByteBuffer` of its parent's
+/// does and end where its parent's do, with a `TableReader` of its parent's
 /// offset type, at position 0. Its reads may reach past its end, as those of
 /// any table read in place may. Any other item is read as a table of its
-/// own, from the bytes that `get()` returns, with a `ByteBuffer` of its own
+/// own, from the bytes that `get()` returns, with a `TableReader` of its own
 /// layout.
 ///
 /// It views bytes that the caller owns, so it's valid for as long as they
@@ -106,7 +106,9 @@ public:
 
 private:
     template <bool>
-    friend class ByteBuffer;
+    friend class TableReader;
+    /// Reads its strings from their ends, as the items are found
+    friend class StringVector;
 
     /// Views `size` items in the `length` bytes at `bytes`, from the
     /// vector's `position` to the end of the buffer, which must have been

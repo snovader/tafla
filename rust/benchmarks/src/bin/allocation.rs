@@ -3,7 +3,8 @@
 //!
 //! The counts cost an atomic addition per allocation, so they run apart from
 //! the timings. A reallocation counts as an allocation of its new size, as it
-//! may copy into one, and freeing isn't counted.
+//! may copy into one, and freeing isn't counted. `--strings` counts the
+//! strings comparison's calls rather than the workloads'.
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::hint::black_box;
@@ -13,6 +14,8 @@ use tafla_benchmarks::check;
 use tafla_benchmarks::codec::{Codec, DocumentWorkload, Error, Workload};
 use tafla_benchmarks::codecs::LeBytes;
 use tafla_benchmarks::item_access::{self, ItemAccess, ItemBytes};
+use tafla_benchmarks::sized_items;
+use tafla_benchmarks::string_workloads::{self, StringsShape};
 use tafla_benchmarks::workloads::{
     self, DOCUMENT_ROWS, Document, DocumentShape, LIST_ITEMS, ListShape, RECORD, RecordShape,
     SAMPLE, SampleShape, Shape, StructsShape,
@@ -68,6 +71,17 @@ fn count(bytes: usize) {
 fn main() -> Result<(), Error> {
     println!("Allocations and bytes allocated per call");
 
+    if std::env::args()
+        .skip(1)
+        .any(|argument| argument == "--strings")
+    {
+        count_strings()
+    } else {
+        count_workloads()
+    }
+}
+
+fn count_workloads() -> Result<(), Error> {
     group("record: serialize", || {
         for_each_codec!(|codec| serialize::<RecordShape, _>(codec, &RECORD)?);
         Ok(())
@@ -137,6 +151,16 @@ fn main() -> Result<(), Error> {
         Ok(())
     })?;
 
+    let sized = sized_items::write(&list)?;
+    sized_items::check(&list, &sized)?;
+    group(
+        &format!("vector of {LIST_ITEMS} sized tables: read the last item"),
+        || {
+            read("tafla", || sized_items::last_item(&sized));
+            Ok(())
+        },
+    )?;
+
     group("fixed-size record: serialize", || {
         for_each_codec!(|codec| serialize::<SampleShape, _>(codec, &SAMPLE)?);
         serialize::<SampleShape, _>(LeBytes, &SAMPLE)
@@ -145,6 +169,25 @@ fn main() -> Result<(), Error> {
         for_each_codec!(|codec| deserialize::<SampleShape, _>(codec, &SAMPLE)?);
         deserialize::<SampleShape, _>(LeBytes, &SAMPLE)
     })
+}
+
+/// Counts the strings comparison's calls, of each shape
+fn count_strings() -> Result<(), Error> {
+    for workload in string_workloads::string_workloads() {
+        let input = workload.input();
+        let name = format!("16 × {}", workload.name);
+
+        group(&format!("{name}: serialize"), || {
+            for_each_codec!(|codec| serialize::<StringsShape, _>(codec, &input)?);
+            Ok(())
+        })?;
+        group(&format!("{name}: deserialize"), || {
+            for_each_codec!(|codec| deserialize::<StringsShape, _>(codec, &input)?);
+            Ok(())
+        })?;
+    }
+
+    Ok(())
 }
 
 fn group(name: &str, count: impl FnOnce() -> Result<(), Error>) -> Result<(), Error> {

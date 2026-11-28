@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Tafla/Tafla.csproj" />
+  </Folder>
+  <Folder Name="/fuzz/">
+    <Project Path="fuzz/Tafla.Fuzz/Tafla.Fuzz.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Tafla.Generated/Tafla.Generated.csproj" />
+    <Project Path="tests/Tafla.Tests/Tafla.Tests.csproj" />
+  </Folder>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/Tafla.Benchmarks/Tafla.Benchmarks.csproj" />
+    <Project Path="benchmarks/Tafla.Benchmarks.Tests/Tafla.Benchmarks.Tests.csproj" />
+  </Folder>
+</Solution>

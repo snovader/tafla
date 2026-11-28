@@ -2,15 +2,15 @@ use std::borrow::Cow;
 
 use crate::{Alignment, BuildError, Element, OffsetType, TableLayout, TableWriter};
 
-/// Builds a table, which a `ByteBuffer` reads back.
+/// Builds a table, which a `TableReader` reads back.
 ///
 /// A table is a header with one offset per field, after the table's total
 /// length and version when its layout has them, followed by the fields in
 /// the order they're set. Arrays, strings and vectors start with their
 /// count, and a vector then holds the end of each item. Arrays of scalars
 /// and of structs are padded so their elements are aligned from the start of
-/// the table. Fields are read back by index with `ByteBuffer::root_offset()`,
-/// or `ByteBuffer::field_offset()` for a table nested in another.
+/// the table. Fields are read back by index with `TableReader::root_offset()`,
+/// or `TableReader::field_offset()` for a table nested in another.
 ///
 /// Setting a field records it, borrowing or owning its value, and
 /// [`TableBuilder::to_bytes()`] then writes every field through a
@@ -98,36 +98,22 @@ macro_rules! array_setters {
 
 impl<'a> TableBuilder<'a> {
     /// Starts a table of `fields` fields in `layout`, which its readers must
-    /// use too. Nested tables use [`TableLayout::DEFAULT`].
+    /// use too, with the layout's version in its header when it has one.
+    /// Nested tables use [`TableLayout::DEFAULT`].
     ///
     /// # Errors
     ///
-    /// [`BuildError::HeaderTooLong`] if the header alone is too long for the
-    /// layout's offset type.
-    pub fn new(fields: usize, layout: TableLayout) -> Result<Self, BuildError> {
-        let header = layout.header_length(fields)?;
-
-        Ok(Self::create(fields, header, layout, None))
-    }
-
-    /// Starts a table of `fields` fields in `layout`, with `version` in its
-    /// header. Readers can check it with `ByteBuffer::version()` before
-    /// reading any field.
-    ///
-    /// # Errors
-    ///
-    /// [`BuildError::VersionTooLarge`] if `version` doesn't fit in the
-    /// layout's offset type, or [`BuildError::HeaderTooLong`] if the header
-    /// alone is too long for the layout's offset type.
-    pub fn versioned(
+    /// [`BuildError::VersionTooLarge`] if the layout's version doesn't fit
+    /// in its offset type, or [`BuildError::HeaderTooLong`] if the header
+    /// alone is too long for it.
+    pub fn new<const VERSIONED: bool>(
         fields: usize,
-        layout: TableLayout<true>,
-        version: u32,
+        layout: TableLayout<VERSIONED>,
     ) -> Result<Self, BuildError> {
-        layout.check_version(version)?;
+        layout.check_version()?;
         let header = layout.header_length(fields)?;
 
-        Ok(Self::create(fields, header, layout, Some(version)))
+        Ok(Self::create(fields, header, layout))
     }
 
     /// A builder of a table of `fields` fields, whose header of `header`
@@ -137,8 +123,9 @@ impl<'a> TableBuilder<'a> {
         fields: usize,
         header: u32,
         layout: TableLayout<VERSIONED>,
-        version: Option<u32>,
     ) -> Self {
+        let version = layout.header_version();
+
         Self {
             values: Vec::with_capacity(fields.max(MIN_RECORDED)),
             // The header holds an offset of at least a byte per field
@@ -194,6 +181,20 @@ impl<'a> TableBuilder<'a> {
         set_f32_array(f32) => F32, set_f64_array(f64) => F64
     );
 
+    /// Sets an array field of bools, written as a `u8` array of 1 for each
+    /// true value and 0 for each false one, from a slice that the builder
+    /// borrows or a `Vec` that it owns until the table is written
+    ///
+    /// # Errors
+    ///
+    /// [`BuildError::TooManyFields`] if the table holds all its fields
+    /// already, or [`BuildError::TooLong`] if the field would make it too
+    /// long for its offset type.
+    #[inline]
+    pub fn set_bool_array(&mut self, values: impl Into<Cow<'a, [bool]>>) -> Result<(), BuildError> {
+        self.add_field(Field::Array(Array::Bool(values.into())))
+    }
+
     /// Sets a string field, from a `&str` that the builder borrows or a
     /// `String` that it owns until the table is written
     ///
@@ -204,6 +205,25 @@ impl<'a> TableBuilder<'a> {
     /// long for its offset type.
     pub fn set_str(&mut self, string: impl Into<Cow<'a, str>>) -> Result<(), BuildError> {
         self.add_field(Field::String(string.into()))
+    }
+
+    /// Sets a vector of strings, from a slice of them that the builder
+    /// borrows or a `Vec` that it owns until the table is written. The
+    /// strings follow the end of each, which lets readers find any string
+    /// without reading the others, and take no more bytes each than their
+    /// end, where a vector of tables of one string takes each table's offset
+    /// and the string's length too.
+    ///
+    /// # Errors
+    ///
+    /// [`BuildError::TooManyFields`] if the table holds all its fields
+    /// already, or [`BuildError::TooLong`] if the field would make it too
+    /// long for its offset type.
+    pub fn set_str_vector(
+        &mut self,
+        strings: impl Into<Cow<'a, [&'a str]>>,
+    ) -> Result<(), BuildError> {
+        self.add_field(Field::StrVector(strings.into().into()))
     }
 
     /// Sets a struct field from its bytes: its scalars, little-endian, one
@@ -248,7 +268,7 @@ impl<'a> TableBuilder<'a> {
     }
 
     /// Embeds a table, from its builder or its bytes, without a length prefix.
-    /// Readers find its fields with `ByteBuffer::field_offset()` from the
+    /// Readers find its fields with `TableReader::field_offset()` from the
     /// field's position, which reads offsets of the parent's offset type, so
     /// the table should have no header and the parent's offset type: that's
     /// [`TableLayout::DEFAULT`] in a parent of `uint32` offsets.
@@ -388,10 +408,11 @@ impl<'a> TableBuilder<'a> {
     ///
     /// [`BuildError::TooManyFields`] if this table holds all its fields
     /// already, or [`BuildError::TooLong`] if the vector's count and its
-    /// items' ends make it too long, before any item is recorded, and
-    /// otherwise the errors of [`TableBuilder::set_table_with()`] for each
-    /// item, or [`BuildError::TooLong`] if the items make the table too long.
-    /// Each leaves the builder as it was, as a panic in `fill` does.
+    /// items' ends make it too long, before any item is recorded, with the
+    /// length that they make it, and otherwise the errors of
+    /// [`TableBuilder::set_table_with()`] for each item, or
+    /// [`BuildError::TooLong`] if the items make the table too long. Each
+    /// leaves the builder as it was, as a panic in `fill` does.
     #[allow(clippy::cast_possible_truncation)]
     pub fn set_vector_with<E, F>(
         &mut self,
@@ -458,6 +479,14 @@ impl<'a> TableBuilder<'a> {
     /// through it, which wrote a record in 78–80 ns rather than 82–84 ns, a
     /// document of 100 rows in 166–170 ns rather than 178 ns, and recorded
     /// the vector of 100 nested tables in place in 4.4 µs rather than 4.6 µs.
+    // Inlined into each setter, with the field's padding, length and
+    // alignment, which then fold for the setter's kind of field. Called out
+    // of line, it took each field through memory and matched its kind: the
+    // record was written in 84 ns rather than 69 ns, a document of 100 rows
+    // in 169 ns rather than 129 ns, and 16 empty strings in 185 ns rather
+    // than 166 ns.
+    #[allow(clippy::inline_always)]
+    #[inline(always)]
     fn add_field(&mut self, field: Field<'a>) -> Result<(), BuildError> {
         let index = self.set as usize;
         if index == self.fields as usize {
@@ -770,11 +799,13 @@ impl<'a> InPlaceTable<'_, 'a> {
         set_u64_array(values: impl Into<Cow<'a, [u64]>>),
         set_f32_array(values: impl Into<Cow<'a, [f32]>>),
         set_f64_array(values: impl Into<Cow<'a, [f64]>>),
+        set_bool_array(values: impl Into<Cow<'a, [bool]>>),
         set_str(string: impl Into<Cow<'a, str>>),
         set_struct(bytes: impl Into<Cow<'a, [u8]>>),
         set_struct_array(bytes: impl Into<Cow<'a, [u8]>>, size: usize, alignment: Alignment),
         set_table(table: impl Into<NestedTable<'a>>),
         set_table_aligned(table: impl Into<NestedTable<'a>>, alignment: Alignment),
+        set_str_vector(strings: impl Into<Cow<'a, [&'a str]>>),
     );
 
     /// Sets a vector field as [`TableBuilder::set_vector()`] does
@@ -968,34 +999,79 @@ enum Field<'a> {
     /// A nested table, which starts at a multiple of its alignment
     Table(NestedTable<'a>),
     Vector(Vec<NestedTable<'a>>),
+    StrVector(Strs<'a>),
+}
+
+/// The strings of a vector of strings, borrowed or owned, as a `Cow` of
+/// them holds them. A `Cow` itself would make the builder invariant in its
+/// lifetime, since its owned value is a type of `ToOwned`, so a builder
+/// couldn't be nested by reference in a parent of a shorter lifetime.
+#[derive(Debug)]
+enum Strs<'a> {
+    Borrowed(&'a [&'a str]),
+    Owned(Vec<&'a str>),
+}
+
+impl<'a> Strs<'a> {
+    fn as_slice(&self) -> &[&'a str] {
+        match self {
+            Self::Borrowed(strings) => strings,
+            Self::Owned(strings) => strings,
+        }
+    }
+}
+
+impl<'a> From<Cow<'a, [&'a str]>> for Strs<'a> {
+    fn from(strings: Cow<'a, [&'a str]>) -> Self {
+        match strings {
+            Cow::Borrowed(strings) => Self::Borrowed(strings),
+            Cow::Owned(strings) => Self::Owned(strings),
+        }
+    }
 }
 
 impl Field<'_> {
     /// The alignment that the field needs from the table's start
+    // Inlined, as its padding and length are, into `add_field()`, which is
+    // inlined into each setter, so that they fold for its kind of field
+    #[allow(clippy::inline_always)]
+    #[inline(always)]
     fn alignment(&self) -> Alignment {
         match self {
             Self::Array(array) => array.alignment(),
             Self::StructArray { alignment, .. } => *alignment,
             Self::Table(table) => table.alignment(),
-            Self::Scalar(_) | Self::String(_) | Self::Struct(_) | Self::Vector(_) => Alignment::One,
+            Self::Scalar(_)
+            | Self::String(_)
+            | Self::Struct(_)
+            | Self::Vector(_)
+            | Self::StrVector(_) => Alignment::One,
         }
     }
 
     /// The padding before the field when it would start at `offset`, which
     /// aligns an array's elements after its count and a nested table's start
+    #[allow(clippy::inline_always)]
+    #[inline(always)]
     fn padding(&self, offset: usize, width: usize) -> usize {
         match self {
             // Wrapping, since only the remainder matters
             Self::Array(array) => array.alignment().padding(offset.wrapping_add(width)),
             Self::StructArray { alignment, .. } => alignment.padding(offset.wrapping_add(width)),
             Self::Table(table) => table.alignment().padding(offset),
-            Self::Scalar(_) | Self::String(_) | Self::Struct(_) | Self::Vector(_) => 0,
+            Self::Scalar(_)
+            | Self::String(_)
+            | Self::Struct(_)
+            | Self::Vector(_)
+            | Self::StrVector(_) => 0,
         }
     }
 
     /// The field's byte length after its padding, in u64, which only a
     /// vector that nests a builder many times can overflow, saturating far
     /// past the longest table
+    #[allow(clippy::inline_always)]
+    #[inline(always)]
     fn byte_length(&self, width: usize) -> u64 {
         let width = width as u64;
 
@@ -1008,6 +1084,10 @@ impl Field<'_> {
             Self::Table(table) => table.byte_length() as u64,
             Self::Vector(items) => items.iter().fold(width, |length, item| {
                 length.saturating_add(width + item.byte_length() as u64)
+            }),
+            // The count, and an end for each string beside its bytes
+            Self::StrVector(strings) => strings.as_slice().iter().fold(width, |length, string| {
+                length.saturating_add(width + string.len() as u64)
             }),
         }
     }
@@ -1043,6 +1123,7 @@ impl Field<'_> {
                     writer.set_item_end(vector, item);
                 }
             }
+            Self::StrVector(strings) => writer.set_str_vector(index, strings.as_slice()),
         }
     }
 }
@@ -1089,12 +1170,19 @@ enum Array<'a> {
     U64(Cow<'a, [u64]>),
     F32(Cow<'a, [f32]>),
     F64(Cow<'a, [f64]>),
+    /// Bools, which the writer writes as bytes of 1 and 0
+    Bool(Cow<'a, [bool]>),
 }
 
 /// Evaluates `$expression` with `$values` bound to the elements of `$array`,
-/// whatever their type
+/// whatever their type, or `$bool_expression` with `$bools` bound to an
+/// array of bools, which aren't an `Element`
 macro_rules! with_elements {
-    ($array:expr, $values:ident => $expression:expr) => {
+    (
+        $array:expr,
+        $values:ident => $expression:expr,
+        $bools:pat => $bool_expression:expr $(,)?
+    ) => {
         match $array {
             Array::I8($values) => $expression,
             Array::U8($values) => $expression,
@@ -1106,21 +1194,31 @@ macro_rules! with_elements {
             Array::U64($values) => $expression,
             Array::F32($values) => $expression,
             Array::F64($values) => $expression,
+            Array::Bool($bools) => $bool_expression,
         }
     };
 }
 
 impl Array<'_> {
+    // Inlined, as the field's alignment and length are
+    #[allow(clippy::inline_always)]
+    #[inline(always)]
     fn alignment(&self) -> Alignment {
-        with_elements!(self, values => alignment_of(values))
+        with_elements!(self, values => alignment_of(values), _ => Alignment::One)
     }
 
+    #[allow(clippy::inline_always)]
+    #[inline(always)]
     fn byte_length(&self) -> usize {
-        with_elements!(self, values => size_of_val::<[_]>(values))
+        with_elements!(self, values => size_of_val::<[_]>(values), bools => bools.len())
     }
 
     fn write(&self, writer: &mut TableWriter, index: usize) {
-        with_elements!(self, values => writer.set_elements(index, values));
+        with_elements!(
+            self,
+            values => writer.set_elements(index, values),
+            bools => writer.set_bool_array(index, bools),
+        );
     }
 }
 

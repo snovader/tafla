@@ -1,0 +1,59 @@
+error: 256 doesn't fit in `uint8`
+ --> enum_values.tafla:5:17
+  |
+5 |     too_large = 256;
+  |                 ^^^ `uint8` holds 0 to 255
+
+error: -1 doesn't fit in `uint8`
+ --> enum_values.tafla:6:16
+  |
+6 |     negative = -1;
+  |                ^^ `uint8` holds 0 to 255
+
+error: -129 doesn't fit in `int8`
+  --> enum_values.tafla:12:13
+   |
+12 |     below = -129;
+   |             ^^^^ `int8` holds -128 to 127
+
+error: 128 doesn't fit in `int8`
+  --> enum_values.tafla:13:13
+   |
+13 |     above = 128;
+   |             ^^^ `int8` holds -128 to 127
+
+error: 9223372036854775808 doesn't fit in `int64`
+  --> enum_values.tafla:19:13
+   |
+19 |     above = 9223372036854775808;
+   |             ^^^^^^^^^^^^^^^^^^^ `int64` holds -9223372036854775808 to 9223372036854775807
+
+error: `zero` and `negative_zero` are both 0
+  --> enum_values.tafla:25:12
+   |
+25 |     zero = 0;
+   |            ^ each value of an enum is an integer of its own
+
+error: `one` and `first` are both 1
+  --> enum_values.tafla:31:11
+   |
+31 |     one = 1;
+   |           ^ each value of an enum is an integer of its own
+
+error: 65536 doesn't fit in `uint16`
+  --> enum_values.tafla:34:13
+   |
+34 |     large = 65536;
+   |             ^^^^^ `uint16` holds 0 to 65535
+
+error: 65536 doesn't fit in `uint16`
+  --> enum_values.tafla:35:14
+   |
+35 |     larger = 65536;
+   |              ^^^^^ `uint16` holds 0 to 65535
+
+error: `larger` and `large` are both 65536
+  --> enum_values.tafla:35:14
+   |
+35 |     larger = 65536;
+   |              ^^^^^ each value of an enum is an integer of its own

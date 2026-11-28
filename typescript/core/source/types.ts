@@ -31,8 +31,8 @@ export type TypedArray =
 export interface TypedArrayConstructor {
     BYTES_PER_ELEMENT: number;
 
-    // biome-ignore lint/suspicious/noExplicitAny: Necessary for inference
+    // oxlint-disable-next-line typescript/no-explicit-any -- Necessary for inference
     new (length: number): any;
-    // biome-ignore lint/suspicious/noExplicitAny: Necessary for inference
+    // oxlint-disable-next-line typescript/no-explicit-any -- Necessary for inference
     new (buffer: ArrayBufferLike, byteOffset: number, length: number): any;
 }

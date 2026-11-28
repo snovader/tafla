@@ -44,6 +44,7 @@ from tests.generated.all_types.all_types import (
     TreeFields,
 )
 from tests.generated.descriptions import (
+    bool_array,
     boolean,
     message,
     scalar,
@@ -89,6 +90,8 @@ def read_arrays(arrays: Arrays) -> ArraysFields:
         "uint64": arrays.uint64().tolist(),
         "float32": arrays.float32().tolist(),
         "float64": arrays.float64().tolist(),
+        # The bytes in place, true where they aren't 0
+        "bool_": [byte != 0 for byte in arrays.bool_()],
     }
 
 
@@ -210,6 +213,7 @@ def describe_arrays(fields: ArraysFields) -> Description:
             typed_array("uint64", fields["uint64"]),
             typed_array("float32", fields["float32"]),
             typed_array("float64", fields["float64"]),
+            bool_array(fields["bool_"]),
         ],
     )
 
@@ -346,7 +350,8 @@ def segment_bytes(segment: Segment) -> bytes:
 # infinities, strings outside the Basic Multilingual Plane, empty arrays,
 # vectors and arrays of structs, and trees a few levels deep. The fields of
 # Scalars, Arrays and Packed are named after their types, as SCALAR_VALUES
-# names its strategies, and the bools of Scalars and Packed are bool_.
+# names its strategies, and the bools of Scalars, Arrays and Packed are
+# bool_.
 
 _SCALARS: dict[str, SearchStrategy[Any]] = {
     kind: scalar_values(kind) for kind in SCALAR_VALUES
@@ -364,6 +369,7 @@ scalars_fields: SearchStrategy[ScalarsFields] = builds(
 arrays_fields: SearchStrategy[ArraysFields] = builds(
     ArraysFields,
     **{kind: _arrays(values) for kind, values in _SCALARS.items()},
+    bool_=_arrays(booleans()),
 )
 
 

@@ -2,7 +2,7 @@ package generated_test
 
 // Benchmarks of the runtime's hot paths, through the code generated from
 // shapes.tafla, whose messages are the comparison suite's record, document
-// and vector of nested tables, and through ByteBuffer and TableBuilder by
+// and vector of nested tables, and through TableReader and TableBuilder by
 // hand. They compare versions of the runtime, with benchstat; the comparison
 // suite in benchmarks/ compares tafla with other libraries.
 //
@@ -86,15 +86,15 @@ func BenchmarkReadPointByHand(b *testing.B) {
 	b.ResetTimer()
 
 	for range b.N {
-		buffer := tafla.NewByteBuffer(bytes, tafla.TableLayout{})
-		p0, err1 := buffer.RootOffset(0)
-		x, err2 := buffer.GetFloat64(p0)
-		p1, err3 := buffer.RootOffset(1)
-		y, err4 := buffer.GetFloat64(p1)
-		p2, err5 := buffer.RootOffset(2)
-		id, err6 := buffer.GetInt64(p2)
-		p3, err7 := buffer.RootOffset(3)
-		name, err8 := buffer.GetString(p3)
+		reader := tafla.NewTableReader(bytes, tafla.TableLayout{})
+		p0, err1 := reader.RootOffset(0)
+		x, err2 := reader.GetFloat64(p0)
+		p1, err3 := reader.RootOffset(1)
+		y, err4 := reader.GetFloat64(p1)
+		p2, err5 := reader.RootOffset(2)
+		id, err6 := reader.GetInt64(p2)
+		p3, err7 := reader.RootOffset(3)
+		name, err8 := reader.GetString(p3)
 		sinkFloat = x + y + float64(id) + float64(len(name))
 		sinkErr = errorOf(err1, err2, err3, err4, err5, err6, err7, err8)
 	}
@@ -118,7 +118,7 @@ func BenchmarkWriteDocument100000Generated(b *testing.B) {
 
 func BenchmarkWriteDocument100Builder(b *testing.B) {
 	fields := document(100)
-	layout := tafla.TableLayout{}.Sized().Versioned()
+	layout := tafla.TableLayout{}.Sized().WithVersion(1)
 	b.ResetTimer()
 	for range b.N {
 		columns, _ := tafla.NewTableBuilder(4, tafla.TableLayout{})
@@ -126,7 +126,7 @@ func BenchmarkWriteDocument100Builder(b *testing.B) {
 		_ = columns.SetUint32Array(fields.Columns.Keys)
 		_ = columns.SetFloat32Array(fields.Columns.A)
 		_ = columns.SetFloat32Array(fields.Columns.B)
-		builder, _ := tafla.NewVersionedTableBuilder(4, layout, 1)
+		builder, _ := tafla.NewTableBuilder(4, layout)
 		_ = builder.SetFloat64(fields.X)
 		_ = builder.SetFloat64(fields.Y)
 		_ = builder.SetString(fields.Name)

@@ -13,7 +13,9 @@ pub fn camel_case(snake: &str) -> String {
         .unwrap_or_default()
 }
 
-fn pascal_case(snake: &str) -> String {
+/// A `snake_case` name in `PascalCase`, as Go exports names and C# names
+/// members. It drops the underscores, as [`camel_case()`] does.
+pub fn pascal_case(snake: &str) -> String {
     snake
         .split('_')
         .map(|word| {

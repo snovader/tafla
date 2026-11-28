@@ -330,7 +330,7 @@ RC_GTEST_PROP(TableWriter, NoCallsMakeAWriterCrash, ()) {
     const auto calls = *rc::gen::resize(
         rc::kNominalSize, rc::gen::mapcat(rc::gen::inRange<std::size_t>(0, 25), [=](std::size_t count) {
             return rc::gen::container<std::vector<std::tuple<int, std::size_t, std::size_t, Alignment>>>(
-                count, rc::gen::tuple(rc::gen::inRange(0, 10), small, small, alignments));
+                count, rc::gen::tuple(rc::gen::inRange(0, 11), small, small, alignments));
         }));
 
     std::optional<TableSizer> sizer;
@@ -385,6 +385,9 @@ RC_GTEST_PROP(TableWriter, NoCallsMakeAWriterCrash, ()) {
                 break;
             case 8:
                 vectors.push_back(writer.set_vector(index, count));
+                break;
+            case 9:
+                writer.set_bool_array(index, Bools(few));
                 break;
             default:
                 if (!vectors.empty()) {
@@ -663,10 +666,10 @@ TEST(TableWriter, RejectsAHeaderTooLongForItsOffsetsAsTableBuilderDoes) {
             EXPECT_TRUE(same_details(build_error_of([&] { TableSizer(fields + 1, layout); }),
                                      build_error_of([&] { TableBuilder(fields + 1, layout); })));
 
-            const auto versioned = layout.versioned();
-            EXPECT_NO_THROW(TableSizer(fields - 1, versioned, 0));
-            EXPECT_TRUE(same_details(build_error_of([&] { TableSizer(fields, versioned, 0); }),
-                                     build_error_of([&] { TableBuilder(fields, versioned, 0); })));
+            const auto versioned = layout.with_version(0);
+            EXPECT_NO_THROW(TableSizer(fields - 1, versioned));
+            EXPECT_TRUE(same_details(build_error_of([&] { TableSizer(fields, versioned); }),
+                                     build_error_of([&] { TableBuilder(fields, versioned); })));
         }
     }
 
@@ -677,12 +680,12 @@ TEST(TableWriter, RejectsAHeaderTooLongForItsOffsetsAsTableBuilderDoes) {
 TEST(TableWriter, RejectsAVersionTooLargeForItsSlotAsTableBuilderDoes) {
     for (const auto& [offset_type, version] :
          {std::pair{OffsetType::uint8, 0x100U}, std::pair{OffsetType::uint16, 0x1'0000U}}) {
-        const auto layout = TableLayout().with_offset_type(offset_type).versioned();
+        const auto layout = TableLayout().with_offset_type(offset_type);
         const auto error = BuildError::version_too_large(version, offset_type);
 
-        EXPECT_TRUE(same_details(build_error_of([&] { TableSizer(1, layout, version); }), error));
-        EXPECT_TRUE(same_details(build_error_of([&] { TableBuilder(1, layout, version); }), error));
-        EXPECT_NO_THROW(TableSizer(1, layout, version - 1));
+        EXPECT_TRUE(same_details(build_error_of([&] { TableSizer(1, layout.with_version(version)); }), error));
+        EXPECT_TRUE(same_details(build_error_of([&] { TableBuilder(1, layout.with_version(version)); }), error));
+        EXPECT_NO_THROW(TableSizer(1, layout.with_version(version - 1)));
     }
 }
 
@@ -693,6 +696,33 @@ TEST(TableWriter, FailsForAStringLongerThanTheOneSized) {
     writer.set_string(0, "ab");
 
     // The offset and length were written before the string didn't fit
+    EXPECT_TRUE(
+        same_details(build_error_of([&] { static_cast<void>(writer.finish()); }), BuildError::not_as_sized(8, 9)));
+}
+
+TEST(TableWriter, WritesAnArrayOfBoolsAsTableBuilderDoes) {
+    const bool values[] = {false, true, true};
+
+    TableSizer sizer(2, TableLayout());
+    sizer.add_bool_array(3);
+    sizer.add_bool_array(0);
+    auto writer = sizer.writer();
+    writer.set_bool_array(0, values);
+    writer.set_bool_array(1, {});
+
+    TableBuilder builder(2, TableLayout());
+    builder.set_uint8_array(std::vector<std::uint8_t>{0, 1, 1});
+    builder.set_uint8_array(std::vector<std::uint8_t>());
+    EXPECT_EQ(writer.finish(), builder.to_bytes());
+}
+
+TEST(TableWriter, FailsForMoreBoolsThanThoseSized) {
+    TableSizer sizer(1, TableLayout());
+    sizer.add_bool_array(1);
+    auto writer = sizer.writer();
+    writer.set_bool_array(0, Bools{true, false});
+
+    // The offset and count were written before the bools didn't fit
     EXPECT_TRUE(
         same_details(build_error_of([&] { static_cast<void>(writer.finish()); }), BuildError::not_as_sized(8, 9)));
 }
@@ -708,6 +738,40 @@ TEST(TableWriter, FailsForFieldsShorterThanThoseSized) {
     EXPECT_EQ(error.written(), 9U);
     EXPECT_EQ(error.length(), 10U);
     EXPECT_STREQ(error.what(), "The fields wrote 9 of the table's 10 bytes");
+}
+
+TEST(TableWriter, FailsForStringsOfAVectorLongerOrShorterThanThoseSized) {
+    const std::vector<std::string_view> sized{"a", "b"};
+    const auto writer_of = [&sized] {
+        TableSizer sizer(1, TableLayout());
+        sizer.add_string_vector(sized);
+        return sizer.writer();
+    };
+    const auto finish = [](TableWriter& writer) { static_cast<void>(writer.finish()); };
+
+    // The table's offset, the count, two ends and "a" were written before
+    // "bc" didn't fit
+    const std::vector<std::string_view> longer{"a", "bc"};
+    auto longer_writer = writer_of();
+    longer_writer.set_string_vector(0, longer);
+    EXPECT_TRUE(same_details(build_error_of([&] { finish(longer_writer); }), BuildError::not_as_sized(17, 18)));
+
+    // Without room for a third end, after the table's offset
+    const std::vector<std::string_view> more{"a", "b", ""};
+    auto more_writer = writer_of();
+    more_writer.set_string_vector(0, more);
+    EXPECT_TRUE(same_details(build_error_of([&] { finish(more_writer); }), BuildError::not_as_sized(4, 18)));
+
+    const std::vector<std::string_view> shorter{"a", ""};
+    auto shorter_writer = writer_of();
+    shorter_writer.set_string_vector(0, shorter);
+    EXPECT_TRUE(same_details(build_error_of([&] { finish(shorter_writer); }), BuildError::not_as_sized(17, 18)));
+
+    auto writer = writer_of();
+    writer.set_string_vector(0, sized);
+    TableBuilder builder(1, TableLayout());
+    builder.set_string_vector(sized);
+    EXPECT_EQ(writer.finish(), builder.to_bytes());
 }
 
 TEST(TableWriter, FailsForAFieldPastItsTablesFields) {
