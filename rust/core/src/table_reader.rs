@@ -168,8 +168,8 @@ impl<'a, const VERSIONED: bool> TableReader<'a, VERSIONED> {
     pub fn get_bool_array(&self, position: usize) -> Result<Vec<bool>, DecodeError> {
         let bytes = self.array_bytes(position, 1)?;
 
-        // LLVM compares them many at a time: 1,000 bools took 38.7 ns to
-        // read, where copying their bytes took 33.7 ns, in Rust 1.100
+        // LLVM compares them many at a time: 1,000 bools took 36.0 ns to
+        // read, where copying their bytes took 33.3 ns, in Rust 1.100
         Ok(bytes.iter().map(|&byte| byte != 0).collect())
     }
 
