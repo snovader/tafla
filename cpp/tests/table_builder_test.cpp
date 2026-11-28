@@ -1074,8 +1074,8 @@ Bytes finished(const Table& table, Start start) {
 /// A table is written alike by `to_bytes()`, `finish()` and `into_buffer()`,
 /// from a new builder, from one that took a vector of other bytes, after a
 /// reset following another table, finished or not, and into the caller's
-/// bytes, of the table's length, which fail one byte shorter. They fail alike
-/// too.
+/// bytes, of the table's length, also with its tables nested in place, which
+/// fail one byte shorter. They fail alike too.
 RC_GTEST_PROP(TableBuilder, EveryWayOfTakingATableWritesTheSameTable, ()) {
     const auto table = *strategy::table();
     const auto expected = built_by([&] { return to_bytes(table); });
@@ -1120,16 +1120,21 @@ RC_GTEST_PROP(TableBuilder, EveryWayOfTakingATableWritesTheSameTable, ()) {
 
     if (expected.bytes) {
         auto bytes = *expected.bytes;
-        const auto into_bytes = finished(
-            table, [&](std::size_t fields, auto layout) { return TableBuilder::with_bytes(bytes, fields, layout); });
-        RC_ASSERT(into_bytes.to_vector() == *expected.bytes);
+        const auto into = [](std::span<std::uint8_t> to) {
+            return [to](std::size_t fields, auto layout) { return TableBuilder::with_bytes(to, fields, layout); };
+        };
+        RC_ASSERT(finished(table, into(bytes)).to_vector() == *expected.bytes);
+
+        // With the tables nested in place that can be, which fit too
+        auto in_place = start_table(table, into(bytes));
+        for (const auto& field : table.fields) {
+            set_field_on(field, in_place, table.layout.offset_type);
+        }
+        RC_ASSERT(std::ranges::equal(in_place.finish(), *expected.bytes));
 
         if (!bytes.empty()) {
             const auto shorter = std::span(bytes).first(bytes.size() - 1);
-            RC_ASSERT_THROWS_AS(
-                finished(table, [&](std::size_t fields,
-                                    auto layout) { return TableBuilder::with_bytes(shorter, fields, layout); }),
-                std::invalid_argument);
+            RC_ASSERT_THROWS_AS(finished(table, into(shorter)), std::invalid_argument);
         }
     }
 }
@@ -1215,6 +1220,23 @@ TEST(TableBuilder, WritesIntoTheCallersBytes) {
 
     EXPECT_THROW(static_cast<void>(TableBuilder::with_bytes(std::span(bytes).first(4), 4, layout)),
                  std::invalid_argument);
+}
+
+/// A vector in place whose first item is longer than the others fits in the
+/// caller's bytes of the table's length: the room that a builder makes for
+/// the other items, as long as the first, is only a hint in them
+TEST(TableBuilder, WritesAnUnevenVectorInPlaceIntoTheCallersBytes) {
+    const auto fill = [](std::size_t index, TableBuilder::Item& item) {
+        item.set_string(index == 0 ? std::string(40, 'f') : std::string());
+    };
+    TableBuilder expected(1, TableLayout());
+    expected.set_vector(3, 1, fill);
+    const auto table = expected.to_bytes();
+
+    std::vector<std::uint8_t> bytes(table.size());
+    auto builder = TableBuilder::with_bytes(bytes, 1, TableLayout());
+    builder.set_vector(3, 1, fill);
+    EXPECT_TRUE(std::ranges::equal(builder.finish(), table));
 }
 
 /// A reset that fails, for a version or a header too large, leaves the
