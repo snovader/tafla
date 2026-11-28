@@ -9,7 +9,7 @@ import type { Packr as TypedPackr } from 'msgpackr';
 // The plain JavaScript entry point, as the comparison suite uses it
 import { Packr as UntypedPackr } from 'msgpackr/pack';
 import protobuf from 'protobufjs';
-import { StringVector, TableBuilder, TableReader } from 'tafla';
+import { StringVector, TableArena, TableBuilder, TableReader } from 'tafla';
 import { Strings as FlatStrings } from '../generated/flatbuffers.ts';
 import { NameList, StringList } from './generated/lists.ts';
 
@@ -34,7 +34,7 @@ export interface ListCodec {
 export const taflaStrings: ListCodec = {
     name: 'tafla [string]',
     serialize(strings) {
-        const builder = new TableBuilder(1);
+        const builder = new TableBuilder(TableArena.DEFAULT, 1);
         builder.setStringVector(strings);
 
         return builder.bytes();
@@ -100,7 +100,7 @@ export const taflaGenStrings: ListCodec = {
 export const taflaTables: ListCodec = {
     name: 'tafla [Name]',
     serialize(strings) {
-        const builder = new TableBuilder(1);
+        const builder = new TableBuilder(TableArena.DEFAULT, 1);
         builder.setVectorInPlace(strings.length, 1, (item, index) => {
             item.setString(strings[index]);
         });

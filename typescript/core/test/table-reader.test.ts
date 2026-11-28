@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'hypotes';
 import { fc, it } from 'hypotes/fast-check';
-import { DecodeError, TableBuilder, TableLayout, TableReader } from 'tafla';
+import { DecodeError, TableArena, TableBuilder, TableLayout, TableReader } from 'tafla';
 import { sliceOf, MAX_VALUES, SLICES, type Slice } from './conformance/arbitraries.ts';
 import type { OffsetType } from './conformance/description.ts';
 
@@ -10,7 +10,7 @@ const LARGE_BUFFER_TESTS = process.env.TAFLA_LARGE_BUFFER_TESTS === '1';
 const IS_LITTLE_ENDIAN = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1;
 
 it('should share the storage of aligned arrays, except swapped copies on a big-endian host', () => {
-    const builder = new TableBuilder(2);
+    const builder = new TableBuilder(TableArena.DEFAULT, 2);
     builder.setUint8Array(new Uint8Array([1, 2, 3]));
     builder.setFloat64Array(new Float64Array([1.5]));
 
@@ -33,7 +33,7 @@ it('should reject impossible vector counts before anything allocates for them', 
 });
 
 it.each([-1, 2, 0.5])('should reject item %s of a vector of 2 with a RangeError', index => {
-    const builder = new TableBuilder(1);
+    const builder = new TableBuilder(TableArena.DEFAULT, 1);
     builder.setVector([new Uint8Array([1]), new Uint8Array([2, 3])]);
     const reader = builder.finalize();
     const error = new RangeError(`Item ${index} is outside the vector of 2 at 4`);
@@ -53,7 +53,7 @@ it.each([0, 3])(
 );
 
 it('should find each vector item from its ends, as reading every item finds it', () => {
-    const builder = new TableBuilder(1);
+    const builder = new TableBuilder(TableArena.DEFAULT, 1);
     builder.setVector([new Uint8Array([1]), new Uint8Array(0), new Uint8Array([2, 3])]);
     const reader = builder.finalize();
     const vector = reader.rootOffset(0);
@@ -77,7 +77,7 @@ it('should find each vector item from its ends, as reading every item finds it',
 // A buffer of many tables can hold a table past 4 GiB, whose positions don't
 // fit in 32 bits, though its own offsets do
 test.runIf(LARGE_BUFFER_TESTS)('should find vector items past 4 GiB in a larger buffer', () => {
-    const builder = new TableBuilder(1);
+    const builder = new TableBuilder(TableArena.DEFAULT, 1);
     builder.setVector([new Uint8Array([1]), new Uint8Array([2, 3])]);
     const table = builder.finalize();
     const position = 2 ** 32;
@@ -121,7 +121,10 @@ describe('versioned tables', () => {
 
     it('should reject reading the version of an unversioned table', () => {
         const layout = TableLayout.create({ sized: true });
-        const reader = new TableReader(new TableBuilder(0, layout).bytes(), layout);
+        const reader = new TableReader(
+            new TableBuilder(TableArena.DEFAULT, 0, layout).bytes(),
+            layout
+        );
 
         expect(() => reader.getVersion()).toThrow(new TypeError('The table has no version'));
     });
@@ -130,7 +133,7 @@ describe('versioned tables', () => {
         const first = TableLayout.create({ sized: true, version: 1 });
         const second = first.withVersion(2);
 
-        const table = new TableBuilder(0, second).bytes();
+        const table = new TableBuilder(TableArena.DEFAULT, 0, second).bytes();
 
         expect(second.version()).toBe(2);
         expect(second.sized()).toBe(true);
@@ -175,7 +178,7 @@ describe('strings', () => {
         slice: Slice = { byteOffset: 0, fill: 0x41 }
     ): () => string {
         const layout = TableLayout.create({ offsetType });
-        const builder = new TableBuilder(1, layout);
+        const builder = new TableBuilder(TableArena.DEFAULT, 1, layout);
         // A string is stored as an array of its bytes is
         builder.setUint8Array(bytes);
         const reader = new TableReader(sliceOf(builder.bytes(), slice), layout);
@@ -263,7 +266,7 @@ describe('strings', () => {
                 'c'.repeat(length),
                 `${'d'.repeat(length - 1)}\u0001`
             ];
-            const builder = new TableBuilder(strings.length);
+            const builder = new TableBuilder(TableArena.DEFAULT, strings.length);
             for (const string of strings) {
                 builder.setString(string);
             }

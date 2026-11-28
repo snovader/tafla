@@ -35,7 +35,7 @@ import type { ElementSize, OffsetSize } from './types.ts';
  * Counts the bytes of a table, so that a {@link TableWriter} can write it
  * into bytes of exactly that length. It's for code that knows a table's
  * fields before it writes them, such as the code that tafla-gen generates,
- * which writes tables without recording their fields as `TableBuilder` does.
+ * which writes tables without the buffer that `TableBuilder` grows.
  *
  * The fields are added in order, each with its type's method, which takes
  * what decides its length: nothing for a scalar, the count of an array, the
@@ -326,52 +326,8 @@ export class TableSizer {
 }
 
 /**
- * Writes a table that was written already, from its bytes as they are, in
- * place of the fields that `startTable()` and `endTable()` would enclose:
- * after its parent's `setTable()`, or as a vector item before its
- * `setItemEnd()`. `TableBuilder` copies the tables that it can't write in
- * place with it: tables nested as bytes, builders that were written already,
- * and builders whose layout has a header or another offset type. Generated
- * code writes every nested table in place, so it's internal to the package,
- * and `TableWriter` assigns it in its static block, which can reach its
- * private fields.
- *
- * @throws {RangeError} If the bytes don't fit, without writing any of them.
- */
-// oxlint-disable-next-line import/no-mutable-exports -- Assigned once, in TableWriter's static block
-export let copyTable: (writer: TableWriter, table: Uint8Array) => void;
-
-// The scalar types, which are also the kinds of `TableBuilder`'s scalar fields
-export const INT8 = 0;
-export const UINT8 = 1;
-export const INT16 = 2;
-export const UINT16 = 3;
-export const INT32 = 4;
-export const UINT32 = 5;
-export const INT64 = 6;
-export const UINT64 = 7;
-export const FLOAT32 = 8;
-export const FLOAT64 = 9;
-
-/**
- * Reserves field `index`, a scalar of `size` bytes, as a setter does before
- * it stores its value: it throws a `RangeError` if the scalar doesn't fit,
- * and otherwise writes its offset, moves past it, and returns its position
- * in `target()`, where `TableBuilder` then stores it with the setter's
- * store. Each is a function that inlines little, so that TurboFan inlines
- * the builder's scalars whole. Internal to the package, as
- * {@link copyTable} is.
- */
-// oxlint-disable-next-line import/no-mutable-exports -- Assigned once, in TableWriter's static block
-export let reserveScalar: (
-    writer: TableWriter,
-    index: number,
-    size: ElementSize
-) => number;
-
-/**
  * Passed to `TableWriter`'s constructor by {@link newTableWriter}, whose
- * callers checked what the constructor would. Only the package can pass it,
+ * callers checked what the constructor would. Only this module can pass it,
  * so the constructor checks every other caller's arguments.
  */
 const CHECKED = Symbol('checked');
@@ -393,9 +349,8 @@ type CheckedTableWriter = new (
  * Each field's offset is written as the writer reaches the field. A nested
  * table follows its parent's `setTable()`, between `startTable()` and
  * `endTable()`; the items of a vector follow its `setVector()` the same way,
- * each followed by `setItemEnd()`, which writes where it ends. `TableBuilder`
- * writes through a writer too, once it has recorded its fields and counted
- * their length, so the two write the same bytes for the same fields.
+ * each followed by `setItemEnd()`, which writes where it ends. It writes the
+ * bytes that `TableBuilder` writes for the same fields.
  *
  * It's the target of the code that tafla-gen generates, whose calls follow
  * from the schema, so it doesn't check them again: fields are set in index
@@ -442,11 +397,6 @@ export class TableWriter {
     private _table = 0;
     /** The position of that table's first offset, after the root's header */
     declare private _slots: number;
-
-    static {
-        copyTable = (writer, table) => writer.#copyTable(table);
-        reserveScalar = TableWriter.#reserveScalar;
-    }
 
     /**
      * Returns bytes for a table of `fields` fields in `layout`, `length`
@@ -943,39 +893,6 @@ export class TableWriter {
         return this._bytes;
     }
 
-    /** {@link reserveScalar}, which reaches the writer's fields */
-    static #reserveScalar(
-        this: void,
-        writer: TableWriter,
-        index: number,
-        size: ElementSize
-    ): number {
-        /* oxlint-disable eslint/no-underscore-dangle -- another writer's own field, which the rule allows only after `this` */
-        const bytes = writer._bytes;
-        const position = writer._position;
-        assertFits(bytes, position + size);
-
-        const offsetSize = writer._size;
-        setSlot(
-            bytes,
-            writer._slots + index * offsetSize,
-            offsetSize,
-            position - writer._table
-        );
-        writer._position = position + size;
-        /* oxlint-enable eslint/no-underscore-dangle */
-
-        return position;
-    }
-
-    /** {@link copyTable}'s write, which only this class's fields can reach */
-    #copyTable(table: Uint8Array): void {
-        assertFits(this._bytes, this._position + table.length);
-
-        this._bytes.set(table, this._position);
-        this._position += table.length;
-    }
-
     /**
      * Where an array's elements go, after the padding that aligns them and
      * its count, once its count and its elements fit. It writes nothing, so
@@ -1044,10 +961,10 @@ export class TableWriter {
 /**
  * Writes an offset, length, count or header slot of `size` bytes at
  * `position`, little-endian. A value too large for the width is wrapped, as
- * DataView's setters wrap it; the sizer rejects a table long enough to need
- * one.
+ * DataView's setters wrap it; the sizer and `TableBuilder`'s setters reject
+ * a table long enough to need one.
  */
-function setSlot(
+export function setSlot(
     bytes: Uint8Array,
     position: number,
     size: OffsetSize,
@@ -1128,14 +1045,13 @@ function tableLengthError(length: number, layout: TableLayout): RangeError {
 }
 
 /**
- * A writer of a table of `fields` fields into `bytes`, for `TableSizer` and
- * `TableBuilder`. Their constructors checked the fields against the layout,
- * and they checked the table's length as they counted it, so the writer's
- * constructor doesn't check them again. That saves about 15 ns a table: in
- * Node 27, `writer()` took 34 ns rather than 49 ns, and a generated record's
- * write 0.140 µs rather than 0.156 µs.
+ * A writer of a table of `fields` fields into `bytes`, for `TableSizer`.
+ * Its constructor checked the fields against the layout, and its `writer()`
+ * the table's length, so the writer's constructor doesn't check them again.
+ * That saves about 15 ns a table: in Node 27, `writer()` took 34 ns rather
+ * than 49 ns, and a generated record's write 0.140 µs rather than 0.156 µs.
  */
-export function newTableWriter(
+function newTableWriter(
     bytes: Uint8Array,
     fields: number,
     layout: TableLayout

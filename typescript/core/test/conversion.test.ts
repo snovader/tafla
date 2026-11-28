@@ -1,6 +1,6 @@
 import { describe, expect } from 'hypotes';
 import { fc, it } from 'hypotes/fast-check';
-import { TableBuilder, TableWriter } from 'tafla';
+import { TableArena, TableBuilder, TableWriter } from 'tafla';
 import { sliceOf, SLICES } from './conformance/arbitraries.ts';
 import { setAttempts, writeAttempts, SCALAR_WRITES } from './scalars.ts';
 
@@ -57,7 +57,7 @@ const doubles = fc.array(
 
 /** Writes `values` with the builder and reads them back with the reader */
 function roundTrip(type: NumberArrayType, values: ArrayLike<number>): ArrayLike<number> {
-    const builder = new TableBuilder(1);
+    const builder = new TableBuilder(TableArena.DEFAULT, 1);
     builder[`set${type}Array`](values);
 
     const reader = builder.finalize();
@@ -114,7 +114,7 @@ describe.each([
             ];
 
             for (const input of inputs) {
-                const builder = new TableBuilder(1);
+                const builder = new TableBuilder(TableArena.DEFAULT, 1);
                 builder[`set${type}Array`](input);
 
                 const reader = builder.finalize();
@@ -127,7 +127,7 @@ describe.each([
     );
 
     it('should reject numbers', () => {
-        const builder = new TableBuilder(1);
+        const builder = new TableBuilder(TableArena.DEFAULT, 1);
 
         expect(() => {
             builder[`set${type}Array`]([1] as unknown as bigint[]);

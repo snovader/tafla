@@ -3,6 +3,7 @@ import { fc, it as property } from 'hypotes/fast-check';
 import {
     DecodeError,
     StringVector,
+    TableArena,
     TableBuilder,
     TableLayout,
     TableReader,
@@ -16,7 +17,7 @@ const VECTORS = fc.array(STRINGS, { maxLength: 8 });
 
 /** A table whose only field is a vector of `strings` */
 function tableOf(strings: readonly string[], layout?: TableLayout): Uint8Array {
-    const builder = new TableBuilder(1, layout);
+    const builder = new TableBuilder(TableArena.DEFAULT, 1, layout);
     builder.setStringVector(strings);
 
     return builder.bytes();
@@ -44,7 +45,7 @@ describe('a vector of strings', () => {
     property.prop([VECTORS])(
         'should take the bytes of a vector whose items are the strings’ UTF-8',
         strings => {
-            const builder = new TableBuilder(1);
+            const builder = new TableBuilder(TableArena.DEFAULT, 1);
             builder.setVector(strings.map(string => ENCODER.encode(string)));
 
             expect(tableOf(strings)).toStrictEqual(builder.bytes());
@@ -350,7 +351,7 @@ describe('a vector of strings that writers reject', () => {
             const size = layout.offsetSize();
             // Two offsets, a uint8, and the vector's count and its one end
             const room = MAX_VALUES[offsetType] - 4 * size - 1;
-            const builder = new TableBuilder(2, layout);
+            const builder = new TableBuilder(TableArena.DEFAULT, 2, layout);
             builder.setUint8(7);
 
             expect(() => builder.setStringVector(['a'.repeat(room + 1)])).toThrow(

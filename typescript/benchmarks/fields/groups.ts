@@ -1,5 +1,5 @@
 import type { Group, Variant } from 'benk';
-import { TableBuilder, type TableReader } from 'tafla';
+import { TableArena, TableBuilder, type TableReader } from 'tafla';
 
 type TypedArray =
     | Int8Array<ArrayBuffer>
@@ -120,8 +120,8 @@ function setterVariant([type, TypedArray]: ElementType): Variant {
     const values = randomValues(TypedArray);
 
     const run = compile(
-        { TableBuilder, values },
-        `const builder = new TableBuilder(values.length);
+        { TableArena, TableBuilder, values },
+        `const builder = new TableBuilder(TableArena.DEFAULT, values.length);
         for (let i = 0; i < values.length; i++) {
             builder.set${type}(values[i]);
         }
@@ -159,8 +159,8 @@ function arraySetterVariant(
     const name = `set${type}Array`;
 
     const run = compile(
-        { TableBuilder, inputs },
-        `const builder = new TableBuilder(inputs.length);
+        { TableArena, TableBuilder, inputs },
+        `const builder = new TableBuilder(TableArena.DEFAULT, inputs.length);
         for (let i = 0; i < inputs.length; i++) {
             builder.set${type}Array(inputs[i]);
         }
@@ -206,7 +206,7 @@ function compile(
 
 /** A table of a field of `values`' type for each of them */
 function tableOfFields(values: TypedArray, type: TypeName): TableReader {
-    const builder = new TableBuilder(values.length);
+    const builder = new TableBuilder(TableArena.DEFAULT, values.length);
     const set = builder[`set${type}`].bind(builder) as (
         value: bigint | number
     ) => void;
@@ -220,7 +220,7 @@ function tableOfFields(values: TypedArray, type: TypeName): TableReader {
 
 /** A table of an array field of `arrays`' type for each of them */
 function tableOfArrays(arrays: TypedArray[], type: TypeName): TableReader {
-    const builder = new TableBuilder(arrays.length);
+    const builder = new TableBuilder(TableArena.DEFAULT, arrays.length);
     const set = builder[`set${type}Array`].bind(builder) as (
         values: TypedArray
     ) => void;
