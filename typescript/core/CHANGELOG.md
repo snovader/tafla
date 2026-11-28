@@ -173,8 +173,9 @@ repository's first commits, for code built from its source before the release.
   Arrays, arrays of structs, structs and tables given as bytes of 1 KiB or
   more are kept until the table is written and copied into it once; shorter
   values are copied when they're set, rather than all of them when the table
-  is written. A string is given room in the buffer for its longest UTF-8
-  rather than counted first. So:
+  is written, as are arrays of bools of any length, which are converted
+  then. A string, or a vector of strings, is given room in the buffer for
+  its longest UTF-8 rather than counted first. So:
   - A number for an `int64` field, or a `bigint` for another, throws its
     `TypeError` from the setter, which leaves the builder as it was, rather
     than from `finalize()`, except in an array of 1 KiB or more.

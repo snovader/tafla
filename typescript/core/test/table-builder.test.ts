@@ -44,7 +44,15 @@ const KIB_FIELDS: fc.Arbitrary<FieldDescription> = fc.oneof(
     })),
     fc
         .integer({ min: 1000, max: 1100 })
-        .map((length): FieldDescription => ({ type: 'string', value: 'é'.repeat(length) }))
+        .map((length): FieldDescription => ({ type: 'string', value: 'é'.repeat(length) })),
+    fc.integer({ min: 330, max: 370 }).map((length): FieldDescription => ({
+        type: 'string[]',
+        value: ['a', 'é'.repeat(length), '', 'é'.repeat(length)]
+    })),
+    fc.integer({ min: 1000, max: 1100 }).map((length): FieldDescription => ({
+        type: 'bool[]',
+        value: Array.from({ length }, (_, i) => i % 3 === 0)
+    }))
 );
 
 /** Tables, nested from builders or bytes, with fields of about 1 KiB */
@@ -128,6 +136,42 @@ describe('strings', () => {
 
         const buffer = new TableReader(builder.bytes(), layout);
         expect(buffer.getString(buffer.rootOffset(0))).toBe(string);
+    });
+
+    it("should write a vector of strings when it's counted, into a buffer grown to its end", () => {
+        // As above, for strings in a vector, whose room is counted together
+        const taken = new TableBuilder(TableArena.DEFAULT, 0);
+        const strings = ['a'.repeat(11_000), 'b'.repeat(11_000), SHORTFALL_STRINGS['well-formed']];
+        const layout = TableLayout.create({ offsetType: 'uint16' });
+        const builder = new TableBuilder(TableArena.DEFAULT, 1, layout);
+        builder.setStringVector(strings);
+        taken.bytes();
+
+        const buffer = new TableReader(builder.bytes(), layout);
+        expect(buffer.getStringVector(buffer.rootOffset(0))).toStrictEqual(strings);
+    });
+
+    it('should reject a vector of strings that makes the table too long by its UTF-8, and leave the builder as it was', () => {
+        // Two offsets, a uint8, the vector's count and two ends make 6 bytes,
+        // and 125 é's 250 bytes of UTF-8 more: 256, where 3 bytes a code
+        // unit would make 381
+        const layout = TableLayout.create({ offsetType: 'uint8' });
+        const builder = new TableBuilder(TableArena.DEFAULT, 2, layout);
+        builder.setUint8(1);
+
+        expect(() => builder.setStringVector(['é'.repeat(63), 'é'.repeat(62)])).toThrow(
+            new RangeError('Field 2 makes the table 256 bytes, too long for uint8 offsets')
+        );
+        builder.setStringVector(['é'.repeat(62), 'é'.repeat(62)]);
+        expect(builder.bytes()).toStrictEqual(
+            writeTable({
+                layout: { sized: false, versioned: false, offsetType: 'uint8' },
+                fields: [
+                    { type: 'uint8', value: 1 },
+                    { type: 'string[]', value: ['é'.repeat(62), 'é'.repeat(62)] }
+                ]
+            })
+        );
     });
 });
 
