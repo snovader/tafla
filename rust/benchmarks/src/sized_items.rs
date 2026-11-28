@@ -46,9 +46,9 @@ pub fn last_item(bytes: &[u8]) -> Result<f64, Error> {
     let reader = TableReader::new(bytes, TableLayout::DEFAULT);
     let vector = reader.get_vector(reader.root_offset(0)?)?;
     let last = vector.len().checked_sub(1).ok_or_else(no_items)?;
-    let item = vector.get(last).ok_or_else(no_items)??;
+    let item = read_item(vector.get(last).ok_or_else(no_items)??)?;
 
-    Ok(sum_table(item)?)
+    Ok(sum_item(item.value, item.first, item.second))
 }
 
 /// Checks that every item reads back from `Vector::get()` as written
@@ -68,13 +68,14 @@ pub fn check(list: &List, bytes: &[u8]) -> Result<(), Error> {
     }
 
     for (index, expected) in list.items.iter().enumerate() {
-        let bytes = vector.get(index).ok_or_else(no_items)??;
-        let size = TableReader::new(bytes, ITEM_LAYOUT).size()?;
-        if size != bytes.len() {
-            return Err(format!("Item {index} has {} bytes, not {size}", bytes.len()).into());
+        let item_bytes = vector.get(index).ok_or_else(no_items)??;
+        let size = TableReader::new(item_bytes, ITEM_LAYOUT).size()?;
+        if size != item_bytes.len() {
+            let length = item_bytes.len();
+            return Err(format!("Item {index} has {length} bytes, not {size}").into());
         }
 
-        let item = read_item(bytes)?;
+        let item = read_item(item_bytes)?;
         if bits(&item) != bits(expected) {
             return Err(format!("Item {index} reads as {item:?} rather than {expected:?}").into());
         }
@@ -111,18 +112,6 @@ fn read_item(bytes: &[u8]) -> Result<Item, DecodeError> {
         first: item.get_f32(item.field_offset(pair, 0)?)?,
         second: item.get_f32(item.field_offset(pair, 1)?)?,
     })
-}
-
-/// Sums an item, as [`read_item()`] reads it
-fn sum_table(bytes: &[u8]) -> Result<f64, DecodeError> {
-    let item = TableReader::new(bytes, ITEM_LAYOUT);
-    let pair = item.root_offset(1)?;
-
-    Ok(sum_item(
-        item.get_f32(item.root_offset(0)?)?,
-        item.get_f32(item.field_offset(pair, 0)?)?,
-        item.get_f32(item.field_offset(pair, 1)?)?,
-    ))
 }
 
 const fn bits(item: &Item) -> [u32; 3] {
