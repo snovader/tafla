@@ -246,12 +246,7 @@ public struct TableReader: ~Escapable {
     /// ``DecodeError/invalidUTF8(position:)`` if it isn't valid UTF-8.
     public func string(at position: Int) throws(DecodeError) -> String {
         let utf8 = try arrayBytes(at: position, elementSize: 1)
-
-        guard let string = utf8.withUnsafeBytes(decodeUTF8) else {
-            throw .invalidUTF8(position: position)
-        }
-
-        return string
+        return try decodeString(utf8, at: position)
     }
 
     /// Reads the `size` bytes, which mustn't be negative, of the struct at

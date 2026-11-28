@@ -292,17 +292,30 @@ median of 1.5% and a largest of 29.3%, FlatBuffers' write of the document of
 The A/A pair agreed within 1.1%. A first run, before the code took its final
 form, agreed with these figures within a few percent.
 
+The three rows that read a string field, the record's and the documents'
+deserialize, are from a full run on 2026-11-27, with the same toolchain and
+libraries, after `TableReader.string(at:)` came to validate each string as a
+`UTF8Span` and copy it with `String(copying:)`. It ran through the machine's
+benchmark lock, while the 1-minute load average was 2.26 when it started and
+2.23 when it ended. The median rounds of the record and the document of 100
+rows were within 2.6% of the fastest, and the document of 100,000 rows'
+within 7.3%. Three such runs alternated with three of the build before, in
+which tafla and tafla-gen read the record in 111 to 115 ns and the document
+of 100 rows in 0.37 to 0.38 µs: they now take 0.57 to 0.58 of the time for
+the record and 0.88 for the document. Every other row of tafla and tafla-gen
+stayed within 1.5% of the build before.
+
 Fastest round in µs per call, and its ratio to tafla's:
 
 | Benchmark                                          | tafla   | tafla-gen        | flatbuffers     | protobuf        | msgpack             | RawSpan          |
 | -------------------------------------------------- | ------: | ---------------: | --------------: | --------------: | ------------------: | ---------------: |
 | record: serialize                                  |   0.221 |   0.101 (0.458×) |  0.313 (1.421×) |  0.131 (0.595×) |      3.530 (16.01×) |                  |
-| record: deserialize                                |   0.117 |   0.124 (1.056×) |  0.769 (6.561×) |  0.118 (1.010×) |      2.257 (19.26×) |                  |
+| record: deserialize                                |  0.0644 |  0.0642 (0.996×) |  0.791 (12.27×) |  0.119 (1.852×) |      2.283 (35.43×) |                  |
 | document of 100 rows: serialize                    |   0.554 |   0.174 (0.314×) |  0.499 (0.900×) |  0.572 (1.032×) |      189.2 (341.4×) |                  |
-| document of 100 rows: deserialize                  |   0.362 |   0.378 (1.045×) |  1.836 (5.072×) |  1.105 (3.052×) |      147.2 (406.5×) |                  |
+| document of 100 rows: deserialize                  |   0.322 |   0.342 (1.060×) |  1.876 (5.821×) |  1.136 (3.525×) |      150.5 (467.0×) |                  |
 | document of 100 rows: sum a column per element     |  0.0465 |  0.0525 (1.130×) |  2.434 (52.39×) |  1.159 (24.95×) |     147.2 (3168.3×) |                  |
 | document of 100,000 rows: serialize                |   17.17 |   16.86 (0.982×) |  76.14 (4.435×) |  426.6 (24.85×) | 186014.7 (10834.5×) |                  |
-| document of 100,000 rows: deserialize              |   16.70 |   17.01 (1.019×) |  18.36 (1.100×) |  738.3 (44.22×) |  144924.2 (8680.7×) |                  |
+| document of 100,000 rows: deserialize              |   16.53 |   16.66 (1.008×) |  18.27 (1.105×) |  751.2 (45.44×) |  144493.7 (8740.7×) |                  |
 | document of 100,000 rows: sum a column per element |   86.50 |   86.34 (0.998×) | 1357.4 (15.69×) |  820.5 (9.486×) |  145362.6 (1680.6×) |                  |
 | vector of 100 nested tables: serialize             |   20.66 |  1.406 (0.0680×) |  6.140 (0.297×) |  15.35 (0.743×) |      287.1 (13.90×) |                  |
 | vector of 100 nested tables: deserialize           |   1.271 |   2.339 (1.839×) |  58.75 (46.21×) |  19.59 (15.41×) |      197.5 (155.3×) |                  |
@@ -323,10 +336,10 @@ were measured on the same machine.
   cache, which it repeats for every array, and the rest in the system's
   `malloc()` and `malloc_size()`. So each allocation weighs more here than in
   the other languages, as the vector's builders show below.
-- tafla reads a document of 100 rows in 0.36 µs and one of 100,000 in
-  16.7 µs: four allocations, of the name and the three columns, and copies of
-  their bytes. FlatBuffers copies its columns in bulk too, in 18.4 µs, and
-  protobuf and msgpack decode every element, in 0.74 and 145 ms. In place,
+- tafla reads a document of 100 rows in 0.32 µs and one of 100,000 in
+  16.5 µs: four allocations, of the name and the three columns, and copies of
+  their bytes. FlatBuffers copies its columns in bulk too, in 18.3 µs, and
+  protobuf and msgpack decode every element, in 0.75 and 144 ms. In place,
   summing the 100,000 floats takes tafla and tafla-gen 86.5 µs, bound by
   the additions, as in Go, 88.7 µs, and C++, 86.9 µs. FlatBuffers'
   `FlatbufferVector` takes 1.36 ms, 13.6 ns for each element that its
@@ -338,9 +351,11 @@ were measured on the same machine.
 - tafla-gen writes the record in 101 ns, in one allocation, protobuf in
   131 ns, and tafla's builder in 221 ns, in two: the array in which the
   builder records its fields, and the bytes. Reading the record takes tafla
-  117 ns, tafla-gen 124 ns and protobuf 118 ns, most of it the copy of its
-  name, whose 16 bytes a `String` allocates, where Go's tafla shares them
-  with the bytes in 27 ns.
+  and tafla-gen 64 ns, and protobuf 119 ns, most of it the copy of its name,
+  whose 16 bytes a `String` allocates, where Go's tafla shares them with the
+  bytes in 27 ns. tafla validates the name as a `UTF8Span` before copying it,
+  in about half the time that `String(validating:as:)` took, with which
+  tafla read the record in 117 ns.
 - The vector of 100 nested tables is the shape that tafla's builders handle
   worst, as in the other languages, and more so here: 20.7 µs, in 203
   allocations, an array of fields for each of the 200 nested builders, which
@@ -450,9 +465,10 @@ Nothing allocates.
   took 27 rather than 35 ns for the vector's last item, 1.17 rather than
   2.25 µs for every item, 1.25 rather than 2.34 µs for the codec's read of
   the vector, as fast as tafla's by hand, and 120 rather than 126 ns for the
-  record. The array of structs didn't change, 184 ns for every struct, nor
-  did the remaining gap of every item of the vector, 1.17 against 0.46 µs,
-  which lie in the generated views' own code rather than in calls to it.
+  record, whose name was then validated with `String(validating:as:)`. The
+  array of structs didn't change, 184 ns for every struct, nor did the
+  remaining gap of every item of the vector, 1.17 against 0.46 µs, which lie
+  in the generated views' own code rather than in calls to it.
 
 ## Lists of strings
 
@@ -514,52 +530,56 @@ What differs from the TypeScript suite:
 
 One full run on 2026-11-27, on an Apple M2 Pro with 32 GB in macOS 27.0.1,
 built by Apple Swift 6.4.2, through the machine's benchmark lock. It took a
-minute, while other processes kept the 1-minute load average at 1.46 when it
-started and 1.79 when it ended, on the 10 cores. The median call was within
-2% of the fastest for 78 of the 81 variants' runs, and within 4.4% for all
-of them. The A/A pair agreed within 1%.
+minute, while other processes kept the 1-minute load average at 2.23 when it
+started and 2.42 when it ended, on the 10 cores. The median call was within
+3% of the fastest for 79 of the 81 variants' runs, and within 3.6% for all
+of them. The A/A pair agreed within 1.4%.
 
 Fastest call in µs, and its ratio to the vector of strings':
 
 | Benchmark | tafla-gen [string] | tafla-gen [Name] | tafla-gen [string] A/A |
 | --- | ---: | ---: | ---: |
-| 10 × 16 chars of ASCII: serialize | 0.238 | 0.417 (1.754×) | 0.237 (0.999×) |
-| 10 × 16 chars of ASCII: deserialize | 0.612 | 1.134 (1.852×) | 0.614 (1.002×) |
-| 10 × 16 chars of ASCII: read the last string | 0.0606 | 0.114 (1.872×) | 0.0607 (1.001×) |
-| 10 × 256 chars of ASCII: serialize | 0.251 | 0.436 (1.737×) | 0.251 (0.999×) |
-| 10 × 256 chars of ASCII: deserialize | 0.764 | 1.289 (1.687×) | 0.765 (1.001×) |
-| 10 × 256 chars of ASCII: read the last string | 0.0765 | 0.130 (1.697×) | 0.0766 (1.001×) |
-| 10 × 8 chars of 3 bytes: serialize | 0.241 | 0.421 (1.748×) | 0.241 (0.998×) |
-| 10 × 8 chars of 3 bytes: deserialize | 0.768 | 1.290 (1.679×) | 0.767 (0.998×) |
-| 10 × 8 chars of 3 bytes: read the last string | 0.0761 | 0.129 (1.692×) | 0.0762 (1.001×) |
-| 100 × 16 chars of ASCII: serialize | 1.549 | 2.695 (1.739×) | 1.548 (0.999×) |
-| 100 × 16 chars of ASCII: deserialize | 5.478 | 10.72 (1.957×) | 5.468 (0.998×) |
-| 100 × 16 chars of ASCII: read the last string | 0.0608 | 0.114 (1.866×) | 0.0608 (1.000×) |
-| 100 × 256 chars of ASCII: serialize | 1.649 | 2.960 (1.795×) | 1.649 (1.000×) |
-| 100 × 256 chars of ASCII: deserialize | 7.269 | 12.48 (1.717×) | 7.261 (0.999×) |
-| 100 × 256 chars of ASCII: read the last string | 0.0769 | 0.130 (1.688×) | 0.0765 (0.995×) |
-| 100 × 8 chars of 3 bytes: serialize | 1.563 | 2.716 (1.738×) | 1.568 (1.003×) |
-| 100 × 8 chars of 3 bytes: deserialize | 7.027 | 12.21 (1.738×) | 6.994 (0.995×) |
-| 100 × 8 chars of 3 bytes: read the last string | 0.0756 | 0.128 (1.690×) | 0.0748 (0.990×) |
-| 10,000 × 16 chars of ASCII: serialize | 144.8 | 255.7 (1.766×) | 144.5 (0.998×) |
-| 10,000 × 16 chars of ASCII: deserialize | 544.1 | 1067.4 (1.962×) | 542.8 (0.998×) |
-| 10,000 × 16 chars of ASCII: read the last string | 0.0600 | 0.113 (1.889×) | 0.0602 (1.003×) |
-| 10,000 × 256 chars of ASCII: serialize | 157.0 | 287.4 (1.831×) | 157.1 (1.001×) |
-| 10,000 × 256 chars of ASCII: deserialize | 711.9 | 1239.2 (1.741×) | 718.6 (1.009×) |
-| 10,000 × 256 chars of ASCII: read the last string | 0.0763 | 0.130 (1.704×) | 0.0763 (1.001×) |
-| 10,000 × 8 chars of 3 bytes: serialize | 148.3 | 258.9 (1.746×) | 148.4 (1.001×) |
-| 10,000 × 8 chars of 3 bytes: deserialize | 700.6 | 1222.1 (1.744×) | 700.7 (1.000×) |
-| 10,000 × 8 chars of 3 bytes: read the last string | 0.0759 | 0.129 (1.697×) | 0.0754 (0.993×) |
+| 10 × 16 chars of ASCII: serialize | 0.237 | 0.413 (1.745×) | 0.237 (1.001×) |
+| 10 × 16 chars of ASCII: deserialize | 0.618 | 0.634 (1.026×) | 0.622 (1.005×) |
+| 10 × 16 chars of ASCII: read the last string | 0.0619 | 0.0647 (1.045×) | 0.0620 (1.002×) |
+| 10 × 256 chars of ASCII: serialize | 0.252 | 0.439 (1.740×) | 0.254 (1.008×) |
+| 10 × 256 chars of ASCII: deserialize | 0.791 | 0.802 (1.013×) | 0.789 (0.997×) |
+| 10 × 256 chars of ASCII: read the last string | 0.0803 | 0.0832 (1.035×) | 0.0802 (0.998×) |
+| 10 × 8 chars of 3 bytes: serialize | 0.241 | 0.422 (1.751×) | 0.242 (1.002×) |
+| 10 × 8 chars of 3 bytes: deserialize | 0.771 | 0.794 (1.030×) | 0.766 (0.994×) |
+| 10 × 8 chars of 3 bytes: read the last string | 0.0771 | 0.0794 (1.031×) | 0.0771 (1.001×) |
+| 100 × 16 chars of ASCII: serialize | 1.537 | 2.689 (1.750×) | 1.541 (1.003×) |
+| 100 × 16 chars of ASCII: deserialize | 5.511 | 5.811 (1.054×) | 5.546 (1.006×) |
+| 100 × 16 chars of ASCII: read the last string | 0.0619 | 0.0646 (1.043×) | 0.0619 (1.000×) |
+| 100 × 256 chars of ASCII: serialize | 1.675 | 2.980 (1.779×) | 1.669 (0.996×) |
+| 100 × 256 chars of ASCII: deserialize | 7.233 | 7.427 (1.027×) | 7.298 (1.009×) |
+| 100 × 256 chars of ASCII: read the last string | 0.0795 | 0.0828 (1.041×) | 0.0801 (1.008×) |
+| 100 × 8 chars of 3 bytes: serialize | 1.585 | 2.737 (1.727×) | 1.585 (1.000×) |
+| 100 × 8 chars of 3 bytes: deserialize | 7.185 | 7.410 (1.031×) | 7.189 (1.000×) |
+| 100 × 8 chars of 3 bytes: read the last string | 0.0773 | 0.0798 (1.032×) | 0.0769 (0.994×) |
+| 10,000 × 16 chars of ASCII: serialize | 145.6 | 255.6 (1.755×) | 145.0 (0.996×) |
+| 10,000 × 16 chars of ASCII: deserialize | 553.3 | 579.2 (1.047×) | 545.6 (0.986×) |
+| 10,000 × 16 chars of ASCII: read the last string | 0.0618 | 0.0645 (1.043×) | 0.0617 (0.998×) |
+| 10,000 × 256 chars of ASCII: serialize | 157.2 | 290.7 (1.849×) | 158.7 (1.010×) |
+| 10,000 × 256 chars of ASCII: deserialize | 721.2 | 739.5 (1.025×) | 722.1 (1.001×) |
+| 10,000 × 256 chars of ASCII: read the last string | 0.0796 | 0.0823 (1.034×) | 0.0799 (1.004×) |
+| 10,000 × 8 chars of 3 bytes: serialize | 149.5 | 259.2 (1.733×) | 148.6 (0.994×) |
+| 10,000 × 8 chars of 3 bytes: deserialize | 701.2 | 726.0 (1.035×) | 698.4 (0.996×) |
+| 10,000 × 8 chars of 3 bytes: read the last string | 0.0771 | 0.0794 (1.029×) | 0.0773 (1.002×) |
 
-- The vector of strings is written in 0.55–0.58 times the time of the
+- The vector of strings is written in 0.54–0.58 times the time of the
   vector of tables, in one allocation, the table's, where the vector of
   tables also allocates an array of the tables' fields.
-- Every string is read in 0.51–0.60 times the time, and the last string
-  found in 0.53–0.59 times. Most of that is the decoder rather than the
-  layout: `StringVector` validates each string as a `UTF8Span` and copies
-  it, where `TableReader.string(at:)`, which reads the vector of tables'
-  strings, still validates with `String(validating:as:)`, which takes about
-  twice as long for each string. Read with the same decoder, the vector of
-  tables took 1.02–1.06 times as long as the vector of strings in shorter
-  runs, which a change of `string(at:)` of its own would bring to every
-  string field.
+- Every string is read in 0.95–0.99 times the time, and the last string
+  found in 0.96–0.97 times. Both read each string alike, validated as a
+  `UTF8Span` and copied into a `String`, which takes most of the time, so
+  what's left is the layout's: the vector of strings finds a string from two
+  ends, where the vector of tables finds its item's table, and then the
+  string's field within it, through the generated view's getter.
+- Before `TableReader.string(at:)`, which reads a string field, validated
+  each string as a `UTF8Span`, it validated with `String(validating:as:)`,
+  which takes about twice as long for each string, and the vector of tables
+  took 1.68–1.96 times as long as the vector of strings to read. This run
+  is one of three that alternated with three of that build: the vector of
+  tables now reads every string in 0.52–0.62 of the time, and finds the last
+  in 0.56–0.62, and every other row, and the A/A pair's, stayed within 3.2%.
