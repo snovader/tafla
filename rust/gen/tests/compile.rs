@@ -24,15 +24,21 @@ fn imports_the_runtime_that_the_options_name() {
         (
             "python",
             "tables.tafla",
-            "from tables.tafla import ByteBuffer",
+            "from tables.tafla import FixedFields, TableLayout, TableReader, TableWriter\n",
         ),
         (
             "java",
             "org.example.tafla",
-            "import org.example.tafla.ByteBuffer;\n",
+            "import org.example.tafla.TableReader;\n",
         ),
         ("rust", "crate::tafla", "use crate::tafla::{"),
         ("cpp", "vendor/tafla.hpp", "\n#include <vendor/tafla.hpp>\n"),
+        ("swift", "VendoredTafla", "\nimport VendoredTafla\n"),
+        (
+            "csharp",
+            "Vendor.Tafla",
+            " _reader = new global::Vendor.Tafla.TableReader(bytes, TableLayout);\n",
+        ),
     ] {
         let options = Options {
             runtime: Some(runtime.to_owned()),
@@ -54,10 +60,18 @@ fn imports_taflas_runtimes_by_default() {
     for (target, import) in [
         ("typescript", "} from 'tafla';\n"),
         ("javascript", "} from 'tafla';\n"),
-        ("python", "from tafla import ByteBuffer"),
-        ("java", "import io.github.snovader.tafla.ByteBuffer;\n"),
+        (
+            "python",
+            "from tafla import FixedFields, TableLayout, TableReader, TableWriter\n",
+        ),
+        ("java", "import io.github.snovader.tafla.TableReader;\n"),
         ("rust", "use tafla::{"),
         ("cpp", "\n#include <tafla/tafla.hpp>\n"),
+        ("swift", "\nimport Tafla\n"),
+        (
+            "csharp",
+            " _reader = new global::Tafla.TableReader(bytes, TableLayout);\n",
+        ),
     ] {
         for file in generate("point.tafla", SCHEMA, target, &Options::default()) {
             assert!(
@@ -98,8 +112,9 @@ fn rust_imports_break_where_rustfmt_breaks_them() {
 
 #[test]
 fn rust_imports_fill_lines_as_rustfmt_fills_them() {
-    // Every name that the module imports, whose first line rustfmt fills to
-    // 99 columns, a column less than its `max_width`
+    // Every name that the module imports. rustfmt fills a line to 99 columns,
+    // a column less than its `max_width`, so `TableSizer`, which would end the
+    // first line at column 100, starts the second
     let source = "\
 struct Pair { a: uint8; }
 table Nested { a: uint8; }
@@ -109,8 +124,8 @@ message Vectors { nested: Nested; items: [Nested]; }
     let files = generate("every.tafla", source, "rust", &Options::default());
 
     let expected = "use tafla::{
-    Alignment, ArrayView, BuildError, ByteBuffer, DecodeError, OffsetType, TableLayout, TableSizer,
-    TableWriter, Vector,
+    Alignment, ArrayView, BuildError, DecodeError, OffsetType, TableLayout, TableReader,
+    TableSizer, TableWriter, Vector,
 };
 ";
     assert!(
@@ -217,6 +232,44 @@ fn the_cpp_namespace_is_the_package_or_the_schemas_name() {
 }
 
 #[test]
+fn the_csharp_namespace_is_the_package_or_the_schemas_name() {
+    let namespace = |file_name: &str, package: Option<&str>| {
+        let options = Options {
+            runtime: None,
+            package: package.map(|package| package.parse().unwrap()),
+        };
+        let files = generate(file_name, SCHEMA, "csharp", &options);
+        let contents = &files[0].contents;
+
+        let start = contents.find("\nnamespace ").unwrap() + "\nnamespace ".len();
+        let end = start + contents[start..].find(";\n").unwrap();
+        contents[start..end].to_owned()
+    };
+
+    assert_eq!(
+        namespace("point.tafla", Some("Org.Example.Tables")),
+        "Org.Example.Tables"
+    );
+    // C#'s keywords and `global` as verbatim identifiers, and Java's `$`,
+    // which C# names can't hold
+    assert_eq!(
+        namespace("point.tafla", Some("org.event.global.$d.a$b")),
+        "org.@event.@global._d.a_b"
+    );
+    for (file_name, expected) in [
+        ("schemas/point_cloud.v1.tafla", "PointCloud"),
+        ("point-cloud.tafla", "PointCloud"),
+        ("my--points.tafla", "MyPoints"),
+        ("1st.tafla", "Schema1st"),
+        ("_points.tafla", "Points"),
+        ("class.tafla", "Class"),
+        ("punktwolke_ä.tafla", "Punktwolke"),
+    ] {
+        assert_eq!(namespace(file_name, None), expected, "{file_name}");
+    }
+}
+
+#[test]
 fn a_java_package_is_identifiers_separated_by_dots() {
     for name in ["generated", "org.example.tables", "a1.$b._c", "org.Example"] {
         let package: JavaPackage = name.parse().unwrap();
@@ -258,11 +311,13 @@ fn files_are_named_after_the_schema_and_name_it() {
     let file_name = "schemas/v1/point_cloud.v1.tafla";
 
     for (target, path) in [
-        ("typescript", "pointCloud.ts"),
-        ("javascript", "pointCloud.js"),
+        ("typescript", "point-cloud.ts"),
+        ("javascript", "point-cloud.js"),
         ("python", "point_cloud.py"),
         ("rust", "point_cloud.rs"),
         ("cpp", "point_cloud.hpp"),
+        ("swift", "point_cloud.swift"),
+        ("csharp", "PointCloud.cs"),
     ] {
         let files = generate(file_name, SCHEMA, target, &Options::default());
 
@@ -272,6 +327,25 @@ fn files_are_named_after_the_schema_and_name_it() {
                 "Generated by tafla-gen from schemas/v1/point_cloud.v1.tafla. Do not edit."
             )
         );
+    }
+}
+
+#[test]
+fn typescript_and_javascript_modules_take_a_hyphen_for_each_underscore() {
+    for (file_name, module) in [
+        ("point_cloud.tafla", "point-cloud"),
+        ("point-cloud.tafla", "point-cloud"),
+        ("pointCloud.tafla", "pointCloud"),
+        ("points_2d.tafla", "points-2d"),
+    ] {
+        for (target, extension) in [("typescript", "ts"), ("javascript", "js")] {
+            let files = generate(file_name, SCHEMA, target, &Options::default());
+            assert_eq!(
+                paths(&files),
+                [format!("{module}.{extension}")],
+                "{file_name}"
+            );
+        }
     }
 }
 
@@ -316,10 +390,12 @@ fn files_are_named_after_the_schema_without_its_windows_directory() {
         "C:point_cloud.tafla",
     ] {
         for (target, path) in [
-            ("typescript", "pointCloud.ts"),
+            ("typescript", "point-cloud.ts"),
             ("python", "point_cloud.py"),
             ("rust", "point_cloud.rs"),
             ("cpp", "point_cloud.hpp"),
+            ("swift", "point_cloud.swift"),
+            ("csharp", "PointCloud.cs"),
         ] {
             let files = generate(file_name, SCHEMA, target, &Options::default());
             assert_eq!(paths(&files), [path], "{file_name}");
@@ -342,9 +418,17 @@ fn a_header_names_any_path_in_one_comment() {
         ("java", "//", shown.replace("\\u", "\\u005cu")),
         ("rust", "//", shown.to_owned()),
         ("cpp", "//", shown.to_owned()),
+        ("swift", "//", shown.to_owned()),
+        ("csharp", "//", shown.to_owned()),
     ] {
         for file in generate(file_name, SCHEMA, target, &Options::default()) {
-            let header = file.contents.lines().next().unwrap();
+            // C#'s tools take a comment that starts with `<auto-generated>` as
+            // marking generated code, which this one is within
+            let mut lines = file.contents.lines();
+            if target == "csharp" {
+                assert_eq!(lines.next(), Some("// <auto-generated>"));
+            }
+            let header = lines.next().unwrap();
             assert_eq!(
                 header,
                 format!("{comment} Generated by tafla-gen from {shown}. Do not edit."),
@@ -365,6 +449,11 @@ fn a_schema_without_definitions_generates_modules_without_imports() {
         ("python", format!("# {header}\n")),
         ("rust", format!("// {header}\n")),
         ("cpp", format!("// {header}\n")),
+        ("swift", format!("// {header}\n")),
+        (
+            "csharp",
+            format!("// <auto-generated>\n// {header}\n// </auto-generated>\n"),
+        ),
     ] {
         let files = generate("empty.tafla", source, target, &Options::default());
         assert_eq!(files[0].contents, contents, "{target}");
@@ -435,7 +524,9 @@ fn targets_are_found_by_name_or_abbreviation() {
             "java",
             "rust",
             "go",
-            "cpp"
+            "cpp",
+            "swift",
+            "csharp"
         ]
     );
 
@@ -444,6 +535,7 @@ fn targets_are_found_by_name_or_abbreviation() {
         ("js", "javascript"),
         ("py", "python"),
         ("rs", "rust"),
+        ("cs", "csharp"),
     ] {
         assert_eq!(Target::from_name(abbreviation), Target::from_name(name));
     }
@@ -462,5 +554,175 @@ fn empty_attributes_give_the_default_layout() {
             generate("point.tafla", without, name, &Options::default()),
             "{name}"
         );
+    }
+}
+
+#[test]
+fn csharp_declares_the_enums_of_a_schema_without_definitions() {
+    let source = "enum Level: int8 { low = -1; }\n";
+
+    let files = generate("levels.tafla", source, "csharp", &Options::default());
+
+    let declaration = "namespace Levels;\n\npublic enum Level : sbyte\n{\n    Low = -1,\n}\n";
+    assert!(
+        files[0].contents.ends_with(declaration),
+        "{}",
+        files[0].contents
+    );
+}
+
+#[test]
+fn cpp_declares_the_enums_of_a_schema_without_definitions_with_only_cstdint() {
+    let files = generate(
+        "levels.tafla",
+        "enum Level: uint8 { low = 0; }",
+        "cpp",
+        &Options::default(),
+    );
+
+    assert_eq!(
+        files[0].contents,
+        "// Generated by tafla-gen from levels.tafla. Do not edit.\n\
+         \n\
+         #pragma once\n\
+         \n\
+         #include <cstdint>\n\
+         \n\
+         namespace levels {\n\
+         /** A value of `Level`: one that it names, or any other `std::uint8_t` */\n\
+         enum class Level : std::uint8_t {\n\
+         \x20   low = 0,\n\
+         };\n\
+         \n\
+         }  // namespace levels\n"
+    );
+}
+
+/// The Rust generated from a message and a struct with a field of an enum
+/// of `uint8`, whose names are as long as given: the field's all `x`, and the
+/// enum's `E` and then `x`
+fn rust_of_enum(field_length: usize, enum_length: usize) -> String {
+    let field = "x".repeat(field_length);
+    let name = format!("E{}", "x".repeat(enum_length - 1));
+    let source = format!(
+        "message Holder {{ {field}: {name}; }}\n\
+         struct Pair {{ {field}: {name}; }}\n\
+         enum {name}: uint8 {{ a = 0; }}\n"
+    );
+    let files = generate("holder.tafla", &source, "rust", &Options::default());
+
+    files[0].contents.clone()
+}
+
+#[test]
+fn rust_getters_of_enums_break_where_rustfmt_breaks_them() {
+    // rustfmt keeps a chain of calls on one line up to 60 columns, which the
+    // read of an enum of 31 characters is
+    let one_line = "\n        reader.get_u8(position).map(Exxxxxxxxxxxxxxxxxxxxxxxxxxxxxx)\n";
+    let broken = "
+        reader
+            .get_u8(position)
+            .map(Exxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx)
+";
+
+    let (fits, wider) = (rust_of_enum(1, 31), rust_of_enum(1, 32));
+    assert!(fits.contains(one_line), "{fits}");
+    assert!(wider.contains(broken), "{wider}");
+}
+
+#[test]
+fn rust_structs_break_the_reads_of_enums_where_rustfmt_breaks_them() {
+    // rustfmt breaks the argument of the integer's `from_le_bytes()` while
+    // the line of both calls is at most 98 columns, which leaves two for the
+    // `),` that ends the enum's, as it is with a field of 20 characters of an
+    // enum of 45, and the enum's own argument when the line is wider
+    let name = format!("E{}", "x".repeat(44));
+    let inner = format!(
+        "
+            xxxxxxxxxxxxxxxxxxxx: {name}(u8::from_le_bytes(
+                bytes[0..1].try_into().unwrap_or_default(),
+            )),
+"
+    );
+    let outer = format!(
+        "
+            xxxxxxxxxxxxxxxxxxxxx: {name}(
+                u8::from_le_bytes(bytes[0..1].try_into().unwrap_or_default()),
+            ),
+"
+    );
+
+    let (fits, wider) = (rust_of_enum(20, 45), rust_of_enum(21, 45));
+    assert!(fits.contains(&inner), "{fits}");
+    assert!(wider.contains(&outer), "{wider}");
+}
+
+#[test]
+fn rust_writes_the_integers_of_enums_in_tables_and_messages_that_it_writes_whole() {
+    // A message and a nested table of fields of fixed sizes, which the
+    // generated code lays out itself rather than through a `TableWriter`
+    let source = "\
+message Whole { level: Level; fixed: Fixed; }
+table Fixed { level: Level; }
+enum Level: uint16 { low = 0; }
+";
+    let files = generate("whole.tafla", source, "rust", &Options::default());
+
+    for write in [
+        "        fixed[8..10].copy_from_slice(&self.level.0.to_le_bytes());\n",
+        "        bytes[4..6].copy_from_slice(&self.level.0.to_le_bytes());\n",
+    ] {
+        assert!(files[0].contents.contains(write), "{}", files[0].contents);
+    }
+}
+
+#[test]
+fn type_parameters_take_no_name_that_an_enum_declares() {
+    // The items of `pairs` are of any type `T`, unless the schema declares a
+    // `T`, as an enum here
+    let source = "\
+message Pairs { pairs: [Pair]; level: T; }
+struct Pair { a: uint8; }
+enum T: uint8 { low = 0; }
+";
+    for (target, declaration) in [
+        ("rust", "pub struct PairsFields<'a, U = Pair> {"),
+        (
+            "cpp",
+            "template <class U = std::span<const Pair>>\nstruct PairsFields {",
+        ),
+    ] {
+        let files = generate("pairs.tafla", source, target, &Options::default());
+        assert!(
+            files[0].contents.contains(declaration),
+            "{}",
+            files[0].contents
+        );
+    }
+}
+
+#[test]
+fn enums_freeze_with_the_global_object_in_javascript_and_typescript() {
+    // `Object.freeze()` in an enum named `Object` would read the enum before
+    // it's initialized, and in any enum, a message named `Object`, which has
+    // no `freeze()`
+    for (source, declaration) in [
+        (
+            "enum Object: uint8 { first = 0; }",
+            "export const Object = globalThis.Object.freeze({",
+        ),
+        (
+            "message Object { level: Level; }\nenum Level: uint8 { low = 0; }",
+            "export const Level = globalThis.Object.freeze({",
+        ),
+    ] {
+        for target in ["javascript", "typescript"] {
+            let files = generate("objects.tafla", source, target, &Options::default());
+            assert!(
+                files[0].contents.contains(declaration),
+                "{}",
+                files[0].contents
+            );
+        }
     }
 }

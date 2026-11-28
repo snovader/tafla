@@ -1,0 +1,8 @@
+{
+    "extends": "../../tsconfig.node.json",
+    "compilerOptions": {
+        "outDir": "../../.cache/typescript/gen/test"
+    },
+    "include": ["."],
+    "references": [{ "path": ".." }]
+}

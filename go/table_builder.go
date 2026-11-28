@@ -7,15 +7,15 @@ import (
 	"unsafe"
 )
 
-// TableBuilder builds a table, which a [ByteBuffer] reads back.
+// TableBuilder builds a table, which a [TableReader] reads back.
 //
 // A table is a header with one offset per field, after the table's total
 // length and version when its layout has them, followed by the fields in the
 // order they're set. Arrays, strings and vectors start with their count, and
 // a vector then holds the end of each item. Arrays of scalars and of structs
 // are padded so their elements are aligned from the start of the table.
-// Fields are read back by index with [ByteBuffer.RootOffset], or
-// [ByteBuffer.FieldOffset] for a table nested in another.
+// Fields are read back by index with [TableReader.RootOffset], or
+// [TableReader.FieldOffset] for a table nested in another.
 //
 // Setting a field writes its offset and its bytes at once, into a buffer of
 // 128 bytes within the builder, and then into one on the heap, which doubles
@@ -127,37 +127,21 @@ func (r *run) copyTo(bytes []byte) int {
 }
 
 // NewTableBuilder starts a table of fields fields in layout, which its
-// readers must use too. Nested tables use the default layout, the zero
-// [TableLayout]. It fails with HeaderTooLong if the header alone is too long
-// for the layout's offset type, and panics if the layout is versioned, which
-// [NewVersionedTableBuilder] builds, or fields is negative.
+// readers must use too, with the layout's version in its header when it has
+// one. Nested tables use the default layout, the zero [TableLayout]. It
+// fails with VersionTooLarge if the layout's version doesn't fit in its
+// offset type, or with HeaderTooLong if the header alone is too long for
+// it, and panics if fields is negative.
 func NewTableBuilder(fields int, layout TableLayout) (*TableBuilder, error) {
 	// Allocated here, where it's inlined, so that it stays on the caller's
 	// stack unless a setter keeps it
-	return new(TableBuilder).start(fields, layout, unversioned)
+	return new(TableBuilder).start(fields, layout)
 }
 
-// NewVersionedTableBuilder starts a table of fields fields in layout, with
-// version in its header. Readers can check it with [ByteBuffer.Version]
-// before reading any field. It fails with VersionTooLarge if the version
-// doesn't fit in the layout's offset type, or with HeaderTooLong if the
-// header alone is too long for it, and panics if the layout isn't versioned
-// or fields is negative.
-func NewVersionedTableBuilder(fields int, layout TableLayout, version uint32) (*TableBuilder, error) {
-	return new(TableBuilder).start(fields, layout, int64(version))
-}
-
-// unversioned is the version that start takes for a table without one, in
-// one argument with the version, so that the constructors are cheap enough
-// to inline
-const unversioned = -1
-
-// start checks the layout's version, or unversioned, and header, writes the
-// header but the length, which Bytes writes, and returns the builder
-func (b *TableBuilder) start(fields int, layout TableLayout, versionOrNot int64) (*TableBuilder, error) {
-	versioned := versionOrNot != unversioned
-	version := uint32(versionOrNot)
-	if err := layout.checkVersion(versioned, version); err != nil {
+// start checks the layout's version and header, writes the header but the
+// length, which Bytes writes, and returns the builder
+func (b *TableBuilder) start(fields int, layout TableLayout) (*TableBuilder, error) {
+	if err := layout.checkVersion(); err != nil {
 		return nil, err
 	}
 	header, err := layout.headerLength(fields)
@@ -171,9 +155,9 @@ func (b *TableBuilder) start(fields int, layout TableLayout, versionOrNot int64)
 	b.counters = counters{fields: uint32(fields), length: header, slots: layout.HeaderSize(), alignment: Align1}
 
 	buffer, _ := b.reserve(int(header))
-	if versioned {
+	if layout.versioned {
 		width := layout.offsetType.Size()
-		putSlot(buffer, layout.HeaderSize()-width, width, version)
+		putSlot(buffer, layout.HeaderSize()-width, width, layout.version)
 	}
 
 	return b, nil
@@ -314,10 +298,68 @@ func (b *TableBuilder) SetFloat64Array(values []float64) error {
 	return b.setArray(elementBytes(values), 8)
 }
 
+// SetBoolArray sets an array field of bools, written as a uint8 array of 1
+// for each true value and 0 for each false one, which the builder may keep
+// until the table is written. It fails as [TableBuilder.SetInt8] does.
+func (b *TableBuilder) SetBoolArray(values []bool) error { return b.setArray(boolBytes(values), 1) }
+
 // SetString sets a string field, of its bytes, which are UTF-8 if it is. It
 // fails as [TableBuilder.SetInt8] does.
 func (b *TableBuilder) SetString(value string) error {
 	return b.setRun(unsafe.Slice(unsafe.StringData(value), len(value)), len(value), Align1)
+}
+
+// SetStringVector sets a vector of strings: the end of each string, which
+// lets readers find any string without reading the others, and then each
+// string's bytes, which are UTF-8 if it is. It takes no more bytes for each
+// string than its end, where a vector of tables of one string takes each
+// table's offset and the string's count too. The count and the ends are
+// written when it's set, and each string is copied or kept as a string field
+// is, so the builder doesn't keep the slice. It fails as
+// [TableBuilder.SetInt8] does.
+func (b *TableBuilder) SetStringVector(values []string) error {
+	if b.set == b.fields {
+		return b.tooManyFields()
+	}
+	// The strings' bytes, up to a length past any table, which fails
+	strings := uint64(0)
+	for _, value := range values {
+		strings = min(strings+uint64(len(value)), past)
+	}
+	// The count, the end of each string, and the strings
+	width := uint64(b.layout.offsetType.Size())
+	length := uint64(b.length) + (uint64(len(values))+1)*width + strings
+	if length > uint64(b.limit) {
+		return b.tooLong(length)
+	}
+
+	buffer, vector := b.reserve((len(values) + 1) * int(width))
+	b.putOffset(buffer, b.length)
+	putSlot(buffer, vector, int(width), uint32(len(values)))
+
+	// Each end counts from the vector's count
+	end := (len(values) + 1) * int(width)
+	for index, value := range values {
+		b.appendString(value)
+		end += len(value)
+		putSlot(b.buffer(), vector+(index+1)*int(width), int(width), uint32(end))
+	}
+	b.setField(length, Align1)
+
+	return nil
+}
+
+// appendString writes a string's bytes after the buffer's bytes, or keeps
+// them as a run when they're long enough
+func (b *TableBuilder) appendString(value string) {
+	bytes := unsafe.Slice(unsafe.StringData(value), len(value))
+	if len(bytes) >= runMin {
+		b.keepBytes(bytes)
+		return
+	}
+
+	buffer, at := b.reserve(len(bytes))
+	copy(buffer[at:], bytes)
 }
 
 // SetStruct sets a struct field from its bytes: its scalars, little-endian,
@@ -490,7 +532,7 @@ type TableBytes []byte
 func (TableBytes) nestedTable() {}
 
 // SetTable embeds a table, from its builder or its bytes, without a length
-// prefix. Readers find its fields with [ByteBuffer.FieldOffset] from the
+// prefix. Readers find its fields with [TableReader.FieldOffset] from the
 // field's position, which reads offsets of the parent's offset type, so the
 // table should have no header and the parent's offset type: that's the
 // default layout in a parent of uint32 offsets.
@@ -658,8 +700,8 @@ func (b *TableBuilder) SetTableFunc(fields int, fill func(table Item) error) err
 // aren't padded, as SetVector doesn't pad them.
 //
 // It fails with TooLong before writing any item if the vector's count and
-// the ends of its items alone make the table too long, or after writing them
-// if the items do. It fails otherwise as SetTableFunc does, for each item,
+// the ends of its items alone make the table too long, with the length that
+// they make it, or after writing them if the items do. It fails otherwise as SetTableFunc does, for each item,
 // and returns what fill returns, leaving the builder as it was in each case.
 // It panics if count or fields is negative. If fill panics, the builder is
 // left writing the item, and mustn't be used again.

@@ -1,18 +1,27 @@
 //! The code generated from each comparison suite's schema of its workloads
 //! matches the files checked in under the suite, as `BENCHMARK_SCHEMAS` in
 //! `tests/common/mod.rs` lists them, and the suites' schemas are the same.
-//! `TAFLA_GEN_UPDATE=1` rewrites the files.
+//! So do the code generated from each strings suite's schema and the
+//! schemas, which `STRINGS_SCHEMAS` lists, and from each lists suite's,
+//! which `LISTS_SCHEMAS` lists. `TAFLA_GEN_UPDATE=1` rewrites the files.
 
 mod common;
 
-use common::{BENCHMARK_SCHEMAS, assert_no_differences, compare_tree};
+use common::{
+    BENCHMARK_SCHEMAS, BenchmarkSchema, LISTS_SCHEMAS, STRINGS_SCHEMAS, assert_no_differences,
+    compare_tree,
+};
 use tafla_gen::{Target, compile};
 
 #[test]
 fn generated_code_matches_the_suites_files() {
     let mut differences = Vec::new();
 
-    for suite in &BENCHMARK_SCHEMAS {
+    let suites = BENCHMARK_SCHEMAS
+        .iter()
+        .chain(&STRINGS_SCHEMAS)
+        .chain(LISTS_SCHEMAS);
+    for suite in suites {
         let Some(target) = Target::from_name(suite.target) else {
             continue; // A build without the target's feature
         };
@@ -28,7 +37,23 @@ fn generated_code_matches_the_suites_files() {
 
 #[test]
 fn every_suite_has_the_same_schema() {
-    let [first, others @ ..] = &BENCHMARK_SCHEMAS;
+    assert_same_schemas(&BENCHMARK_SCHEMAS);
+}
+
+#[test]
+fn every_strings_suite_has_the_same_schema() {
+    assert_same_schemas(&STRINGS_SCHEMAS);
+}
+
+#[test]
+fn every_lists_suite_has_the_same_schema() {
+    assert_same_schemas(LISTS_SCHEMAS);
+}
+
+fn assert_same_schemas(suites: &[BenchmarkSchema]) {
+    let [first, others @ ..] = suites else {
+        return;
+    };
     let source = first.source();
 
     for suite in others {

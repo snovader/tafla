@@ -6,6 +6,7 @@ import org.msgpack.core.buffer.*;
 
 import java.io.*;
 import java.util.Arrays;
+import java.util.List;
 
 /**
  * msgpack-core's packer and unpacker. MessagePack is schemaless: a table packs as a map with its
@@ -29,7 +30,8 @@ public final class MessagePackCodec {
             new Documents(state),
             new Lists(state),
             new Structs(state),
-            new Samples(state)
+            new Samples(state),
+            new StringTables(state)
         );
     }
 
@@ -366,6 +368,31 @@ public final class MessagePackCodec {
             }
 
             return new SampleInput(key, a, b);
+        }
+    }
+
+    /** An array of strings, which the unpacker decodes as it unpacks them */
+    private static final class StringTables extends MessagePackWorkload<List<String>> {
+        StringTables(State state) {
+            super(state);
+        }
+
+        @Override
+        void pack(MessagePacker packer, List<String> strings) throws IOException {
+            packer.packArrayHeader(strings.size());
+            for (var string : strings) {
+                packer.packString(string);
+            }
+        }
+
+        @Override
+        List<String> unpack(MessageUnpacker unpacker) throws IOException {
+            var strings = new String[unpacker.unpackArrayHeader()];
+            for (int i = 0; i < strings.length; i++) {
+                strings[i] = unpacker.unpackString();
+            }
+
+            return Arrays.asList(strings);
         }
     }
 }

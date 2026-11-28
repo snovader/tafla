@@ -1,37 +1,37 @@
 """Binary tables of scalars, strings and typed arrays. ``TableBuilder`` writes a
-table at its exact size, copying typed arrays in bulk, and ``ByteBuffer`` reads
+table at its exact size, copying typed arrays in bulk, and ``TableReader`` reads
 fields back by offset, with arrays as views of the bytes. Every read checks
 that it stays within the bytes it was given. ``TableWriter`` writes a table
 whose fields are known as it's written, as the code that tafla-gen generates
 writes its tables, without recording them first as ``TableBuilder`` does.
 
 >>> from array import array
->>> from tafla import ByteBuffer, TableBuilder, TableLayout
+>>> from tafla import TableReader, TableBuilder, TableLayout
 
 A format's header, shared by its writer and its readers:
 
->>> LAYOUT = TableLayout(sized=True, versioned=True)
 >>> FORMAT_VERSION = 1
+>>> LAYOUT = TableLayout(sized=True, version=FORMAT_VERSION)
 
 >>> series = TableBuilder(2)
 >>> series.set_uint32_array(array("I", [0, 86400]))  # copied as bytes
 >>> series.set_float32_array([21.75, 18.5])  # a list is converted first
 
->>> builder = TableBuilder(3, LAYOUT, FORMAT_VERSION)
+>>> builder = TableBuilder(3, LAYOUT)
 >>> builder.set_float64(59.3293)
 >>> builder.set_string("Europe/Stockholm")
 >>> builder.set_table(series)  # written straight into the table
 >>> data = builder.bytes()
 
->>> buffer = ByteBuffer(data, LAYOUT)
->>> buffer.get_version() == FORMAT_VERSION
+>>> reader = TableReader(data, LAYOUT)
+>>> reader.get_version() == FORMAT_VERSION
 True
->>> buffer.get_float64(buffer.root_offset(0))
+>>> reader.get_float64(reader.root_offset(0))
 59.3293
->>> buffer.get_string(buffer.root_offset(1))
+>>> reader.get_string(reader.root_offset(1))
 'Europe/Stockholm'
->>> table = buffer.root_offset(2)
->>> buffer.get_float32_array(buffer.field_offset(table, 1)).tolist()
+>>> table = reader.root_offset(2)
+>>> reader.get_float32_array(reader.field_offset(table, 1)).tolist()
 [21.75, 18.5]
 
 Structs are bytes that the standard library's ``struct`` packs and unpacks
@@ -42,10 +42,10 @@ little-endian, without padding:
 >>> shape = TableBuilder(2)
 >>> shape.set_struct(POINT.pack(0, 1.5))
 >>> shape.set_struct_array(POINT.pack(1, 2.5) + POINT.pack(2, -0.5), POINT.size, 4)
->>> buffer = shape.finalize()
->>> POINT.unpack(buffer.get_struct(buffer.root_offset(0), POINT.size))
+>>> reader = shape.finalize()
+>>> POINT.unpack(reader.get_struct(reader.root_offset(0), POINT.size))
 (0, 1.5)
->>> points = buffer.get_struct_array(buffer.root_offset(1), POINT.size)
+>>> points = reader.get_struct_array(reader.root_offset(1), POINT.size)
 >>> list(POINT.iter_unpack(points))
 [(1, 2.5), (2, -0.5)]
 
@@ -58,10 +58,24 @@ rather than from a builder of its own:
 ...     item.set_float32(reading[1])
 >>> log = TableBuilder(1)
 >>> log.set_vector_in_place([(0, 21.75), (86400, 18.5)], set_reading, fields=2)
->>> buffer = log.finalize()
->>> items = buffer.get_vector_offsets(buffer.root_offset(0))
->>> [buffer.get_float32(buffer.field_offset(item, 1)) for item in items]
+>>> reader = log.finalize()
+>>> items = reader.get_vector_offsets(reader.root_offset(0))
+>>> [reader.get_float32(reader.field_offset(item, 1)) for item in items]
 [21.75, 18.5]
+
+A vector of strings holds each string's UTF-8 after the end of each, so a
+``StringVector`` reads any string without reading the others, or every string
+at once:
+
+>>> from tafla import StringVector
+>>> tags = TableBuilder(1)
+>>> tags.set_string_vector(["north", "Ö", "東"])
+>>> reader = tags.finalize()
+>>> vector = StringVector(reader, reader.root_offset(0))
+>>> len(vector), vector[1], vector[-1]
+(3, 'Ö', '東')
+>>> vector.tolist()
+['north', 'Ö', '東']
 
 Records at fixed offsets without a header or offsets, such as stream frames,
 are better written and read with ``struct`` alone.
@@ -73,7 +87,7 @@ All values are little-endian. A table is its header, one offset per field and
 then the fields in the order they were set:
 
 - The header holds the table's byte length when the layout is ``sized``, and
-  then its version when it's ``versioned``.
+  then the layout's ``version`` when it has one.
 - Header slots, offsets, counts and vector item ends are all of the layout's
   offset type, ``offset_type``: ``uint8``, ``uint16`` or ``uint32``, whose
   offset size is 1, 2 or 4 bytes. It limits the table to 255 bytes, 64 KiB or
@@ -82,6 +96,10 @@ then the fields in the order they were set:
   no header, and its offsets count from its own start.
 - Arrays and strings start with their element count. Typed arrays are padded so
   that their elements are aligned to their size from the table's start.
+- An array of bools is a ``uint8`` array of 1 and 0, which
+  ``set_bool_array()`` writes from bools and ``get_bool_array()`` reads into
+  a list of bools, true wherever a byte isn't 0. ``get_uint8_array()`` reads
+  its bytes in place.
 - A struct is its scalars, one after another without padding, and isn't
   aligned. An array of structs starts with their count, and is padded so that
   the structs are aligned to the size of their largest scalar.
@@ -90,13 +108,18 @@ then the fields in the order they were set:
 - A vector starts with its item count, then the end of each item, counted from
   the vector's start, and then the items. An item starts where the one before
   it ends, so ``get_vector_offset()`` finds any item from two ends.
+- A vector of strings lays out its count and ends as a vector of tables does,
+  and then each string's UTF-8, one after another, without a count of its
+  own. ``get_string_vector()`` reads every string, and
+  ``get_string_vector_item()`` one from its two ends, as a ``StringVector``
+  reads it.
 
 Implementations
 ---------------
 
 The classes that the code that tafla-gen generates calls, ``TableLayout``,
-``FixedFields``, ``TableWriter`` and ``ByteBuffer``, have two implementations
-with the same API, conversions and errors: a native one, written in Rust,
+``FixedFields``, ``TableWriter``, ``TableReader`` and ``StringVector``, have two
+implementations with the same API, conversions and errors: a native one, written in Rust,
 which the platform wheels hold, and a pure-Python one, which the pure
 ``py3-none-any`` wheel holds alone. ``tafla`` uses the native classes when
 they're installed, and the pure-Python ones otherwise or when the environment
@@ -116,13 +139,13 @@ and their messages included. They differ only in these ways:
 - A ``TableWriter`` is for one thread at a time. Free-threaded Python runs
   threads in parallel, and a native writer then raises ``RuntimeError`` for a
   call while another thread's call to it runs, where the pure-Python one
-  writes undefined bytes. A ``ByteBuffer`` can be read by several threads at
+  writes undefined bytes. A ``TableReader`` can be read by several threads at
   once, except that CPython's free-threaded builds, 3.14 and 3.15 at least,
   release a ``memoryview`` that threads slice at once, which each
   implementation's array reads do, and the pure-Python one's string reads,
   so that they raise ``ValueError``: python/cpython#127716. The native
   string reads don't slice it.
-- The iterator that ``ByteBuffer.iter_vector_fields()`` returns is for one
+- The iterator that ``TableReader.iter_vector_fields()`` returns is for one
   thread at a time too: a native one raises ``RuntimeError`` for a call
   while another thread's call to it runs, where the pure-Python one, a
   generator, raises ``ValueError``.
@@ -132,10 +155,12 @@ and their messages included. They differ only in these ways:
   class derived from one.
 
 The classes are public as ``tafla`` exports them. The submodules that hold
-the pure-Python ones, such as ``tafla.layout`` and ``tafla.byte_buffer``,
+the pure-Python ones, such as ``tafla.layout`` and ``tafla.table_reader``,
 aren't, and ``tafla._native`` isn't either. The native classes take a
 pure-Python ``TableLayout`` as they take their own, and raise ``TypeError``
-for anything else, so a layout created from ``tafla.layout`` serves both.
+for anything else, so a layout created from ``tafla.layout`` serves both. A
+``StringVector`` reads through a ``TableReader`` of its own implementation,
+and the native one raises ``TypeError`` for another.
 
 Performance
 -----------
@@ -196,6 +221,17 @@ A float too large for a float32             ``ValueError`` from a scalar, and
                                             float32.
 A lone surrogate in a string                ``UnicodeEncodeError``, a
                                             ``ValueError``
+A value in an array of bools                1 if it's true, as ``bool()``
+                                            takes it, and 0 if it's false,
+                                            or its error from the setter if
+                                            its truth raises
+A value whose ``__index__()`` or            Its error from an array and from
+``__float__()`` raises                      an integer scalar, but
+                                            ``ValueError`` from a float scalar,
+                                            and from an integer scalar for an
+                                            error that ``struct`` raises
+                                            itself: ``OverflowError``,
+                                            ``IndexError`` or ``struct.error``
 ==========================================  ===================================
 
 Validation and errors
@@ -203,11 +239,12 @@ Validation and errors
 
 Validation is always on:
 
-- Every read checks its range against the bytes the ``ByteBuffer`` was given
+- Every read checks its range against the bytes the ``TableReader`` was given
   and raises ``DecodeError`` if it would leave them, at any position, however
-  large. Strings must be valid UTF-8, and vector items must start no later
-  than they end. A truncated or corrupted buffer therefore raises rather than
-  returning values from outside it.
+  large. Strings must be valid UTF-8, and so must each string of a vector of
+  strings, on its own, which is checked when it's read, and vector items must
+  start no later than they end. A truncated or corrupted buffer therefore
+  raises rather than returning values from outside it.
 - ``DecodeError`` is a ``ValueError``. Its message gives the read's position
   and length and the bytes available, and an invalid string's error has the
   ``UnicodeDecodeError`` as its cause. Positions, lengths and indices of more
@@ -223,17 +260,18 @@ Validation is always on:
 Using the API wrongly raises other errors, whatever the bytes:
 
 - A buffer that isn't C-contiguous, such as a slice with a step, raises
-  ``TypeError`` where it's taken as bytes: by ``ByteBuffer()``, whose reads
+  ``TypeError`` where it's taken as bytes: by ``TableReader()``, whose reads
   return views of the bytes rather than of a copy, and as a struct, or a table
   or vector item, by a builder's setter. Array setters convert it instead.
+- ``TableLayout`` raises ``ValueError`` for a version that doesn't fit in its
+  offset type, and ``TypeError`` for one that isn't an integer.
 - ``TableBuilder`` raises ``ValueError`` for more or fewer fields than it was
-  created with, a version that doesn't fit, or arrays, structs or tables given
-  as buffers whose lengths changed before ``finalize()`` so that the table's
-  did, which leaves it unfinalized. A field that would make the table too long
-  for its ``offset_type`` raises ``ValueError`` from its setter and isn't
-  added. A value that its field's type can't hold raises as Conversions lists.
-  A version missing from or given for a layout, or a field set after
-  ``finalize()``, raises ``TypeError``.
+  created with, or arrays, structs or tables given as buffers whose lengths
+  changed before ``finalize()`` so that the table's did, which leaves it
+  unfinalized. A field that would make the table too long for its
+  ``offset_type`` raises ``ValueError`` from its setter and isn't added. A
+  value that its field's type can't hold raises as Conversions lists. A field
+  set after ``finalize()`` raises ``TypeError``.
 - ``TableWriter`` raises the errors of ``TableBuilder`` for the same values,
   but from the setter that writes them, and ``ValueError`` for a table too
   long for its ``offset_type`` from the setter whose offset or count doesn't
@@ -245,8 +283,12 @@ Using the API wrongly raises other errors, whatever the bytes:
   ``set_struct_array()`` and ``get_struct_array()``, and so do bytes that
   aren't a whole number of structs from ``set_struct_array()``.
 - ``get_vector_offset()`` raises ``IndexError`` for an item outside the
-  vector.
-- ``get_version()`` raises ``TypeError`` when the layout isn't versioned.
+  vector, and so do ``get_vector_item_offset()`` and
+  ``get_string_vector_item()``, and a ``StringVector`` for a string outside
+  it.
+- ``set_string_vector()`` raises ``TypeError`` for a ``str``, which is a
+  sequence of its characters.
+- ``get_version()`` raises ``TypeError`` when the layout has no version.
 
 TableWriter's contract
 ----------------------
@@ -280,9 +322,10 @@ from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
 from .errors import DecodeError
 from .implementation import (
     IMPLEMENTATION,
-    ByteBuffer,
     FixedFields,
+    StringVector,
     TableLayout,
+    TableReader,
     TableWriter,
 )
 from .table_builder import TableBuilder
@@ -290,11 +333,12 @@ from .types import OffsetSize, OffsetType
 
 __all__ = [
     "IMPLEMENTATION",
-    "ByteBuffer",
+    "TableReader",
     "DecodeError",
     "FixedFields",
     "OffsetSize",
     "OffsetType",
+    "StringVector",
     "TableBuilder",
     "TableLayout",
     "TableWriter",

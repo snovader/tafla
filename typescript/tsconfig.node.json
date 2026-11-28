@@ -1,6 +1,9 @@
 {
-    "extends": "./tsconfig.base.json",
+    "extends": [
+        "@snovader/tsconfig/node",
+        "@snovader/tsconfig/composite"
+    ],
     "compilerOptions": {
-        "types": ["node"]
+        "customConditions": ["tafla-source"]
     }
 }

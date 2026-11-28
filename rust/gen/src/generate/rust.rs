@@ -1,9 +1,13 @@
 //! Rust for `tafla`. Messages and tables are `Copy` views that read fields
-//! lazily, borrowing strings and arrays from the bytes, and vectors and
-//! arrays of structs as views that read each item when it's asked for;
-//! they're written from structs of their fields, which a `TableSizer` sizes
-//! and a `TableWriter` writes, nested tables in place. Structs are plain
-//! structs read and written at fixed offsets.
+//! lazily, borrowing strings and arrays from the bytes, and vectors, vectors
+//! of strings and arrays of structs as views that read each item when it's
+//! asked for; they're written from structs of their fields, which a
+//! `TableSizer` sizes and a `TableWriter` writes, nested tables in place.
+//! Structs are plain structs read and written at fixed offsets. An enum is a `Copy` struct of
+//! its integer, with a constant of each value that the schema names, so that
+//! a field of it holds any integer of its type; an array of an enum is an
+//! array of its integers. An array of bools is read as its bytes, in place,
+//! and written from bools.
 
 use std::collections::HashSet;
 use std::fmt::Display;
@@ -13,7 +17,7 @@ use super::prose::indefinite_article;
 use super::writer::{CodeWriter, Expr, Style, call, text};
 use super::{GeneratedFile, Options};
 use crate::model::{
-    Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema,
+    Definition, Enum, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema,
     strongly_connected_components,
 };
 
@@ -72,15 +76,16 @@ pub fn generate(
     options: &Options,
 ) -> Vec<GeneratedFile> {
     let runtime = options.runtime.as_deref().unwrap_or(RUNTIME);
+    let definitions = schema.definitions.iter();
+    let enums = schema.enums.iter();
     let generator = Generator {
         schema,
         fixed: FixedSizes::new(schema, MAX_LAID_OUT),
         borrows: borrowing(schema),
         vector_components: strongly_connected_components(&schema.definitions, vectors),
-        declared: schema
-            .definitions
-            .iter()
+        declared: definitions
             .map(|definition| definition.name.as_str())
+            .chain(enums.map(|enumeration| enumeration.name.as_str()))
             .collect(),
     };
 
@@ -88,6 +93,11 @@ pub fn generate(
     writer.line(format!("// {header}"));
     writer.blank();
     generator.imports(&mut writer, runtime);
+
+    for enumeration in &schema.enums {
+        writer.blank();
+        enum_struct(&mut writer, enumeration);
+    }
 
     for (index, definition) in schema.definitions.iter().enumerate() {
         writer.blank();
@@ -167,11 +177,15 @@ impl Generator<'_> {
         let has_sized = definitions
             .iter()
             .any(|definition| !definition.is_struct() && !whole(definition));
+        // Arrays of bytes, and of bools, are read as bytes
         let has_array_view = definitions
             .iter()
             .flat_map(|definition| &definition.fields)
             .any(|field| {
-                matches!(field.field_type, FieldType::Array(scalar) if scalar != Scalar::Uint8)
+                matches!(
+                    field.field_type,
+                    FieldType::Array(scalar) if !matches!(scalar, Scalar::Uint8 | Scalar::Bool)
+                )
             });
         let has_offset_type = definitions.iter().any(|definition| {
             definition
@@ -183,6 +197,10 @@ impl Generator<'_> {
             .iter()
             .flat_map(|definition| &definition.fields)
             .any(|field| matches!(field.field_type, FieldType::Vector(_)));
+        let has_string_vector = definitions
+            .iter()
+            .flat_map(|definition| &definition.fields)
+            .any(|field| field.field_type == FieldType::StringVector);
 
         let mut names = Vec::new();
         // Arrays of structs and nested tables are padded to their alignment
@@ -195,17 +213,19 @@ impl Generator<'_> {
         if has_messages {
             names.push("BuildError");
         }
-        if has_tables {
-            names.push("ByteBuffer");
-        }
         names.push("DecodeError");
         if has_offset_type {
             names.push("OffsetType");
+        }
+        // Getters of vectors of strings return the runtime's view of them
+        if has_string_vector {
+            names.push("StringVector");
         }
         // Messages make sizers, or the bytes of a whole one, and tables take
         // sizers and writers
         if has_tables {
             names.push("TableLayout");
+            names.push("TableReader");
         }
         if has_sized {
             names.push("TableSizer");
@@ -254,7 +274,7 @@ impl Generator<'_> {
         writer.close("}");
         writer.blank();
 
-        writer.open(format!("impl<'a> {name}<'a> {{"));
+        open_reader_impl(writer, definition);
         if let Some(version) = layout.version {
             rust_doc(
                 writer,
@@ -277,9 +297,9 @@ impl Generator<'_> {
             docs.extend(errors_doc("if `bytes` are in another format version"));
             rust_doc(writer, &docs);
             writer.open("pub fn new(bytes: &'a [u8]) -> Result<Self, DecodeError> {");
-            writer.line("let buffer = ByteBuffer::new(bytes, Self::LAYOUT);");
+            writer.line("let reader = TableReader::new(bytes, Self::LAYOUT);");
             writer.blank();
-            writer.line("let version = buffer.version()?;");
+            writer.line("let version = reader.version()?;");
             writer.open("if version != Self::FORMAT_VERSION {");
             writer.open("return Err(DecodeError::UnsupportedVersion {");
             writer.line("version,");
@@ -298,7 +318,7 @@ impl Generator<'_> {
             docs.extend(errors_doc("if the header doesn't fit in `bytes`"));
             rust_doc(writer, &docs);
             writer.open("pub fn version_of(bytes: &[u8]) -> Result<u32, DecodeError> {");
-            writer.line("ByteBuffer::new(bytes, Self::LAYOUT).version()");
+            writer.line("TableReader::new(bytes, Self::LAYOUT).version()");
             writer.close("}");
         } else {
             rust_doc(writer, &[format!("Reads {} from `bytes`", article(name))]);
@@ -322,7 +342,7 @@ impl Generator<'_> {
         writer.close("}");
         writer.blank();
 
-        writer.open(format!("impl<'a> {name}<'a> {{"));
+        open_reader_impl(writer, definition);
         rust_doc(
             writer,
             &[
@@ -342,28 +362,6 @@ impl Generator<'_> {
     fn structure(&self, writer: &mut CodeWriter, definition: &Definition) {
         let name = &definition.name;
         let size = definition.struct_layout().size;
-        // Each field, its range of bytes in the struct, and the type that
-        // reads it from them
-        let mut offset = 0;
-        let fields: Vec<(String, usize, usize, String)> = definition
-            .fields
-            .iter()
-            .map(|field| {
-                let (end, read) = match field.field_type {
-                    FieldType::Scalar(scalar) => {
-                        (offset + usize::from(scalar.size()), scalar_type(scalar))
-                    }
-                    FieldType::Struct(index) => {
-                        let inner = self.schema.definition(index);
-                        (offset + inner.struct_layout().size, inner.name.as_str())
-                    }
-                    _ => unreachable!("structs hold scalars and structs only"),
-                };
-                let field = (identifier(&field.name), offset, end, read.to_owned());
-                offset = end;
-                field
-            })
-            .collect();
 
         rust_doc(writer, &definition.docs);
         writer.line("#[derive(Clone, Copy, Debug, PartialEq)]");
@@ -373,7 +371,7 @@ impl Generator<'_> {
             writer.line(format!(
                 "pub {}: {},",
                 identifier(&field.name),
-                self.input_type(field.field_type)
+                self.input_type(field)
             ));
         }
         writer.close("}");
@@ -438,24 +436,31 @@ impl Generator<'_> {
             integer(&size)
         ));
         writer.line("let mut bytes = [0; Self::SIZE];");
-        for (field, start, end, read) in &fields {
-            if read == "bool" {
-                writer.line(format!(
-                    "bytes[{}] = u8::from(self.{field});",
-                    integer(start)
-                ));
-                continue;
-            }
-            let bytes = if read.starts_with(char::is_uppercase) {
-                format!("self.{field}.to_bytes()")
-            } else {
-                format!("self.{field}.to_le_bytes()")
+        let mut start = 0;
+        for field in &definition.fields {
+            let value = format!("self.{}", identifier(&field.name));
+            let (end, bytes) = match field.field_type {
+                FieldType::Scalar(Scalar::Bool) => {
+                    writer.line(format!("bytes[{}] = u8::from({value});", integer(&start)));
+                    start += 1;
+                    continue;
+                }
+                FieldType::Scalar(scalar) => (
+                    start + usize::from(scalar.size()),
+                    format!("{}.to_le_bytes()", stored(field, value)),
+                ),
+                FieldType::Struct(index) => (
+                    start + self.schema.definition(index).struct_layout().size,
+                    format!("{value}.to_bytes()"),
+                ),
+                _ => unreachable!("structs hold scalars and structs only"),
             };
             writer.line(format!(
                 "bytes[{}..{}].copy_from_slice(&{bytes});",
-                integer(start),
-                integer(end)
+                integer(&start),
+                integer(&end)
             ));
+            start = end;
         }
         writer.blank();
         writer.line("bytes");
@@ -502,12 +507,18 @@ impl Generator<'_> {
                 }
                 FieldType::Scalar(scalar) => {
                     let end = start + usize::from(scalar.size());
-                    writer.line(format!(
-                        "{name}: {}::from_le_bytes(bytes[{}..{}].try_into().unwrap_or_default()),",
-                        scalar_type(scalar),
+                    let read = format!("{}::from_le_bytes", scalar_type(scalar));
+                    let bytes = format!(
+                        "bytes[{}..{}].try_into().unwrap_or_default()",
                         integer(&start),
                         integer(&end)
-                    ));
+                    );
+                    match self.scalar_enum(field) {
+                        Some(enumeration) => {
+                            enum_of_bytes(writer, &name, &enumeration.name, &read, &bytes);
+                        }
+                        None => writer.line(format!("{name}: {read}({bytes}),")),
+                    }
                     start = end;
                 }
                 FieldType::Struct(index) => {
@@ -561,17 +572,20 @@ impl Generator<'_> {
             writer.indent();
         }
         for (field, generic) in definition.fields.iter().zip(&generic) {
-            rust_doc(writer, &field.docs);
-            let field_type = match generic {
-                Some(generic) => {
-                    if !field.docs.is_empty() {
-                        rust_doc(writer, &[String::new()]);
-                    }
-                    rust_doc(writer, &[self.generic_doc(field.field_type, generic)]);
-                    format!("&'a [{}]", generic.parameter)
-                }
-                None => self.input_type(field.field_type),
+            let (note, field_type) = match generic {
+                Some(generic) => (
+                    Some(self.generic_doc(field.field_type, generic)),
+                    format!("&'a [{}]", generic.parameter),
+                ),
+                None => (self.integers_doc(field), self.input_type(field)),
             };
+            rust_doc(writer, &field.docs);
+            if let Some(note) = note {
+                if !field.docs.is_empty() {
+                    rust_doc(writer, &[String::new()]);
+                }
+                rust_doc(writer, &[note]);
+            }
             writer.line(format!("pub {}: {field_type},", identifier(&field.name)));
         }
         writer.close("}");
@@ -741,15 +755,7 @@ impl Generator<'_> {
         writer.open("pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {");
         let fields = text(integer(&definition.fields.len()));
         let layout_constant = text(format!("{name}::LAYOUT"));
-        let sizer = if layout.version.is_some() {
-            let version = text(format!("{name}::FORMAT_VERSION"));
-            call(
-                "TableSizer::versioned",
-                vec![fields, layout_constant, version],
-            )
-        } else {
-            call("TableSizer::new", vec![fields, layout_constant])
-        };
+        let sizer = call("TableSizer::new", vec![fields, layout_constant]);
         writer.statement(&STYLE, "let mut sizer = ", &sizer, "?;");
         self.sizes(writer, definition, generic, "&mut sizer");
         writer.blank();
@@ -963,7 +969,7 @@ impl Generator<'_> {
                     writer.line(format!("bytes[{}] = u8::from({value});", integer(&start)));
                     continue;
                 }
-                FieldType::Scalar(_) => format!("{value}.to_le_bytes()"),
+                FieldType::Scalar(_) => format!("{}.to_le_bytes()", stored(field, value)),
                 FieldType::Struct(_) | FieldType::Table(_) => format!("{value}.to_bytes()"),
                 _ => unreachable!("whole tables hold scalars, structs and whole tables only"),
             };
@@ -1055,6 +1061,7 @@ impl Generator<'_> {
                     writer.close("}");
                     continue;
                 }
+                FieldType::StringVector => ("add_str_vector".to_owned(), vec![text(value)]),
             };
             writer.statement(&STYLE, "", &call(format!("sizer.{method}"), arguments), ";");
         }
@@ -1080,7 +1087,7 @@ impl Generator<'_> {
                 ),
                 FieldType::Scalar(scalar) => (
                     format!("set_{}", scalar_type(scalar)),
-                    vec![position, text(value)],
+                    vec![position, text(stored(field, value))],
                 ),
                 FieldType::Array(scalar) => (
                     format!("set_{}_array", scalar_type(scalar)),
@@ -1147,6 +1154,9 @@ impl Generator<'_> {
                     writer.close("}");
                     continue;
                 }
+                FieldType::StringVector => {
+                    ("set_str_vector".to_owned(), vec![position, text(value)])
+                }
             };
             writer.statement(
                 &STYLE,
@@ -1158,42 +1168,65 @@ impl Generator<'_> {
     }
 
     fn getters(&self, writer: &mut CodeWriter, definition: &Definition, is_root: bool) {
-        // Each getter reads with a buffer in the table's layout, a constant,
+        // Each getter reads with a reader in the table's layout, a constant,
         // rather than one that the reader holds, so that its reads compile
         // for that layout's offset type wherever the reader is passed
-        let buffer = if is_root {
-            "let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);"
+        let reader = if is_root {
+            "let reader = TableReader::new(self.bytes, Self::LAYOUT);"
         } else {
-            "let buffer = ByteBuffer::new(self.bytes, TableLayout::DEFAULT);"
+            "let reader = TableReader::new(self.bytes, TableLayout::DEFAULT);"
         };
 
         for (index, field) in definition.fields.iter().enumerate() {
             let offset = if is_root {
-                format!("buffer.root_offset({})?", integer(&index))
+                format!("reader.root_offset({})?", integer(&index))
             } else {
-                format!("buffer.field_offset(self.position, {})?", integer(&index))
+                format!("reader.field_offset(self.position, {})?", integer(&index))
             };
 
             let docs = self.getter_docs(field);
             writer.blank();
             rust_doc(writer, &docs);
+            // Inlined into its callers, as the runtime's reads that it calls
+            // are, so that a getter compiles to the read that `TableReader`'s
+            // getters make by hand. Out of line, it returns its `Result`
+            // through memory: LLVM called the nested table's getters of the
+            // benchmarks' document out of line, and 12 of the 16 string
+            // getters of their table of strings, which `#[inline]` didn't
+            // change. Inlined, the document read in 10.3 ns rather than
+            // 12.6 ns, and 16 empty strings in 41 ns rather than 61 ns. The
+            // record read took 5.5 ns rather than 5.0 ns, as by hand, since
+            // LLVM had inlined `is_ascii()` into its string's getter alone,
+            // until the runtime checked short strings in its callers itself.
+            writer.line("#[inline(always)]");
             let name = identifier(&field.name);
-            let result = format!("Result<{}, DecodeError>", self.value_type(field.field_type));
+            let result = format!("Result<{}, DecodeError>", self.value_type(field));
             open_method(writer, &format!("pub fn {name}"), &["&self"], &result);
-            writer.line(buffer);
+            writer.line(reader);
             writer.line(format!("let position = {offset};"));
             match field.field_type {
-                FieldType::Scalar(Scalar::Bool) => writer.line("Ok(buffer.get_u8(position)? != 0)"),
+                FieldType::Scalar(Scalar::Bool) => writer.line("Ok(reader.get_u8(position)? != 0)"),
                 FieldType::Scalar(scalar) => {
-                    writer.line(format!("buffer.get_{}(position)", scalar_type(scalar)));
+                    let read = format!("get_{}(position)", scalar_type(scalar));
+                    match self.scalar_enum(field) {
+                        Some(enumeration) => {
+                            let wrap = format!("map({})", enumeration.name);
+                            chain(writer, "reader", &[&read, &wrap]);
+                        }
+                        None => writer.line(format!("reader.{read}")),
+                    }
                 }
+                // An array of bools is read as its bytes, in place, as a
+                // `[uint8]` is, since a `bool` of any byte but 0 or 1 is
+                // undefined behavior
+                FieldType::Array(Scalar::Bool) => writer.line("reader.get_u8_array(position)"),
                 FieldType::Array(scalar) => {
                     writer.line(format!(
-                        "buffer.get_{}_array(position)",
+                        "reader.get_{}_array(position)",
                         scalar_type(scalar)
                     ));
                 }
-                FieldType::String => writer.line("buffer.get_str(position)"),
+                FieldType::String => writer.line("reader.get_str(position)"),
                 FieldType::Table(table) => {
                     let table = &self.schema.definition(table).name;
                     let read = format!("{table}::new(self.bytes, position)");
@@ -1214,7 +1247,7 @@ impl Generator<'_> {
                 FieldType::Struct(index) => {
                     let structure = &self.schema.definition(index).name;
                     writer.line(format!(
-                        "let bytes = buffer.get_struct(position, {structure}::SIZE)?;"
+                        "let bytes = reader.get_struct(position, {structure}::SIZE)?;"
                     ));
                     writer.blank();
                     writer.line(format!("{structure}::read(bytes)"));
@@ -1225,7 +1258,7 @@ impl Generator<'_> {
                         &STYLE,
                         "let bytes = ",
                         &call(
-                            "buffer.get_struct_array",
+                            "reader.get_struct_array",
                             vec![text("position"), text(format!("{structure}::SIZE"))],
                         ),
                         "?;",
@@ -1240,17 +1273,18 @@ impl Generator<'_> {
                 FieldType::Vector(table) => {
                     let table = &self.schema.definition(table).name;
                     writer.open(format!("Ok({table}Vector {{"));
-                    writer.line("vector: buffer.get_vector(position)?,");
+                    writer.line("vector: reader.get_vector(position)?,");
                     writer.close("})");
                 }
+                FieldType::StringVector => writer.line("reader.get_str_vector(position)"),
             }
             writer.close("}");
         }
     }
 
     /// The documentation of a field's getter: the field's own, and for a
-    /// vector or an array of structs, the view that it returns, and then its
-    /// errors
+    /// vector or an array of structs, the view that it returns, or for an
+    /// array of bools, its bytes, and then its errors
     fn getter_docs(&self, field: &Field) -> Vec<String> {
         let name = |index: usize| &self.schema.definition(index).name;
         let (view, errors) = match field.field_type {
@@ -1271,7 +1305,22 @@ impl Generator<'_> {
                 )],
                 "if the field or its structs lie outside the bytes",
             ),
-            _ => (vec![], "if the field lies outside the bytes"),
+            FieldType::Array(Scalar::Bool) => (
+                vec!["A byte for each bool, which is true where it isn't 0".to_owned()],
+                "if the field lies outside the bytes",
+            ),
+            FieldType::StringVector => (
+                vec![
+                    "A view of the strings, which reads each string when it's asked for, and"
+                        .to_owned(),
+                    "fails then if its bytes are corrupt".to_owned(),
+                ],
+                "if the field, or the vector's count or the ends of its strings, lie outside the bytes",
+            ),
+            _ => (
+                self.integers_doc(field).into_iter().collect(),
+                "if the field lies outside the bytes",
+            ),
         };
 
         let mut docs = field.docs.clone();
@@ -1287,10 +1336,45 @@ impl Generator<'_> {
         docs
     }
 
-    fn value_type(&self, field_type: FieldType) -> String {
-        match field_type {
-            FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
-            FieldType::Array(Scalar::Uint8) => "&'a [u8]".to_owned(),
+    /// The enum that names the values of a scalar field, whose struct the
+    /// field holds. An array of an enum holds its integers, so it has none.
+    fn scalar_enum(&self, field: &Field) -> Option<&Enum> {
+        match field.field_type {
+            FieldType::Scalar(_) => field
+                .enumeration
+                .map(|index| self.schema.enumeration(index)),
+            _ => None,
+        }
+    }
+
+    /// The documentation of an array of an enum, which is an array of the
+    /// enum's integers, and `None` for any other field
+    fn integers_doc(&self, field: &Field) -> Option<String> {
+        let FieldType::Array(scalar) = field.field_type else {
+            return None;
+        };
+        let enumeration = self.schema.enumeration(field.enumeration?);
+
+        Some(format!(
+            "Each element is the `{}` of {}",
+            scalar_type(scalar),
+            article(&enumeration.name)
+        ))
+    }
+
+    /// The type of a scalar field: its enum's struct, or the scalar's type
+    fn scalar_field_type(&self, field: &Field, scalar: Scalar) -> String {
+        match self.scalar_enum(field) {
+            Some(enumeration) => enumeration.name.clone(),
+            None => scalar_type(scalar).to_owned(),
+        }
+    }
+
+    fn value_type(&self, field: &Field) -> String {
+        match field.field_type {
+            FieldType::Scalar(scalar) => self.scalar_field_type(field, scalar),
+            // An array of bools is read as its bytes
+            FieldType::Array(Scalar::Uint8 | Scalar::Bool) => "&'a [u8]".to_owned(),
             FieldType::Array(scalar) => format!("ArrayView<'a, {}>", scalar_type(scalar)),
             FieldType::String => "&'a str".to_owned(),
             FieldType::Struct(index) => self.schema.definition(index).name.clone(),
@@ -1299,14 +1383,17 @@ impl Generator<'_> {
             }
             FieldType::Table(index) => format!("{}<'a>", self.schema.definition(index).name),
             FieldType::Vector(index) => format!("{}Vector<'a>", self.schema.definition(index).name),
+            FieldType::StringVector => "StringVector<'a>".to_owned(),
         }
     }
 
-    fn input_type(&self, field_type: FieldType) -> String {
+    fn input_type(&self, field: &Field) -> String {
         let fields = |index: usize| self.fields_type(index, "'a");
 
-        match field_type {
-            FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
+        match field.field_type {
+            FieldType::Scalar(scalar) => self.scalar_field_type(field, scalar),
+            // Bools too, which `TableWriter::set_bool_array()` writes as bytes
+            // of 1 and 0
             FieldType::Array(scalar) => format!("&'a [{}]", scalar_type(scalar)),
             FieldType::String => "&'a str".to_owned(),
             FieldType::Struct(index) => self.schema.definition(index).name.clone(),
@@ -1315,6 +1402,7 @@ impl Generator<'_> {
             }
             FieldType::Table(index) => fields(index),
             FieldType::Vector(index) => format!("&'a [{}]", fields(index)),
+            FieldType::StringVector => "&'a [&'a str]".to_owned(),
         }
     }
 }
@@ -1349,14 +1437,14 @@ fn serialize_whole(
         text(integer(&definition.fields.len())),
         text(format!("{name}::LAYOUT")),
     ];
-    let function = if layout.version.is_some() {
-        arguments.push(text(format!("{name}::FORMAT_VERSION")));
-        "TableWriter::versioned_table_bytes"
-    } else {
-        "TableWriter::table_bytes"
-    };
     arguments.push(text(length));
-    let_call(writer, "let mut bytes =", function, arguments, "?;");
+    let_call(
+        writer,
+        "let mut bytes =",
+        "TableWriter::table_bytes",
+        arguments,
+        "?;",
+    );
     writer.blank();
 
     // The positions in the bytes after the header
@@ -1379,7 +1467,7 @@ fn serialize_whole(
                 writer.line(format!("fixed[{}] = u8::from({value});", integer(&start)));
                 continue;
             }
-            FieldType::Scalar(_) => format!("{value}.to_le_bytes()"),
+            FieldType::Scalar(_) => format!("{}.to_le_bytes()", stored(field, value)),
             FieldType::Struct(_) | FieldType::Table(_) => format!("{value}.to_bytes()"),
             _ => unreachable!("a whole message's fields before its string have fixed sizes"),
         };
@@ -1451,6 +1539,71 @@ const fn offset_type_name(offset_type: OffsetType) -> &'static str {
     }
 }
 
+/// An enum: a struct of its integer, since a field of the enum holds any
+/// integer of its type, with a constant of each value that the schema names.
+/// The constants are in `SCREAMING_SNAKE_CASE`, which no keyword is in, so
+/// they need no escaping.
+fn enum_struct(writer: &mut CodeWriter, enumeration: &Enum) {
+    let name = &enumeration.name;
+    let underlying = scalar_type(enumeration.underlying);
+
+    let mut docs = enumeration.docs.clone();
+    if !docs.is_empty() {
+        docs.push(String::new());
+    }
+    docs.push(format!(
+        "A value is any `{underlying}`: one that a constant of [`{name}`] names, or any other"
+    ));
+    rust_doc(writer, &docs);
+    writer.line("#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]");
+    writer.line(format!("pub struct {name}(pub {underlying});"));
+    writer.blank();
+
+    writer.open(format!("impl {name} {{"));
+    for value in &enumeration.values {
+        rust_doc(writer, &value.docs);
+        writer.line(format!(
+            "pub const {}: Self = Self({});",
+            value.name.to_ascii_uppercase(),
+            signed_integer(value.value)
+        ));
+    }
+    writer.close("}");
+}
+
+/// A struct's field `name` of an enum, read from `bytes` by `read`, the
+/// function of the enum's integer type, as rustfmt breaks it. The read is
+/// always wider than rustfmt's `fn_call_width`, so it never stays on the
+/// field's line as the enum's argument: rustfmt breaks the read's own
+/// argument when both calls fit on the field's line with room for the `),`
+/// that ends the enum's, and the enum's otherwise.
+fn enum_of_bytes(writer: &mut CodeWriter, name: &str, enumeration: &str, read: &str, bytes: &str) {
+    let calls = format!("{name}: {enumeration}({read}(");
+    if writer.fits(&STYLE, &format!("{calls}),")) {
+        writer.open(calls);
+        writer.line(format!("{bytes},"));
+        writer.close(")),");
+        return;
+    }
+
+    let argument = text(format!("{read}({bytes})"));
+    writer.statement(
+        &STYLE,
+        &format!("{name}: "),
+        &call(enumeration, vec![argument]),
+        ",",
+    );
+}
+
+/// The expression of the integer that the `value` of a scalar field stores:
+/// the integer of its enum's struct, or the value itself
+fn stored(field: &Field, value: String) -> String {
+    match field.enumeration {
+        Some(_) => format!("{value}.0"),
+        None => value,
+    }
+}
+
 /// Whether each definition's fields struct borrows strings or arrays, which
 /// it does if it holds any, or nests a table that does. Each definition is
 /// visited once, from a stack rather than by recursion, so that neither
@@ -1485,7 +1638,8 @@ fn borrowing(schema: &Schema) -> Vec<bool> {
                     FieldType::Array(_)
                     | FieldType::String
                     | FieldType::StructArray(_)
-                    | FieldType::Vector(_) => true,
+                    | FieldType::Vector(_)
+                    | FieldType::StringVector => true,
                     FieldType::Table(nested) => borrows[nested] == Some(true),
                 });
             borrows[index] = Some(borrowing);
@@ -1540,7 +1694,7 @@ fn layout_constant(writer: &mut CodeWriter, layout: Layout, generics: &str) {
         calls.push(".sized()".to_owned());
     }
     if layout.version.is_some() {
-        calls.push(".versioned()".to_owned());
+        calls.push(".with_version(Self::FORMAT_VERSION)".to_owned());
     }
     match layout.offset_type {
         OffsetType::Uint8 => calls.push(".with_offset_type(OffsetType::Uint8)".to_owned()),
@@ -1724,6 +1878,16 @@ fn let_call(
     );
 }
 
+/// Opens the `impl` block of a message's or a table's reader, which allows
+/// clippy's pedantic `inline_always` for the getters that
+/// `Generator::getters()` inlines
+fn open_reader_impl(writer: &mut CodeWriter, definition: &Definition) {
+    if !definition.fields.is_empty() {
+        writer.line("#[allow(clippy::inline_always)]");
+    }
+    writer.open(format!("impl<'a> {}<'a> {{", definition.name));
+}
+
 /// Opens a method of an `impl` block, with its parameters on lines of their
 /// own when its signature is wider than rustfmt's `max_width`, as rustfmt
 /// breaks it
@@ -1819,6 +1983,17 @@ fn integer(value: &impl Display) -> String {
         grouped.push(digit);
     }
     grouped
+}
+
+/// The literal of an enum's value: its digits in groups, as [`integer()`]
+/// groups them, after its sign
+fn signed_integer(value: i128) -> String {
+    let digits = integer(&value.unsigned_abs());
+    if value < 0 {
+        format!("-{digits}")
+    } else {
+        digits
+    }
 }
 
 /// "a [`Name`]" or "an [`Name`]", the name linked in documentation

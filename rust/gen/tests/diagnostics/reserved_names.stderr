@@ -14,19 +14,19 @@ error: `Vector` clashes with a name of the generated code
   --> reserved_names.tafla:13:7
    |
 13 | table Vector { x: uint8; }
-   |       ^^^^^^ the code generated for Rust uses `Vector`
+   |       ^^^^^^ the code generated for Rust and Swift uses `Vector`
 
 error: `String` clashes with a name of the generated code
   --> reserved_names.tafla:15:7
    |
 15 | table String { x: uint8; }
-   |       ^^^^^^ the code generated for Java uses `String`
+   |       ^^^^^^ the code generated for Java and Swift uses `String`
 
-error: `ByteBuffer` clashes with a name of the generated code
+error: `TableReader` clashes with a name of the generated code
   --> reserved_names.tafla:18:7
    |
-18 | table ByteBuffer { x: uint8; }
-   |       ^^^^^^^^^^ the code generated for TypeScript, JavaScript, Python, Java and Rust uses `ByteBuffer`
+18 | table TableReader { x: uint8; }
+   |       ^^^^^^^^^^^ the code generated for TypeScript, JavaScript, Python, Java, Rust and Swift uses `TableReader`
 
 error: `Number` clashes with a name of the generated code
   --> reserved_names.tafla:20:8
@@ -56,4 +56,16 @@ error: `Self` clashes with a name of the generated code
   --> reserved_names.tafla:28:8
    |
 28 | struct Self { x: uint8; }
-   |        ^^^^ the code generated for Python and Rust uses `Self`
+   |        ^^^^ the code generated for Python, Rust and Swift uses `Self`
+
+error: `Any` clashes with a name of the generated code
+  --> reserved_names.tafla:30:7
+   |
+30 | table Any { x: uint8; }
+   |       ^^^ the code generated for Swift uses `Any`
+
+error: `Element` clashes with a name of the generated code
+  --> reserved_names.tafla:32:8
+   |
+32 | struct Element { x: uint8; }
+   |        ^^^^^^^ the code generated for Swift uses `Element`

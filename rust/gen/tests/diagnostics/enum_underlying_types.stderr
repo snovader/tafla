@@ -1,0 +1,29 @@
+error: an enum can't be stored as `bool`
+ --> enum_underlying_types.tafla:1:12
+  |
+1 | enum Flag: bool {
+  |            ^^^^ an enum is stored as an integer type, `int8` to `uint64`
+
+error: an enum can't be stored as `float32`
+ --> enum_underlying_types.tafla:5:13
+  |
+5 | enum Ratio: float32 {
+  |             ^^^^^^^ an enum is stored as an integer type, `int8` to `uint64`
+
+error: an enum can't be stored as `string`
+ --> enum_underlying_types.tafla:9:13
+  |
+9 | enum Label: string {
+  |             ^^^^^^ an enum is stored as an integer type, `int8` to `uint64`
+
+error: `uint128` isn't an integer type
+  --> enum_underlying_types.tafla:13:12
+   |
+13 | enum Wide: uint128 {
+   |            ^^^^^^^ an enum is stored as an integer type, `int8` to `uint64`
+
+error: `Row` isn't an integer type
+  --> enum_underlying_types.tafla:17:14
+   |
+17 | enum Nested: Row {
+   |              ^^^ an enum is stored as an integer type, `int8` to `uint64`

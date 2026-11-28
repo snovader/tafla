@@ -19,7 +19,7 @@ from hypothesis.strategies import (
     sampled_from,
 )
 
-from tafla import ByteBuffer, DecodeError, TableLayout
+from tafla import DecodeError, TableLayout, TableReader
 from tests.descriptions import STRINGS
 from tests.generated import SETTINGS
 from tests.generated.byte_strategies import (
@@ -131,8 +131,8 @@ class TestWholeMessages(unittest.TestCase):
         self,
     ) -> None:
         data = bytearray(Tagged.serialize(id=1, position=Vec2(0.5, 1.5), label="a"))
-        layout = TableLayout(sized=True, versioned=True, offset_type="uint8")
-        self.assertEqual(ByteBuffer(data, layout).get_version(), 3)
+        layout = TableLayout(sized=True, version=3, offset_type="uint8")
+        self.assertEqual(TableReader(data, layout).get_version(), 3)
         # The version slot follows the length's, of one byte each
         data[1] = 4
 

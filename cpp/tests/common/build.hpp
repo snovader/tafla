@@ -26,7 +26,7 @@ TableBuilder build(const Table& table);
 Bytes to_bytes(const Table& table);
 
 /// Sets the field on `builder`, which borrows its value, or owns the bytes of
-/// structs
+/// structs and a copy of the strings of a vector of strings
 void set_field(const Field& field, TableBuilder& builder);
 
 /// Builds the table to nest, as its builder or its bytes
@@ -36,7 +36,9 @@ NestedTable build_nested(const Nested& nested);
 /// builder that it writes in place with `set_table(fields, fill)`, and each
 /// vector of them, when its items hold as many fields, with
 /// `set_vector(count, fields, fill)`, rather than from their builders. Its
-/// bytes and errors are `to_bytes()`'s.
+/// bytes and errors are `to_bytes()`'s, but for a vector whose count and
+/// items' ends alone make its table too long, which fails before its items
+/// are recorded.
 Bytes to_bytes_in_place(const Table& table);
 
 /// Whether the table nested from `nested` is recorded in place in a table of
@@ -98,8 +100,12 @@ void set_field_on(const Field& field, Target& target, std::optional<OffsetType> 
                 target.set_float32_array(std::span(value));
             } else if constexpr (std::is_same_v<T, std::vector<double>>) {
                 target.set_float64_array(std::span(value));
+            } else if constexpr (std::is_same_v<T, Bools>) {
+                target.set_bool_array(value.span());
             } else if constexpr (std::is_same_v<T, std::string>) {
                 target.set_string(std::string_view(value));
+            } else if constexpr (std::is_same_v<T, StringVectorField>) {
+                target.set_string_vector(std::vector<std::string>(value.strings));
             } else if constexpr (std::is_same_v<T, Struct>) {
                 target.set_struct(struct_bytes(value.scalars));
             } else if constexpr (std::is_same_v<T, StructArray>) {

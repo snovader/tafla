@@ -3,7 +3,7 @@ plugins {
 }
 
 rootProject.name = "tafla"
-include("core", "benchmarks")
+include("core", "benchmarks", "gen")
 
 dependencyResolutionManagement {
     repositories {

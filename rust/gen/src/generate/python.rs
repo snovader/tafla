@@ -1,20 +1,24 @@
 //! Python for `tafla`. Messages and tables are classes that read
 //! fields lazily from their bytes, written from `TypedDict`s of their fields,
 //! and structs are frozen dataclasses packed with `struct`. Vectors and
-//! arrays of structs are read through views of their items. A table's
-//! leading fields of fixed size, and a string after them, are written in one
-//! call, from the runtime's `FixedFields`, and read in one call by
+//! arrays of structs are read through views of their items, and vectors of
+//! strings through the runtime's `StringVector`, whose strings
+//! `field_values()` and `fields()` read into a list. A table's leading
+//! fields of fixed size, and a string after them, are written in one call,
+//! from the runtime's `FixedFields`, and read in one call by
 //! `field_values()`, which reads every field's value into a tuple, nested
 //! tables' included, and by `fields()`. A message of only such fields is
 //! written and read without a writer or a reader. Messages, tables and
-//! structs of scalars are also written from tuples of their values.
+//! structs of scalars are also written from tuples of their values. An enum
+//! is an `IntEnum` of the values that it names, and a field of it is an
+//! `int`, as a field of its integer type is, which any integer reads as.
 
 use std::collections::HashSet;
 
 use super::prose::article;
 use super::writer::{CodeWriter, Expr, Style, call, text};
 use super::{GeneratedFile, Options};
-use crate::model::{Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema};
+use crate::model::{Definition, Enum, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema};
 
 /// The runtime's package, unless [`Options::runtime`] names another
 const RUNTIME: &str = "tafla";
@@ -73,6 +77,11 @@ pub fn generate(
     writer.blank();
     imports(&mut writer, schema, runtime);
 
+    for enumeration in &schema.enums {
+        writer.blanks(2);
+        int_enum(&mut writer, enumeration);
+    }
+
     for (index, definition) in schema.definitions.iter().enumerate() {
         writer.blanks(2);
         match definition.kind {
@@ -121,11 +130,18 @@ fn imports(writer: &mut CodeWriter, schema: &Schema, runtime: &str) {
             .any(|field| predicate(field.field_type))
     };
     let has_array = has_field(|field_type| matches!(field_type, FieldType::Array(_)));
+    // Arrays of integers and floats, which their writers take as buffers too
+    let has_typed_array = has_field(
+        |field_type| matches!(field_type, FieldType::Array(scalar) if scalar != Scalar::Bool),
+    );
     // Vectors and arrays of structs have views, which iterate their items
     let has_view = has_field(|field_type| {
         matches!(field_type, FieldType::Vector(_) | FieldType::StructArray(_))
     });
-    let has_sequence = has_struct || has_view;
+    // Vectors of strings are read through the runtime's view, and written
+    // from a sequence of strings
+    let has_string_vector = has_field(|field_type| field_type == FieldType::StringVector);
+    let has_sequence = has_struct || has_view || has_string_vector;
     let versioned = has(|definition| {
         matches!(
             definition.kind,
@@ -137,7 +153,7 @@ fn imports(writer: &mut CodeWriter, schema: &Schema, runtime: &str) {
     });
 
     let mut abc = Vec::new();
-    if has_message || has_array || has_struct {
+    if has_message || has_typed_array || has_struct {
         abc.push("Buffer");
     }
     if has_array {
@@ -169,21 +185,22 @@ fn imports(writer: &mut CodeWriter, schema: &Schema, runtime: &str) {
         typing.push("Unpack");
     }
 
-    let mut buffer = Vec::new();
-    if has_table {
-        buffer.push("ByteBuffer");
-    }
+    let mut runtime_names = Vec::new();
     if versioned || has_struct {
-        buffer.push("DecodeError");
+        runtime_names.push("DecodeError");
     }
     if (0..schema.definitions.len()).any(|index| fixed_fields(schema, index) > 0) {
-        buffer.push("FixedFields");
+        runtime_names.push("FixedFields");
+    }
+    if has_string_vector {
+        runtime_names.push("StringVector");
     }
     if has_message {
-        buffer.push("TableLayout");
+        runtime_names.push("TableLayout");
     }
     if has_table {
-        buffer.push("TableWriter");
+        runtime_names.push("TableReader");
+        runtime_names.push("TableWriter");
     }
 
     let standard: Vec<(&str, Vec<&str>)> = vec![
@@ -213,15 +230,20 @@ fn imports(writer: &mut CodeWriter, schema: &Schema, runtime: &str) {
     if has_struct {
         writer.line("import builtins as _builtins");
     }
+    // Enums name `enum.IntEnum` through its module, which no declaration can
+    // be named after, rather than import a name that one could take
+    if !schema.enums.is_empty() {
+        writer.line("import enum");
+    }
     for (module, names) in standard {
         if !names.is_empty() {
             from_import(writer, module, &names);
         }
     }
     // A schema without definitions imports nothing
-    if !buffer.is_empty() {
+    if !runtime_names.is_empty() {
         writer.blank();
-        from_import(writer, runtime, &buffer);
+        from_import(writer, runtime, &runtime_names);
     }
 }
 
@@ -239,6 +261,32 @@ fn from_import(writer: &mut CodeWriter, module: &str, names: &[&str]) {
     writer.close(")");
 }
 
+/// An enum: an `IntEnum` of the values that the schema names, by their names
+/// in `UPPER_SNAKE_CASE`, which no keyword and no member of `IntEnum` is
+/// written in, so none needs escaping. Each value's documentation follows it,
+/// as an attribute's docstring does.
+///
+/// Fields of the enum stay `int`s: a member is an `int`, so the writers take
+/// it as it is, and a reader returns the integer that it read, which equals
+/// its member if the enum names it. Looking the member up, as `Level(value)`,
+/// would cost every read a call, and raise `ValueError` for an integer that
+/// the enum doesn't name.
+fn int_enum(writer: &mut CodeWriter, enumeration: &Enum) {
+    writer.open(format!("class {}(enum.IntEnum):", enumeration.name));
+    docstring(writer, &enumeration.docs);
+    writer.blank();
+
+    for value in &enumeration.values {
+        writer.line(format!(
+            "{} = {}",
+            value.name.to_ascii_uppercase(),
+            value.value
+        ));
+        docstring(writer, &value.docs);
+    }
+    writer.dedent();
+}
+
 fn message(writer: &mut CodeWriter, schema: &Schema, index: usize, layout: Layout) {
     let definition = schema.definition(index);
     let name = &definition.name;
@@ -246,7 +294,7 @@ fn message(writer: &mut CodeWriter, schema: &Schema, index: usize, layout: Layou
     writer.open(format!("class {name}:"));
     docstring(writer, &definition.docs);
     writer.blank();
-    writer.line("__slots__ = (\"_buffer\",)");
+    writer.line("__slots__ = (\"_reader\",)");
     writer.blank();
 
     if let Some(version) = layout.version {
@@ -261,7 +309,7 @@ fn message(writer: &mut CodeWriter, schema: &Schema, index: usize, layout: Layou
         );
         writer.blank();
     }
-    writer.line(format!("_LAYOUT: Final = {}", layout_expression(layout)));
+    writer.statement(&STYLE, "_LAYOUT: Final = ", &layout_expression(layout), "");
     let fixed = fixed_fields(schema, index);
     if fixed > 0 {
         let description = fixed_description(schema, definition, fixed, Some("_LAYOUT"));
@@ -284,10 +332,10 @@ fn message(writer: &mut CodeWriter, schema: &Schema, index: usize, layout: Layou
             &["Raises `TypeError` if `data` isn't C-contiguous.".to_owned()],
         );
     }
-    writer.line("self._buffer = ByteBuffer(data, self._LAYOUT)");
+    writer.line("self._reader = TableReader(data, self._LAYOUT)");
     if layout.version.is_some() {
         writer.blank();
-        writer.line("version = self._buffer.get_version()");
+        writer.line("version = self._reader.get_version()");
         writer.open("if version != self.FORMAT_VERSION:");
         let message = format!(
             "f\"Expected format version {{self.FORMAT_VERSION}} of {name}, got {{version}}\""
@@ -308,10 +356,10 @@ fn message(writer: &mut CodeWriter, schema: &Schema, index: usize, layout: Layou
         writer.blank();
     }
 
-    serialize(writer, schema, definition, layout, fixed);
+    serialize(writer, schema, definition, fixed);
     if has_serialize_values(schema, index) {
         writer.blank();
-        serialize_values(writer, schema, index, layout);
+        serialize_values(writer, schema, index);
     }
 
     getters(writer, schema, definition, true);
@@ -322,15 +370,16 @@ fn message(writer: &mut CodeWriter, schema: &Schema, index: usize, layout: Layou
     if fixed > 0 && fixed == definition.fields.len() {
         read_values(writer, schema, definition, layout);
     } else {
-        read_values_by_buffer(writer, schema, index, layout);
+        read_values_by_reader(writer, schema, index, layout);
     }
     writer.dedent();
 }
 
 /// The `read_values()` of a message with other fields than fixed ones, which
-/// reads them as `field_values()` does, from a `ByteBuffer` of its own, without
-/// a reader, and checks its version as the reader's constructor does
-fn read_values_by_buffer(writer: &mut CodeWriter, schema: &Schema, index: usize, layout: Layout) {
+/// reads them as `field_values()` does, from a `TableReader` of its own,
+/// without an instance of the message, and checks its version as the
+/// constructor does
+fn read_values_by_reader(writer: &mut CodeWriter, schema: &Schema, index: usize, layout: Layout) {
     let definition = schema.definition(index);
     let name = &definition.name;
     let fixed = fixed_fields(schema, index);
@@ -351,7 +400,7 @@ fn read_values_by_buffer(writer: &mut CodeWriter, schema: &Schema, index: usize,
     writer.indent();
     let mut docs = vec![
         "Reads every field's value from `data` as `field_values()` reads them,".to_owned(),
-        "without creating a reader.".to_owned(),
+        format!("without creating {}.", article(name)),
         String::new(),
         "Raises `TypeError` if `data` isn't C-contiguous, and `DecodeError` for".to_owned(),
     ];
@@ -361,9 +410,9 @@ fn read_values_by_buffer(writer: &mut CodeWriter, schema: &Schema, index: usize,
         "bytes that the getters can't read.".to_owned()
     });
     docstring(writer, &docs);
-    writer.line("buffer = ByteBuffer(data, cls._LAYOUT)");
+    writer.line("reader = TableReader(data, cls._LAYOUT)");
     if layout.version.is_some() {
-        writer.line("version = buffer.get_version()");
+        writer.line("version = reader.get_version()");
         writer.open("if version != cls.FORMAT_VERSION:");
         let message = format!(
             "f\"Expected format version {{cls.FORMAT_VERSION}} of {name}, got {{version}}\""
@@ -377,7 +426,7 @@ fn read_values_by_buffer(writer: &mut CodeWriter, schema: &Schema, index: usize,
         writer.dedent();
     }
     if fixed > 0 {
-        writer.line("values = buffer.get_fields(0, cls._FIXED_FIELDS)");
+        writer.line("values = reader.get_fields(0, cls._FIXED_FIELDS)");
         writer.open("if values is None:");
         writer.line("return cls(data).field_values()");
         writer.dedent();
@@ -388,10 +437,10 @@ fn read_values_by_buffer(writer: &mut CodeWriter, schema: &Schema, index: usize,
 }
 
 /// A message of only fixed fields' `read_values()`, which reads their values
-/// as `field_values()` reads them, in one call and without a reader, or
-/// through a reader's getters when the message's offsets aren't the ones
-/// that its writer writes, or its version isn't the reader's, which the
-/// reader raises for
+/// as `field_values()` reads them, in one call and without an instance of
+/// the message, or through an instance's getters when the message's offsets
+/// aren't the ones that its writer writes, or its version isn't the
+/// message's, which the instance raises for
 fn read_values(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, layout: Layout) {
     let versioned = layout.version.is_some();
 
@@ -403,7 +452,10 @@ fn read_values(writer: &mut CodeWriter, schema: &Schema, definition: &Definition
     writer.indent();
     let mut docs = vec![
         "Reads every field's value from `data` at once, as `field_values()`".to_owned(),
-        "reads them, without creating a reader.".to_owned(),
+        format!(
+            "reads them, without creating {}.",
+            article(&definition.name)
+        ),
         String::new(),
         "Raises `TypeError` if `data` isn't C-contiguous, and `DecodeError` for".to_owned(),
     ];
@@ -420,7 +472,7 @@ fn read_values(writer: &mut CodeWriter, schema: &Schema, definition: &Definition
     writer.statement(
         &STYLE,
         "values = ",
-        &call("ByteBuffer.read_fields", arguments),
+        &call("TableReader.read_fields", arguments),
         "",
     );
     writer.open("if values is None:");
@@ -433,13 +485,7 @@ fn read_values(writer: &mut CodeWriter, schema: &Schema, definition: &Definition
 
 /// A message's `serialize()`, which writes it from its fields, the first
 /// `fixed` of them with its `FixedFields`
-fn serialize(
-    writer: &mut CodeWriter,
-    schema: &Schema,
-    definition: &Definition,
-    layout: Layout,
-    fixed: usize,
-) {
+fn serialize(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, fixed: usize) {
     let name = &definition.name;
     // A message of only fixed fields is written whole in one call, into
     // bytes of its own
@@ -468,10 +514,7 @@ fn serialize(
                 article(name)
             )],
         );
-        let mut arguments = fixed_arguments(schema, definition, fixed, "cls");
-        if layout.version.is_some() {
-            arguments.push(text("version=cls.FORMAT_VERSION"));
-        }
+        let arguments = fixed_arguments(schema, definition, fixed, "cls");
         let write = call("TableWriter.write_fields", arguments);
         writer.statement(&STYLE, "return ", &write, "");
         writer.dedent();
@@ -481,13 +524,10 @@ fn serialize(
         writer,
         &[format!("Writes {} with every field", article(name))],
     );
-    let mut arguments = vec![
+    let arguments = vec![
         text(definition.fields.len().to_string()),
         text("cls._LAYOUT"),
     ];
-    if layout.version.is_some() {
-        arguments.push(text("cls.FORMAT_VERSION"));
-    }
     writer.statement(&STYLE, "writer = ", &call("TableWriter", arguments), "");
     if fixed > 0 {
         set_fixed_fields(
@@ -520,7 +560,7 @@ fn version_of(writer: &mut CodeWriter) {
             "the header doesn't fit in it.".to_owned(),
         ],
     );
-    writer.line("return ByteBuffer(data, cls._LAYOUT).get_version()");
+    writer.line("return TableReader(data, cls._LAYOUT).get_version()");
     writer.dedent();
 }
 
@@ -533,7 +573,7 @@ fn table(writer: &mut CodeWriter, schema: &Schema, index: usize) {
         docstring(writer, &definition.docs);
         writer.blank();
     }
-    writer.line("__slots__ = (\"_buffer\", \"_position\")");
+    writer.line("__slots__ = (\"_position\", \"_reader\")");
     writer.blank();
 
     let alignment = schema.table_alignment(index);
@@ -557,12 +597,12 @@ fn table(writer: &mut CodeWriter, schema: &Schema, index: usize) {
         writer.blank();
     }
 
-    writer.open("def __init__(self, buffer: ByteBuffer, position: int) -> None:");
+    writer.open("def __init__(self, reader: TableReader, position: int) -> None:");
     docstring(
         writer,
         &["Reads the table at `position`, as its parent's getter finds it".to_owned()],
     );
-    writer.line("self._buffer = buffer");
+    writer.line("self._reader = reader");
     writer.line("self._position = position");
     writer.dedent();
     writer.blank();
@@ -919,10 +959,10 @@ fn vector_view(writer: &mut CodeWriter, schema: &Schema, index: usize) {
         ],
     );
     writer.blank();
-    writer.line("__slots__ = (\"_buffer\", \"_length\", \"_position\")");
+    writer.line("__slots__ = (\"_length\", \"_position\", \"_reader\")");
     writer.blank();
 
-    writer.open("def __init__(self, buffer: ByteBuffer, position: int) -> None:");
+    writer.open("def __init__(self, reader: TableReader, position: int) -> None:");
     docstring(
         writer,
         &[
@@ -932,9 +972,9 @@ fn vector_view(writer: &mut CodeWriter, schema: &Schema, index: usize) {
             "outside the bytes.".to_owned(),
         ],
     );
-    writer.line("self._buffer = buffer");
+    writer.line("self._reader = reader");
     writer.line("self._position = position");
-    writer.line("self._length = buffer.get_vector_length(position)");
+    writer.line("self._length = reader.get_vector_length(position)");
     writer.dedent();
     writer.blank();
 
@@ -959,12 +999,12 @@ fn vector_view(writer: &mut CodeWriter, schema: &Schema, index: usize) {
         &STYLE,
         "offset = ",
         &call(
-            "self._buffer.get_vector_item_offset",
+            "self._reader.get_vector_item_offset",
             vec![text("self._position"), text("self._length"), text("index")],
         ),
         "",
     );
-    writer.line(format!("return {table}(self._buffer, offset)"));
+    writer.line(format!("return {table}(self._reader, offset)"));
     writer.dedent();
     writer.blank();
 
@@ -978,9 +1018,9 @@ fn vector_view(writer: &mut CodeWriter, schema: &Schema, index: usize) {
                 .to_owned(),
         ],
     );
-    writer.line("buffer = self._buffer");
-    writer.open("for offset in buffer.get_vector_offsets(self._position):");
-    writer.line(format!("yield {table}(buffer, offset)"));
+    writer.line("reader = self._reader");
+    writer.open("for offset in reader.get_vector_offsets(self._position):");
+    writer.line(format!("yield {table}(reader, offset)"));
     writer.dedent();
     writer.dedent();
 
@@ -992,7 +1032,7 @@ fn vector_view(writer: &mut CodeWriter, schema: &Schema, index: usize) {
 /// opens the block for items that it can't read so
 fn vector_fields(writer: &mut CodeWriter, table: &str) {
     let read = call(
-        "self._buffer.get_vector_fields",
+        "self._reader.get_vector_fields",
         vec![
             text("self._position"),
             text(format!("{table}._FIXED_FIELDS")),
@@ -1018,7 +1058,7 @@ fn struct_array_view(writer: &mut CodeWriter, schema: &Schema, definition: &Defi
     writer.line("__slots__ = (\"_data\",)");
     writer.blank();
 
-    writer.open("def __init__(self, buffer: ByteBuffer, position: int) -> None:");
+    writer.open("def __init__(self, reader: TableReader, position: int) -> None:");
     docstring(
         writer,
         &[
@@ -1028,7 +1068,7 @@ fn struct_array_view(writer: &mut CodeWriter, schema: &Schema, definition: &Defi
         ],
     );
     writer.line(format!(
-        "self._data = buffer.get_struct_array(position, {structure}.SIZE)"
+        "self._data = reader.get_struct_array(position, {structure}.SIZE)"
     ));
     writer.dedent();
     writer.blank();
@@ -1315,6 +1355,9 @@ fn writes(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, fir
                 vec![position, text(value)],
             ),
             FieldType::String => ("set_string".to_owned(), vec![position, text(value)]),
+            FieldType::StringVector => {
+                ("set_string_vector".to_owned(), vec![position, text(value)])
+            }
             FieldType::Struct(_) => (
                 "set_struct".to_owned(),
                 vec![position, call(format!("{value}.serialize"), vec![])],
@@ -1468,6 +1511,7 @@ fn fixed_count(schema: &Schema, field_type: FieldType, budget: usize) -> Option<
         }
         FieldType::Array(_)
         | FieldType::String
+        | FieldType::StringVector
         | FieldType::StructArray(_)
         | FieldType::Vector(_) => None,
     }
@@ -1499,7 +1543,10 @@ fn fixed_description(
                 string = true;
                 continue;
             }
-            FieldType::Array(_) | FieldType::StructArray(_) | FieldType::Vector(_) => {
+            FieldType::Array(_)
+            | FieldType::StringVector
+            | FieldType::StructArray(_)
+            | FieldType::Vector(_) => {
                 unreachable!("only fields of fixed size and a string are packed")
             }
         });
@@ -1575,7 +1622,10 @@ fn push_fixed_values(
             }
             // The string is an argument of its own
             FieldType::String => {}
-            FieldType::Array(_) | FieldType::StructArray(_) | FieldType::Vector(_) => {
+            FieldType::Array(_)
+            | FieldType::StringVector
+            | FieldType::StructArray(_)
+            | FieldType::Vector(_) => {
                 unreachable!("only fields of fixed size and a string are packed")
             }
         }
@@ -1584,9 +1634,10 @@ fn push_fixed_values(
 
 /// Whether the message at `index` has `serialize_values()`, which writes it
 /// from the values that `field_values()` reads: whether its fields are
-/// scalars, strings, arrays and vectors of tables of fixed size without
-/// structs, whose items' values its vectors' views read into the tuples that
-/// `TableWriter.set_vector_tables()` writes, as `ByteBuffer.get_fields()`
+/// scalars, strings, arrays, vectors of strings, whose strings it reads into
+/// lists, and vectors of tables of fixed size without structs, whose items'
+/// values its vectors' views read into the tuples that
+/// `TableWriter.set_vector_tables()` writes, as `TableReader.get_fields()`
 /// reads them. A struct's value would be its bytes there, and a nested
 /// table's values would be written by code of its own.
 fn has_serialize_values(schema: &Schema, index: usize) -> bool {
@@ -1596,7 +1647,10 @@ fn has_serialize_values(schema: &Schema, index: usize) -> bool {
             .fields
             .iter()
             .all(|field| match field.field_type {
-                FieldType::Scalar(_) | FieldType::String | FieldType::Array(_) => true,
+                FieldType::Scalar(_)
+                | FieldType::String
+                | FieldType::StringVector
+                | FieldType::Array(_) => true,
                 FieldType::Vector(item) => {
                     let table = schema.definition(item);
                     is_fixed(schema, item) && !holds_struct(schema, table, table.fields.len())
@@ -1642,7 +1696,7 @@ fn parameter(field: &Field, locals: &[&str]) -> String {
 enum Form {
     /// A tuple of each field's value as its getter returns it, but a nested
     /// table's, whose values are in place of it when they're all of fixed
-    /// size, as `ByteBuffer.get_fields()` reads them, and in a tuple of their
+    /// size, as `TableReader.get_fields()` reads them, and in a tuple of their
     /// own otherwise
     Values,
     /// The `TypedDict` that the table is written from, with the items of its
@@ -1715,7 +1769,7 @@ impl<'a> Reads<'a> {
             slots: Vec::new(),
             statements: Vec::new(),
             // The method's own names
-            names: ["self", "buffer", "values"].map(str::to_owned).into(),
+            names: ["self", "reader", "values"].map(str::to_owned).into(),
             budget: MAX_INLINE_FIELDS,
         }
     }
@@ -1761,7 +1815,7 @@ impl<'a> Reads<'a> {
     }
 
     /// The elements of the first `count` fields of `definition`, which
-    /// `ByteBuffer.get_fields()` read into `values` from `next` on, with
+    /// `TableReader.get_fields()` read into `values` from `next` on, with
     /// structs as their bytes
     fn unpacked(
         &mut self,
@@ -1813,9 +1867,9 @@ impl<'a> Reads<'a> {
         for (index, field) in definition.fields.iter().enumerate().skip(first) {
             let key = identifier(&field.name);
             let offset = match position {
-                None => call("buffer.root_offset", vec![text(index.to_string())]),
+                None => call("reader.root_offset", vec![text(index.to_string())]),
                 Some(position) => call(
-                    "buffer.field_offset",
+                    "reader.field_offset",
                     vec![text(position), text(index.to_string())],
                 ),
             };
@@ -1823,19 +1877,21 @@ impl<'a> Reads<'a> {
             let read = match field.field_type {
                 FieldType::Scalar(Scalar::Bool) => text(format!(
                     "{} != 0",
-                    call("buffer.get_uint8", vec![offset]).flat()
+                    call("reader.get_uint8", vec![offset]).flat()
                 )),
                 FieldType::Scalar(scalar) => {
-                    call(format!("buffer.get_{}", scalar.name()), vec![offset])
+                    call(format!("reader.get_{}", scalar.name()), vec![offset])
                 }
                 FieldType::Array(scalar) => {
-                    call(format!("buffer.get_{}_array", scalar.name()), vec![offset])
+                    call(format!("reader.get_{}_array", scalar.name()), vec![offset])
                 }
-                FieldType::String => call("buffer.get_string", vec![offset]),
+                FieldType::String => call("reader.get_string", vec![offset]),
+                // Every string, in a list, rather than the getter's view
+                FieldType::StringVector => call("reader.get_string_vector", vec![offset]),
                 FieldType::Struct(index) => {
                     let structure = &schema.definition(index).name;
                     let bytes = call(
-                        "buffer.get_struct",
+                        "reader.get_struct",
                         vec![offset, text(format!("{structure}.SIZE"))],
                     );
                     call(format!("{structure}.read"), vec![bytes])
@@ -1844,11 +1900,11 @@ impl<'a> Reads<'a> {
                     let structure = &schema.definition(index).name;
                     match self.form {
                         Form::Values => {
-                            call(format!("{structure}Array"), vec![text("buffer"), offset])
+                            call(format!("{structure}Array"), vec![text("reader"), offset])
                         }
                         Form::Fields => {
                             let bytes = call(
-                                "buffer.get_struct_array",
+                                "reader.get_struct_array",
                                 vec![offset, text(format!("{structure}.SIZE"))],
                             );
                             call(format!("{structure}.read_array"), vec![bytes])
@@ -1858,7 +1914,7 @@ impl<'a> Reads<'a> {
                 FieldType::Vector(index) => {
                     let view = call(
                         format!("{}Vector", schema.definition(index).name),
-                        vec![text("buffer"), offset],
+                        vec![text("reader"), offset],
                     );
                     match self.form {
                         Form::Values => view,
@@ -1888,7 +1944,7 @@ impl<'a> Reads<'a> {
                         continue;
                     }
 
-                    let reader = call(nested.name.clone(), vec![text("buffer"), offset]);
+                    let reader = call(nested.name.clone(), vec![text("reader"), offset]);
                     let read = call(format!("{}.{}", reader.flat(), self.form.method()), vec![]);
                     let spliced = flat && self.form == Form::Values;
                     elements.push(self.value(key, read, true, spliced));
@@ -1963,7 +2019,7 @@ fn tuple_of(items: Vec<Expr>) -> Expr {
 
 /// Whether a nested table's fields are all of fixed size, which its
 /// `FixedFields` describes whole, unless it has none, so that its values lie
-/// in place of it in its parent's, as `ByteBuffer.get_fields()` reads them
+/// in place of it in its parent's, as `TableReader.get_fields()` reads them
 fn is_flat(schema: &Schema, index: usize) -> bool {
     fixed_fields(schema, index) == schema.definition(index).fields.len()
 }
@@ -2018,6 +2074,16 @@ fn push_value_types(schema: &Schema, definition: &Definition, types: &mut Vec<An
                 push_value_types(schema, schema.definition(index), types);
             }
             FieldType::Table(index) => types.push(values_alias(schema.definition(index))),
+            // The bools that get_bool_array() reads, rather than the bytes
+            // that the getter returns
+            FieldType::Array(Scalar::Bool) => {
+                types.push(Annotation::Name("list[bool]".to_owned()));
+            }
+            // Every string, which `field_values()` reads into a list
+            FieldType::StringVector => types.push(Annotation::Generic(
+                "list",
+                vec![Annotation::Name("str".to_owned())],
+            )),
             field_type => types.push(Annotation::Name(value_type(field_type, schema))),
         }
     }
@@ -2060,7 +2126,7 @@ fn values_type(writer: &mut CodeWriter, schema: &Schema, definition: &Definition
 }
 
 /// Whether the first `count` fields of `definition` hold a struct, nested
-/// tables' included, which `ByteBuffer.get_fields()` reads as its bytes
+/// tables' included, which `TableReader.get_fields()` reads as its bytes
 fn holds_struct(schema: &Schema, definition: &Definition, count: usize) -> bool {
     definition.fields[..count]
         .iter()
@@ -2103,16 +2169,16 @@ fn field_reader(writer: &mut CodeWriter, schema: &Schema, index: usize, is_root:
         && fixed == definition.fields.len()
         && !holds_struct(schema, definition, fixed)
         && form == Form::Values;
-    let buffer = if fixed == definition.fields.len() {
-        "self._buffer"
+    let reader = if fixed == definition.fields.len() {
+        "self._reader"
     } else {
-        writer.line("buffer = self._buffer");
-        "buffer"
+        writer.line("reader = self._reader");
+        "reader"
     };
     if fixed > 0 {
         let position = if is_root { "0" } else { "self._position" };
         writer.line(format!(
-            "values = {buffer}.get_fields({position}, self._FIXED_FIELDS)"
+            "values = {reader}.get_fields({position}, self._FIXED_FIELDS)"
         ));
         writer.open("if values is None:");
         getter_fallback(writer, schema, definition, form);
@@ -2125,7 +2191,7 @@ fn field_reader(writer: &mut CodeWriter, schema: &Schema, index: usize, is_root:
 }
 
 /// Assigns the locals of `reads`, and returns its `elements` in `form`, or
-/// `values`, which `ByteBuffer.get_fields()` returned, when they're those
+/// `values`, which `TableReader.get_fields()` returned, when they're those
 fn return_reads(
     writer: &mut CodeWriter,
     reads: &Reads<'_>,
@@ -2160,6 +2226,7 @@ fn getter_fallback(writer: &mut CodeWriter, schema: &Schema, definition: &Defini
                         format!("*{}.field_values()", getter(field))
                     }
                     FieldType::Table(_) => format!("{}.field_values()", getter(field)),
+                    FieldType::StringVector => format!("{}.tolist()", getter(field)),
                     _ => getter(field),
                 })
                 .map(text)
@@ -2176,6 +2243,7 @@ fn getter_fallback(writer: &mut CodeWriter, schema: &Schema, definition: &Defini
                             format!("{}.fields()", getter(field))
                         }
                         FieldType::StructArray(_) => format!("list({})", getter(field)),
+                        FieldType::StringVector => format!("{}.tolist()", getter(field)),
                         _ => getter(field),
                     };
                     (identifier(&field.name), DictValue::Text(value))
@@ -2200,6 +2268,9 @@ fn reader_docs(schema: &Schema, index: usize, is_root: bool, form: Form) -> Vec<
     let items =
         holds(|field_type| matches!(field_type, FieldType::Vector(_) | FieldType::StructArray(_)));
     let vectors = holds(|field_type| matches!(field_type, FieldType::Vector(_)));
+    // Whose getters return their bytes, which these read as bools
+    let bools = holds(|field_type| field_type == FieldType::Array(Scalar::Bool));
+    let string_vectors = holds(|field_type| field_type == FieldType::StringVector);
 
     let mut docs: Vec<String> = match form {
         // The values that serialize_values() takes, but for a vector's view
@@ -2207,6 +2278,44 @@ fn reader_docs(schema: &Schema, index: usize, is_root: bool, form: Form) -> Vec<
             "Reads every field's value at once into a tuple, in the fields' order, as".to_owned(),
             "`serialize_values()` takes them, as `fields()` reads them into a dict.".to_owned(),
         ],
+        // An array of bools' value is its bools, and a vector of strings' its
+        // strings, rather than the bytes and the view that their getters
+        // return
+        Form::Values if bools || string_vectors => {
+            let mut clauses = Vec::new();
+            if bools {
+                clauses.push("an array of bools' as a list of its bools");
+            }
+            if string_vectors {
+                clauses.push("a vector of strings' as a list of its strings");
+            }
+            if tables {
+                clauses.push(
+                    "a nested table's as its values, in place of it when they're all of fixed \
+                     size, and in a tuple of their own otherwise",
+                );
+            }
+            wrap(&format!(
+                "Reads every field's value into a tuple, in the fields' order, as its getter \
+                 returns it, but {}.",
+                join_clauses(&clauses)
+            ))
+        }
+        Form::Fields if string_vectors => {
+            let written_by = if is_root { "serialize()" } else { "write()" };
+            let mut clauses = Vec::new();
+            if tables {
+                clauses.push("a nested table's fields as its `fields()` reads them");
+            }
+            if items {
+                clauses.push("the items of vectors and arrays of structs in lists");
+            }
+            clauses.push("the strings of vectors of strings in lists");
+            wrap(&format!(
+                "Reads every field at once, as `{written_by}` takes them, with {}.",
+                join_clauses(&clauses)
+            ))
+        }
         Form::Values if tables => vec![
             "Reads every field's value into a tuple, in the fields' order, as its getter"
                 .to_owned(),
@@ -2249,6 +2358,15 @@ fn reader_docs(schema: &Schema, index: usize, is_root: bool, form: Form) -> Vec<
         ]);
     }
     docs
+}
+
+/// The clauses of a sentence's list, with `, and` before the last of them
+fn join_clauses(clauses: &[&str]) -> String {
+    match clauses {
+        [] => String::new(),
+        [only] => (*only).to_owned(),
+        [first @ .., last] => format!("{}, and {last}", first.join(", ")),
+    }
 }
 
 /// The lines of a docstring's paragraph, wrapped at 76 characters, which the
@@ -2380,14 +2498,14 @@ fn vector_iter_values(writer: &mut CodeWriter, schema: &Schema, index: usize) {
                 "reaches it".to_owned(),
             ],
         );
-        writer.line("buffer = self._buffer");
+        writer.line("reader = self._reader");
         let read = call(
-            "buffer.iter_vector_fields",
+            "reader.iter_vector_fields",
             vec![
                 text("self._position"),
                 text(format!("{table}._FIXED_FIELDS")),
                 text(format!(
-                    "lambda offset: {table}(buffer, offset).field_values()"
+                    "lambda offset: {table}(reader, offset).field_values()"
                 )),
             ],
         );
@@ -2436,7 +2554,7 @@ fn vector_item_values(writer: &mut CodeWriter, schema: &Schema, index: usize, va
             &STYLE,
             "offset = ",
             &call(
-                "self._buffer.get_vector_item_offset",
+                "self._reader.get_vector_item_offset",
                 vec![text("self._position"), text("self._length"), text("index")],
             ),
             "",
@@ -2445,14 +2563,14 @@ fn vector_item_values(writer: &mut CodeWriter, schema: &Schema, index: usize, va
             &STYLE,
             "values = ",
             &call(
-                "self._buffer.get_fields",
+                "self._reader.get_fields",
                 vec![text("offset"), text(format!("{table}._FIXED_FIELDS"))],
             ),
             "",
         );
         writer.open("if values is None:");
         writer.line(format!(
-            "return {table}(self._buffer, offset).field_values()"
+            "return {table}(self._reader, offset).field_values()"
         ));
         writer.dedent();
         writer.blank();
@@ -2464,7 +2582,7 @@ fn vector_item_values(writer: &mut CodeWriter, schema: &Schema, index: usize, va
 }
 
 /// Returns, after `prefix`, the values of a table of fixed size that
-/// `ByteBuffer.get_fields()` read into `values`, with each struct read from
+/// `TableReader.get_fields()` read into `values`, with each struct read from
 /// its bytes
 fn return_converted(
     writer: &mut CodeWriter,
@@ -2486,7 +2604,7 @@ fn return_converted(
 /// in their order, as positional arguments, as `field_values()` returns them,
 /// but a vector's as its items' values, as its view's `field_values()` returns
 /// them
-fn serialize_values(writer: &mut CodeWriter, schema: &Schema, index: usize, layout: Layout) {
+fn serialize_values(writer: &mut CodeWriter, schema: &Schema, index: usize) {
     let definition = schema.definition(index);
     let name = &definition.name;
     let names: Vec<String> = definition
@@ -2528,22 +2646,16 @@ fn serialize_values(writer: &mut CodeWriter, schema: &Schema, index: usize, layo
     }
     docstring(writer, &docs);
     if whole {
-        let mut arguments = fixed_value_arguments(definition, &names, fixed);
-        if layout.version.is_some() {
-            arguments.push(text("version=cls.FORMAT_VERSION"));
-        }
+        let arguments = fixed_value_arguments(definition, &names, fixed);
         let write = call("TableWriter.write_fields", arguments);
         writer.statement(&STYLE, "return ", &write, "");
         writer.dedent();
         return;
     }
-    let mut arguments = vec![
+    let arguments = vec![
         text(definition.fields.len().to_string()),
         text("cls._LAYOUT"),
     ];
-    if layout.version.is_some() {
-        arguments.push(text("cls.FORMAT_VERSION"));
-    }
     writer.statement(&STYLE, "writer = ", &call("TableWriter", arguments), "");
 
     // The leading fields of fixed size in one call, a string's as an argument
@@ -2569,6 +2681,9 @@ fn serialize_values(writer: &mut CodeWriter, schema: &Schema, index: usize, layo
                 vec![position, text(value)],
             ),
             FieldType::String => ("set_string".to_owned(), vec![position, text(value)]),
+            FieldType::StringVector => {
+                ("set_string_vector".to_owned(), vec![position, text(value)])
+            }
             FieldType::Vector(item) => (
                 "set_vector_tables".to_owned(),
                 vec![
@@ -2931,19 +3046,25 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
             identifier(&field.name),
             value_type(field.field_type, schema)
         ));
-        docstring(writer, &field.docs);
+        docstring(writer, &getter_docs(field));
 
         match field.field_type {
             FieldType::Scalar(Scalar::Bool) => {
-                return_bool(writer, &call("self._buffer.get_uint8", vec![offset]));
+                return_bool(writer, &call("self._reader.get_uint8", vec![offset]));
             }
             FieldType::Scalar(scalar) => {
-                let get = call(format!("self._buffer.get_{}", scalar.name()), vec![offset]);
+                let get = call(format!("self._reader.get_{}", scalar.name()), vec![offset]);
+                writer.statement(&STYLE, "return ", &get, "");
+            }
+            // The bytes of an array of bools, in place, as an array of
+            // uint8s' getter reads them
+            FieldType::Array(Scalar::Bool) => {
+                let get = call("self._reader.get_uint8_array", vec![offset]);
                 writer.statement(&STYLE, "return ", &get, "");
             }
             FieldType::Array(scalar) => {
                 let get = call(
-                    format!("self._buffer.get_{}_array", scalar.name()),
+                    format!("self._reader.get_{}_array", scalar.name()),
                     vec![offset],
                 );
                 writer.statement(&STYLE, "return ", &get, "");
@@ -2952,14 +3073,14 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
                 writer.statement(
                     &STYLE,
                     "return ",
-                    &call("self._buffer.get_string", vec![offset]),
+                    &call("self._reader.get_string", vec![offset]),
                     "",
                 );
             }
             FieldType::Struct(index) => {
                 let structure = &schema.definition(index).name;
                 let bytes = call(
-                    "self._buffer.get_struct",
+                    "self._reader.get_struct",
                     vec![offset, text(format!("{structure}.SIZE"))],
                 );
                 let read = call(format!("{structure}.read"), vec![bytes]);
@@ -2967,14 +3088,14 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
             }
             FieldType::Table(index) => {
                 let table = &schema.definition(index).name;
-                let read = call(table.clone(), vec![text("self._buffer"), offset]);
+                let read = call(table.clone(), vec![text("self._reader"), offset]);
                 writer.statement(&STYLE, "return ", &read, "");
             }
-            // The view of a vector or an array of structs, which reads each
-            // item when it's asked for
-            FieldType::StructArray(_) | FieldType::Vector(_) => {
+            // The view of a vector, of strings or of tables, or of an array
+            // of structs, which reads each item when it's asked for
+            FieldType::StringVector | FieldType::StructArray(_) | FieldType::Vector(_) => {
                 let view = value_type(field.field_type, schema);
-                let read = call(view, vec![text("self._buffer"), offset]);
+                let read = call(view, vec![text("self._reader"), offset]);
                 writer.statement(&STYLE, "return ", &read, "");
             }
         }
@@ -2982,13 +3103,27 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
     }
 }
 
+/// The docstring of a field's getter: the schema's, and for an array of bools,
+/// whose getter returns its bytes, what those hold, after a blank line when
+/// the schema has one
+fn getter_docs(field: &Field) -> Vec<String> {
+    let mut docs = field.docs.clone();
+    if field.field_type == FieldType::Array(Scalar::Bool) {
+        if !docs.is_empty() {
+            docs.push(String::new());
+        }
+        docs.push("A byte for each bool, which is true where it isn't 0".to_owned());
+    }
+    docs
+}
+
 /// The position of field `index`, in the root table or a nested one
 fn offset_expression(is_root: bool, index: usize) -> Expr {
     if is_root {
-        call("self._buffer.root_offset", vec![text(index.to_string())])
+        call("self._reader.root_offset", vec![text(index.to_string())])
     } else {
         call(
-            "self._buffer.field_offset",
+            "self._reader.field_offset",
             vec![text("self._position"), text(index.to_string())],
         )
     }
@@ -3018,22 +3153,26 @@ fn docstring(writer: &mut CodeWriter, docs: &[String]) {
     }
 }
 
-fn layout_expression(layout: Layout) -> String {
+/// The layout of a message, whose version is the class's `FORMAT_VERSION`
+fn layout_expression(layout: Layout) -> Expr {
     let mut arguments = Vec::new();
     if layout.sized {
-        arguments.push("sized=True".to_owned());
+        arguments.push(text("sized=True"));
     }
     if layout.version.is_some() {
-        arguments.push("versioned=True".to_owned());
+        arguments.push(text("version=FORMAT_VERSION"));
     }
     if layout.offset_type != OffsetType::Uint32 {
-        arguments.push(format!("offset_type=\"{}\"", layout.offset_type.name()));
+        arguments.push(text(format!(
+            "offset_type=\"{}\"",
+            layout.offset_type.name()
+        )));
     }
 
     if arguments.is_empty() {
-        "TableLayout.DEFAULT".to_owned()
+        text("TableLayout.DEFAULT")
     } else {
-        format!("TableLayout({})", arguments.join(", "))
+        call("TableLayout", arguments)
     }
 }
 
@@ -3045,11 +3184,16 @@ fn identifier(name: &str) -> String {
     }
 }
 
+/// The type that a field's getter returns
 fn value_type(field_type: FieldType, schema: &Schema) -> String {
     match field_type {
         FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
+        // The bytes of an array of bools, which its getter reads in place
+        FieldType::Array(Scalar::Bool) => "memoryview[int]".to_owned(),
         FieldType::Array(scalar) => format!("memoryview[{}]", scalar_type(scalar)),
         FieldType::String => "str".to_owned(),
+        // A view of the strings, which reads each one when it's asked for
+        FieldType::StringVector => "StringVector".to_owned(),
         FieldType::Struct(index) | FieldType::Table(index) => schema.definition(index).name.clone(),
         // Views, which read each item when it's asked for
         FieldType::Vector(index) => format!("{}Vector", schema.definition(index).name),
@@ -3060,8 +3204,11 @@ fn value_type(field_type: FieldType, schema: &Schema) -> String {
 fn input_type(field_type: FieldType, schema: &Schema) -> String {
     match field_type {
         FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
+        // Bools, which the writer writes as bytes of 1 and 0
+        FieldType::Array(Scalar::Bool) => "Iterable[bool]".to_owned(),
         FieldType::Array(scalar) => format!("Buffer | Iterable[{}]", scalar_type(scalar)),
         FieldType::String => "str".to_owned(),
+        FieldType::StringVector => "Sequence[str]".to_owned(),
         // Structs are written from their dataclasses
         FieldType::Struct(index) => schema.definition(index).name.clone(),
         // Arrays of structs are written from any objects of their fields

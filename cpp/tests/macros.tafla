@@ -1,7 +1,8 @@
 // Names that compilers', C's, glibc's and Windows' macros take, which the
-// C++ that tafla-gen generates renames. macros_test.cpp defines them before
-// it includes the generated code, which lies in the namespace of a package
-// whose names are macros and reserved names too.
+// C++ that tafla-gen generates renames, of fields and of an enum's values.
+// macros_test.cpp defines them before it includes the generated code, which
+// lies in the namespace of a package whose names are macros and reserved
+// names too.
 // rust/gen/tests/cpp_schemas.rs keeps macros/macros.hpp the generated code.
 
 message Macros {
@@ -23,4 +24,21 @@ message Macros {
 table Interface {
     min: [float32];
     max: [float32];
+}
+
+/// A message of only fields of fixed size, which the generated code writes
+/// whole
+message Platform {
+    host: Host;
+}
+
+enum Host: uint8 {
+    linux = 0;
+    unix = 1;
+    min = 2;
+    max = 3;
+    major = 4;
+    near = 5;
+    small = 6;
+    interface = 7;
 }

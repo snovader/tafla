@@ -1,0 +1,4 @@
+enum Color: uint8 {
+    red = 0
+    green = 1;
+}

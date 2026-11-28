@@ -1,14 +1,19 @@
 name: "Release Tag"
 description: >-
-  Checks a release's tag, <package>/v<version>, against the commit that the
-  job checked out, and pushes it if asked. A tag that the repository has
-  must tag that commit: a tag records the commit that a version was
-  published from, and the Go module proxy keeps the module that its tag
-  named first. The job needs contents: write to push.
+  Checks a release's tag against the commit that the job checked out, and
+  pushes it if asked. A release is tagged <package>/v<version>, but the Swift
+  package's tag is its version alone, since SwiftPM takes versions only from
+  tags such as 0.1.0. A tag that the repository has must tag that commit: a
+  tag records the commit that a version was published from, and the Go module
+  proxy keeps the module that its tag named first. The job needs contents:
+  write to push.
 
 inputs:
-  tag:
-    description: "The tag, such as python/v0.1.0"
+  package:
+    description: "The package, such as python"
+    required: true
+  version:
+    description: "Its version, such as 0.1.0"
     required: true
   push:
     description: "Whether to tag the commit and push the tag, if the repository doesn't have it"
@@ -22,24 +27,30 @@ runs:
     - name: Check or push the tag
       shell: bash
       env:
-        TAG: ${{ inputs.tag }}
+        PACKAGE: ${{ inputs.package }}
+        VERSION: ${{ inputs.version }}
         PUSH: ${{ inputs.push }}
       run: |
+        if [[ "$PACKAGE" == swift ]]; then
+          tag=$VERSION
+        else
+          tag=$PACKAGE/v$VERSION
+        fi
         commit=$(git rev-parse HEAD)
 
-        if git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null; then
-          git fetch --depth=1 origin "refs/tags/$TAG:refs/tags/$TAG"
-          tagged=$(git rev-parse "$TAG^{commit}")
+        if git ls-remote --exit-code --tags origin "refs/tags/$tag" > /dev/null; then
+          git fetch --depth=1 origin "refs/tags/$tag:refs/tags/$tag"
+          tagged=$(git rev-parse "$tag^{commit}")
           if [[ "$tagged" != "$commit" ]]; then
-            echo "::error::$TAG tags $tagged, but the run releases $commit"
+            echo "::error::$tag tags $tagged, but the run releases $commit"
             exit 1
           fi
-          echo "$TAG already tags $commit"
+          echo "$tag already tags $commit"
         elif [[ "$PUSH" == true ]]; then
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "$TAG" -m "${TAG%/v*} ${TAG##*/v}" "$commit"
-          git push origin "refs/tags/$TAG"
+          git tag -a "$tag" -m "$PACKAGE $VERSION" "$commit"
+          git push origin "refs/tags/$tag"
         else
-          echo "No tag $TAG yet"
+          echo "No tag $tag yet"
         fi

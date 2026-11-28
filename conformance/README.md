@@ -16,6 +16,8 @@ format, several implementations" a checked claim.
 | Rust           | `rust/core/tests/conformance.rs`                                             |
 | Go             | `go/conformance_test.go`                                                     |
 | C++            | `cpp/tests/conformance_test.cpp`                                             |
+| Swift          | `swift/Tests/TaflaTests/ConformanceTests.swift`                              |
+| C#             | `csharp/tests/Tafla.Tests/ConformanceTests.cs`                               |
 
 Each language's CI runs its test when this directory changes.
 
@@ -99,8 +101,10 @@ Each field has a `type`:
 | `int64`, `uint64`                                     | `value`: a decimal string                                              | `setInt64()`, `setUint64()`    |
 | `float32`, `float64`                                  | `value`: a number, or `"NaN"`, `"Infinity"`, `"-Infinity"` or `"-0"`   | `setFloat32()`, `setFloat64()` |
 | `bool`                                                | `value`: `true` or `false`                                             | `setUint8()`, with 1 or 0      |
+| `bool[]`                                              | `value`: an array of `true` and `false`                                | `setBoolArray()`               |
 | `int8[]`, `uint8[]`, ..., `float64[]`                 | `value`: an array of values as the scalar type holds them              | `setInt8Array()`, ...          |
 | `string`                                              | `value`: a string                                                      | `setString()`                  |
+| `string[]`                                            | `value`: an array of strings                                           | `setStringVector()`            |
 | `struct`                                              | `fields`: `{ "type", "value" }` for each scalar, as a scalar field     | `setStruct()`                  |
 | `struct[]`                                            | `fields`: the scalars' types, and `items`: each struct's values        | `setStructArray()`             |
 | `table`                                               | `from` and `table`, a nested table, and `alignment` when one is passed | `setTable()`                   |
@@ -109,7 +113,14 @@ Each field has a `type`:
 - A bool is the uint8 1 or 0, since the runtimes have no getters or setters
   of bools; the code that tafla-gen generates writes and reads them so. Its
   value is true when the byte read isn't 0. It's a field only, and never a
-  struct's scalar or an array's element.
+  struct's scalar.
+- A `bool[]` is the uint8 array of its bools' bytes, 1 and 0, which
+  `setBoolArray()` writes as `setUint8Array()` would write those bytes, and
+  `getBoolArray()` reads each byte as true when it isn't 0.
+- A `string[]` is a vector of strings, read with `getStringVector()`. Each of
+  its strings is also found from its ends alone, with
+  `getStringVectorItem()`, and compared with the string that reading every
+  string finds, as a vector's items are.
 - 64-bit integers are strings, since JSON numbers lose precision past 2^53 in
   JavaScript and in other parsers.
 - Floats that JSON has no number for are named. Their bytes are what
@@ -134,7 +145,7 @@ the root and `fieldOffset(position, index)` for a field of a nested table read
 in place. A nested table that has no header and its parent's offset type is
 read in place, within its parent's bytes, as `SPEC.md` describes: a vector
 item from its position, from `getVectorOffsets()`. Any other is read as a
-table of its own, with a buffer of its own layout: a vector item from its
+table of its own, with a reader of its own layout: a vector item from its
 bytes, from `getVector()`, and a table field from its position to the end of
 its parent, since its length isn't written. The suite only nests tables
 without a header with `setTable()`.
@@ -177,8 +188,8 @@ rebuilt, since a writer writes the valid case's bytes.
 `case` names the valid case whose table description reads the bytes. Each
 root field before `field` must read the values that the description gives, and
 reading `field`, its offset included, must fail with the implementation's
-decode error: `DecodeError` in TypeScript, Python, Rust and C++,
-`DecodeException` in Java, and a `*DecodeError` in Go. Its header isn't
+decode error: `DecodeError` in TypeScript, Python, Rust, C++ and Swift,
+`DecodeException` in Java and C#, and a `*DecodeError` in Go. Its header isn't
 checked. `corruption` records how the bytes differ from the valid case's: cut
 to `length` bytes with `"kind": "truncate"`, or with `bytes` written at `at`
 with `"kind": "overwrite"`. Readers read the file rather than apply it.
@@ -191,7 +202,8 @@ An implementation's test loads `cases.json` and:
    the description. Comparing the description with its values replaced by the
    ones read, as the TypeScript and Python tests do, covers every value. The
    TypeScript test compares floats by value, with NaN and negative zero by
-   their names; the Python, Java, Rust, Go and C++ tests compare their bits.
+   their names; the Python, Java, Rust, Go, C++, Swift and C# tests compare
+   their bits.
 2. Builds every valid table from its description and compares its bytes with
    the file.
 3. Reads every equivalent table as its valid case describes it, and compares
@@ -205,6 +217,7 @@ An implementation's test loads `cases.json` and:
 | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | Every element type as a scalar                             | `integer-scalars`, `float-scalars`                                                                  |
 | Bools, and bytes other than 0 and 1 that read as true      | `bools`, `bool-nonzero`                                                                             |
+| Arrays of bools, empty and unpadded, and bytes other than 0 and 1 | `bool-arrays`, `bool-array-nonzero`                                                          |
 | Every element type as an array, and empty                  | `integer-arrays`, `float-arrays`, `empty-arrays`                                                    |
 | Offset types, without and with each header slot            | `offset-type-{uint8,uint16,uint32}`, with `-sized`, `-versioned` and `-sized-versioned`             |
 | Values of 128 and more in `uint8` offsets and lengths      | `offset-type-uint8-full`                                                                            |
@@ -215,11 +228,13 @@ An implementation's test loads `cases.json` and:
 | Arrays of structs of each alignment, empty too             | `struct-arrays` and the offset type cases                                                           |
 | Vectors of tables, empty, and of other layouts             | `vectors`, `vector-item-layouts` and the offset type cases                                          |
 | Empty, multi-byte UTF-8 and leading U+FEFF strings         | `strings`                                                                                           |
+| Vectors of strings, empty, of empty strings, of one to four bytes a character, in nested tables and vector items, unpadded | `string-vectors` |
+| Vectors of strings with ends of 128 and more in `uint8` offsets, and `uint16` ends after both header slots | `string-vector-offset-type-uint8-full`, `string-vector-offset-type-uint16` |
 | Tables of no fields                                        | `empty-table`, `empty-table-sized-versioned`                                                        |
 | Truncated tables                                           | `truncated-*`, `struct-past-end`                                                                    |
-| Offsets, lengths, counts and item ends past the end        | `offset-past-end`, `array-length-*`, `string-length-past-end`, `struct-array-count-*`, `vector-*`, `nested-offset-past-end` |
-| A vector item that ends before it starts                   | `vector-item-ends-before-start`                                                                     |
-| Invalid UTF-8                                              | `invalid-utf8-continuation`, `invalid-utf8-overlong`, `invalid-utf8-surrogate`                      |
+| Offsets, lengths, counts and item ends past the end        | `offset-past-end`, `array-length-*`, `bool-array-length-past-end`, `string-length-past-end`, `struct-array-count-*`, `vector-*`, `string-vector-count-*`, `string-vector-end-*`, `nested-offset-past-end` |
+| A vector item or a string that ends before it starts       | `vector-item-ends-before-start`, `string-vector-item-ends-before-start`                             |
+| Invalid UTF-8, and an end that splits a character          | `invalid-utf8-*`, `string-vector-invalid-utf8-*`, `string-vector-end-splits-character`              |
 
 It doesn't cover:
 
@@ -244,7 +259,7 @@ The tests follow each implementation's API where it differs:
 - Rust's `Vector` returns its items' bytes rather than their positions. The
   Rust test reads an item in place from the bytes that `iter_in_place()`
   returns, which start where the item does and end where its parent's do,
-  with a buffer of its parent's offset type, and any other item from the
+  with a reader of its parent's offset type, and any other item from the
   bytes that iterating returns.
 - Each test also finds every vector item from its ends alone, with
   `getVectorOffset()` or Rust's `Vector::get()` and `Vector::get_in_place()`,
@@ -261,3 +276,20 @@ The tests follow each implementation's API where it differs:
 - C++'s `Vector` returns its items' bytes, as Rust's does, and its
   `items_in_place()` the bytes from each item to the end of its parent's, which
   the C++ test reads an item in place from, as the Rust test does.
+- Swift's `Vector` returns its items' bytes too, as Rust's does, from
+  `item(at:)`, and from `itemInPlace(at:)` the bytes from an item to the end
+  of its parent's, which the Swift test reads an item in place from. The
+  test parses `cases.json` with Foundation's `JSONDecoder`, rather than
+  `JSONSerialization`, which drops a leading U+FEFF from a string, as the
+  `strings` case holds.
+- Go's, C++'s, Swift's and C#'s readers return a `StringVector` of a
+  `string[]`, which holds the count as their `Vector` does, so their tests
+  find each string from its ends with the view's `Get(i)`, `get(i)`,
+  subscript or indexer, rather than with a getter that takes the count.
+  Java's `getStringVectorItem()`, Python's `get_string_vector_item()` and
+  Rust's `TableReader::get_str_vector_item()` take the count, as
+  TypeScript's does, and the Java, Python and Rust tests read each string
+  through a `StringVector` too. Each test also reads every string through
+  its view, in order where the view iterates, and checks that every way
+  returns the same strings, or fails with the same error, that of the first
+  string that fails.

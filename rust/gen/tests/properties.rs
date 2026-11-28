@@ -26,26 +26,40 @@ const MAX_SCALAR_PATHS: usize = 1_024;
 /// another, the outermost included
 const MAX_NESTING_DEPTH: usize = 64;
 
-/// The scalar types, each of which but `bool` makes arrays too
+/// The scalar types, each of which makes arrays too
 const SCALARS: [&str; 11] = [
     "bool", "int8", "uint8", "int16", "uint16", "int32", "uint32", "int64", "uint64", "float32",
     "float64",
+];
+
+/// The integer types, which store enums, each with its least and greatest
+/// value
+const INTEGERS: [(&str, i128, i128); 8] = [
+    ("int8", -0x80, 0x7f),
+    ("uint8", 0, 0xff),
+    ("int16", -0x8000, 0x7fff),
+    ("uint16", 0, 0xffff),
+    ("int32", -0x8000_0000, 0x7fff_ffff),
+    ("uint32", 0, 0xffff_ffff),
+    ("int64", -0x8000_0000_0000_0000, 0x7fff_ffff_ffff_ffff),
+    ("uint64", 0, 0xffff_ffff_ffff_ffff),
 ];
 
 /// Field names, including keywords of the targets and the names of the
 /// generated code's own locals and members
 const FIELD_NAMES: [&str; 24] = [
     "value", "x", "name", "values", "items", "class", "default", "in", "match", "self", "type",
-    "async", "yield", "null", "crate", "offsets", "i", "buffer", "position", "bytes", "version",
+    "async", "yield", "null", "crate", "offsets", "i", "reader", "position", "bytes", "version",
     "fields", "size", "count",
 ];
 
 /// The tokens of the schema language and some that aren't, for input that
 /// gets further into the parser and the checker than arbitrary text does
-const TOKENS: [&str; 43] = [
+const TOKENS: [&str; 46] = [
     "message",
     "table",
     "struct",
+    "enum",
     "Point",
     "Pair",
     "Node",
@@ -67,6 +81,8 @@ const TOKENS: [&str; 43] = [
     ":",
     ";",
     ",",
+    "=",
+    "-",
     "sized",
     "version",
     "offset_type",
@@ -114,10 +130,11 @@ proptest! {
             let again = compile("schemas/schema.tafla", &source, target, &Options::default())
                 .unwrap();
 
-            // Java has a file per class, a definition's and the view of a
-            // vector or an array of it, and the others one per schema
+            // Java has a file per class, a definition's, an enum's and the
+            // view of a vector or an array of a definition, and the others
+            // one per schema
             let expected_files = if name == "java" {
-                schema.definitions.len() + schema.items().len()
+                schema.definitions.len() + schema.enums.len() + schema.items().len()
             } else {
                 1
             };
@@ -403,7 +420,8 @@ fn tree(files: &[GeneratedFile]) -> std::collections::BTreeMap<String, String> {
 /// nested only in definitions before them, so that none contains itself,
 /// tables only in messages of `uint32` offsets, structs of scalars and of the
 /// structs after them, which can share a struct, and versions that fit in
-/// their offset type. A struct of `n` fields nests only structs of at most
+/// their offset type, and enums of distinct values, which fit their integer
+/// types, named after fields. A struct of `n` fields nests only structs of at most
 /// 1,024 / `n` fields on the paths to their scalars, their fields in it
 /// included, so that its paths take at most 1,024 fields, and it at most
 /// 8,192 bytes. Of at most 11 definitions, tables and structs nest at most 11
@@ -411,6 +429,7 @@ fn tree(files: &[GeneratedFile]) -> std::collections::BTreeMap<String, String> {
 #[derive(Debug)]
 struct Schema {
     definitions: Vec<Definition>,
+    enums: Vec<Enumeration>,
     /// The scalars that each struct holds, by its index, and 0 for the others
     struct_scalars: Vec<usize>,
     /// The fields on the paths to each struct's scalars, in all, by its
@@ -423,6 +442,22 @@ struct Definition {
     kind: Kind,
     docs: Vec<String>,
     fields: Vec<Field>,
+}
+
+/// An enum of one of the integer types, of at least one value
+#[derive(Debug)]
+struct Enumeration {
+    docs: Vec<String>,
+    /// One of [`INTEGERS`]
+    integer: Index,
+    values: Vec<Value>,
+}
+
+#[derive(Debug)]
+struct Value {
+    name: &'static str,
+    docs: Vec<String>,
+    integer: i128,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -451,6 +486,7 @@ enum FieldType {
     Scalar(Index),
     Array(Index),
     String,
+    StringVector,
     /// Any of the structs, or in a struct one of the structs after it, or a
     /// scalar if there's none
     Struct(Index),
@@ -460,10 +496,18 @@ enum FieldType {
     Table(Index),
     /// Any of the tables, or a string if there's none
     Vector(Index),
+    /// Any of the enums, or a scalar if there's none
+    Enum(Index),
+    /// Any of the enums, or an array of scalars if there's none
+    EnumArray(Index),
 }
 
 fn schema() -> impl Strategy<Value = Schema> {
-    prop::collection::vec(definition(), 0..12).prop_map(Schema::new)
+    (
+        prop::collection::vec(definition(), 0..12),
+        prop::collection::vec(enumeration(), 0..4),
+    )
+        .prop_map(|(definitions, enums)| Schema::new(definitions, enums))
 }
 
 /// A schema with at least one struct, for a property to break
@@ -506,6 +550,49 @@ fn definition() -> impl Strategy<Value = Definition> {
     .prop_map(|(kind, docs, fields)| Definition { kind, docs, fields })
 }
 
+fn enumeration() -> impl Strategy<Value = Enumeration> {
+    let names = subsequence(&FIELD_NAMES[..], 1..8).prop_shuffle();
+
+    (docs(), any::<Index>(), names)
+        .prop_flat_map(|(enum_docs, integer, names)| {
+            let count = names.len();
+            let values = prop::collection::vec((docs(), integer_bits()), count);
+            (Just(enum_docs), Just(integer), Just(names), values)
+        })
+        .prop_map(|(docs, integer, names, values)| {
+            let (_, least, greatest) = INTEGERS[integer.index(INTEGERS.len())];
+            let span = greatest - least + 1;
+
+            // Values in the type's range, without the later of two that
+            // land on the same integer; the first is always kept
+            let mut taken = HashSet::new();
+            let values = names
+                .into_iter()
+                .zip(values)
+                .filter_map(|(name, (docs, bits))| {
+                    let integer = least + i128::from(bits) % span;
+                    taken.insert(integer).then_some(Value {
+                        name,
+                        docs,
+                        integer,
+                    })
+                })
+                .collect();
+
+            Enumeration {
+                docs,
+                integer,
+                values,
+            }
+        })
+}
+
+/// Any 64 bits, and often those that map to an integer type's least and
+/// greatest value
+fn integer_bits() -> impl Strategy<Value = u64> {
+    prop_oneof![Just(0), Just(u64::MAX), any::<u64>()]
+}
+
 fn fields(field_type: BoxedStrategy<FieldType>) -> impl Strategy<Value = Vec<Field>> {
     subsequence(&FIELD_NAMES[..], 1..13)
         .prop_shuffle()
@@ -535,18 +622,22 @@ fn field_type() -> impl Strategy<Value = FieldType> {
         any::<Index>().prop_map(FieldType::Scalar),
         any::<Index>().prop_map(FieldType::Array),
         Just(FieldType::String),
+        Just(FieldType::StringVector),
         any::<Index>().prop_map(FieldType::Struct),
         any::<Index>().prop_map(FieldType::StructArray),
         any::<Index>().prop_map(FieldType::Table),
         any::<Index>().prop_map(FieldType::Vector),
+        any::<Index>().prop_map(FieldType::Enum),
+        any::<Index>().prop_map(FieldType::EnumArray),
     ]
 }
 
-/// The type of a struct's field, which is a scalar or a struct. A struct
-/// field is a scalar too in the structs without structs after them.
+/// The type of a struct's field, which is a scalar, an enum or a struct. A
+/// struct field is a scalar too in the structs without structs after them.
 fn struct_field_type() -> impl Strategy<Value = FieldType> {
     prop_oneof![
         1 => any::<Index>().prop_map(FieldType::Scalar),
+        1 => any::<Index>().prop_map(FieldType::Enum),
         2 => any::<Index>().prop_map(FieldType::Struct),
     ]
 }
@@ -564,11 +655,12 @@ impl Schema {
     /// The schema of `definitions`, with the scalars and paths of each
     /// struct, counted from the last, since a struct nests only the structs
     /// after it
-    fn new(definitions: Vec<Definition>) -> Self {
+    fn new(definitions: Vec<Definition>, enums: Vec<Enumeration>) -> Self {
         let mut schema = Self {
             struct_scalars: vec![0; definitions.len()],
             struct_paths: vec![0; definitions.len()],
             definitions,
+            enums,
         };
 
         let structs: Vec<usize> = schema.structs().collect();
@@ -577,7 +669,7 @@ impl Schema {
                 .fields
                 .iter()
                 .map(|field| match field.of_type {
-                    FieldType::Scalar(_) => (1, 1),
+                    FieldType::Scalar(_) | FieldType::Enum(_) => (1, 1),
                     FieldType::Struct(chosen) => {
                         schema
                             .nested_struct(index, chosen)
@@ -664,6 +756,21 @@ impl Schema {
             source.push_str("}\n\n");
         }
 
+        for (index, enumeration) in self.enums.iter().enumerate() {
+            for line in &enumeration.docs {
+                writeln!(source, "///{line}").unwrap();
+            }
+            let (integer, _, _) = INTEGERS[enumeration.integer.index(INTEGERS.len())];
+            writeln!(source, "enum {}: {integer} {{", enum_name(index)).unwrap();
+            for value in &enumeration.values {
+                for line in &value.docs {
+                    writeln!(source, "    /// {line}").unwrap();
+                }
+                writeln!(source, "    {} = {};", value.name, value.integer).unwrap();
+            }
+            source.push_str("}\n\n");
+        }
+
         source
     }
 
@@ -714,14 +821,14 @@ impl Schema {
 
         match field_type {
             FieldType::Scalar(scalar) => scalar_name(scalar).to_owned(),
-            FieldType::Array(scalar) => format!("[{}]", element_name(scalar)),
+            FieldType::Array(scalar) => format!("[{}]", scalar_name(scalar)),
             FieldType::Struct(chosen) => self
                 .nested_struct(index, chosen)
                 .map_or_else(|| scalar_name(chosen).to_owned(), name),
             FieldType::StructArray(chosen) => {
                 let element = self
                     .nested_struct(index, chosen)
-                    .map_or_else(|| element_name(chosen).to_owned(), name);
+                    .map_or_else(|| scalar_name(chosen).to_owned(), name);
                 format!("[{element}]")
             }
             FieldType::Table(table) if holds_tables && !later_tables.is_empty() => {
@@ -730,9 +837,24 @@ impl Schema {
             FieldType::Vector(table) if holds_tables && !tables.is_empty() => {
                 format!("[{}]", name(tables[table.index(tables.len())]))
             }
+            FieldType::Enum(chosen) => self
+                .chosen_enum(chosen)
+                .map_or_else(|| scalar_name(chosen).to_owned(), enum_name),
+            FieldType::EnumArray(chosen) => {
+                let element = self
+                    .chosen_enum(chosen)
+                    .map_or_else(|| scalar_name(chosen).to_owned(), enum_name);
+                format!("[{element}]")
+            }
             FieldType::Table(_) => "float64".to_owned(),
             FieldType::String | FieldType::Vector(_) => "string".to_owned(),
+            FieldType::StringVector => "[string]".to_owned(),
         }
+    }
+
+    /// The index of any of the enums, if there's one
+    fn chosen_enum(&self, chosen: Index) -> Option<usize> {
+        (!self.enums.is_empty()).then(|| chosen.index(self.enums.len()))
     }
 
     /// The indices of the structs
@@ -778,15 +900,15 @@ fn scalar_name(scalar: Index) -> &'static str {
     SCALARS[scalar.index(SCALARS.len())]
 }
 
-/// The element type of an array of scalars, which can't be `bool`
-fn element_name(scalar: Index) -> &'static str {
-    let elements = &SCALARS[1..];
-    elements[scalar.index(elements.len())]
-}
-
 /// Unique names, which mix letters and digits as `PascalCase` allows
 fn name(index: usize) -> String {
     format!("Definition{index}X")
+}
+
+/// Unique names of enums, distinct from the definitions' and from each
+/// other's followed by a value's name, as Go names their constants
+fn enum_name(index: usize) -> String {
+    format!("Enum{index}X")
 }
 
 /// Structs that double in size, from `Large0` of one byte to `Large<levels>`

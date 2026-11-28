@@ -3,13 +3,10 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "benk": "github:snovader/benk#commit=ab12deb324c5df7cd120ba3cc5f90b0867582df7",
     "flatbuffers": "25.9.23",
     "msgpackr": "2.1.4",
     "protobufjs": "8.8.1",
     "tafla": "workspace:^"
-  },
-  "devDependencies": {
-    "vite": "^8.3.7",
-    "vitest": "^5.1.0"
   }
 }

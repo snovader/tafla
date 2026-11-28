@@ -12,8 +12,10 @@ export interface Workload<I, O> {
     deserialize(bytes: Uint8Array): O;
 }
 
-export interface DocumentWorkload
-    extends Workload<DocumentInput, DocumentOutput> {
+export interface DocumentWorkload extends Workload<
+    DocumentInput,
+    DocumentOutput
+> {
     /** Sums column `a` through the codec's own per-element accessor */
     sumA(bytes: Uint8Array): number;
     /**
@@ -21,7 +23,7 @@ export interface DocumentWorkload
      * start of `bytes`, which are long enough, or a buffer of its own that
      * it reuses, which leaves `bytes` alone. Returns the bytes that hold it.
      */
-    serializeInto?(input: DocumentInput, bytes: Uint8Array): Uint8Array;
+    serializeInto?: (input: DocumentInput, bytes: Uint8Array) => Uint8Array;
 }
 
 /** One library's encoding of the workloads */

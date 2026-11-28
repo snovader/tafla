@@ -235,7 +235,7 @@ func drawCall(t *rapid.T) call {
 	}
 	alignment := rapid.SampledFrom([]tafla.Alignment{tafla.Align1, tafla.Align2, tafla.Align4, tafla.Align8})
 
-	switch rapid.IntRange(0, 9).Draw(t, "call") {
+	switch rapid.IntRange(0, 10).Draw(t, "call") {
 	case 0:
 		index := small("index")
 		return func(w *tafla.TableWriter, _ *[]tafla.WriterParent, _ *[]tafla.VectorPosition) { w.SetUint8(index, 1) }
@@ -283,6 +283,12 @@ func drawCall(t *rapid.T) call {
 		index, count := small("index"), small("count")
 		return func(w *tafla.TableWriter, _ *[]tafla.WriterParent, vectors *[]tafla.VectorPosition) {
 			*vectors = append(*vectors, w.SetVector(index, count))
+		}
+	case 9:
+		index := small("index")
+		strings := tables.DrawStringVector(t, 4, 4)
+		return func(w *tafla.TableWriter, _ *[]tafla.WriterParent, _ *[]tafla.VectorPosition) {
+			w.SetStringVector(index, strings)
 		}
 	default:
 		item := small("item")
@@ -491,16 +497,16 @@ func TestRejectsAHeaderTooLongForItsOffsetsAsTableBuilderDoes(t *testing.T) {
 			expectError(t, second(tafla.NewTableSizer(fields+1, layout)), tooLong)
 			expectError(t, third(tafla.AppendTable(nil, fields+1, layout, length)), tooLong)
 
-			versioned := layout.Versioned()
-			if _, err := tafla.NewVersionedTableSizer(fields-1, versioned, 0); err != nil {
+			versioned := layout.WithVersion(0)
+			if _, err := tafla.NewTableSizer(fields-1, versioned); err != nil {
 				t.Error(err)
 			}
-			if _, _, err := tafla.AppendVersionedTable(nil, fields-1, versioned, 0, length); err != nil {
+			if _, _, err := tafla.AppendTable(nil, fields-1, versioned, length); err != nil {
 				t.Error(err)
 			}
-			tooLong = second(tafla.NewVersionedTableBuilder(fields, versioned, 0))
-			expectError(t, second(tafla.NewVersionedTableSizer(fields, versioned, 0)), tooLong)
-			expectError(t, third(tafla.AppendVersionedTable(nil, fields, versioned, 0, length)), tooLong)
+			tooLong = second(tafla.NewTableBuilder(fields, versioned))
+			expectError(t, second(tafla.NewTableSizer(fields, versioned)), tooLong)
+			expectError(t, third(tafla.AppendTable(nil, fields, versioned, length)), tooLong)
 		}
 	}
 
@@ -515,13 +521,13 @@ func TestRejectsAVersionTooLargeForItsSlotAsTableBuilderDoes(t *testing.T) {
 	}{{tafla.Uint8, 0x100}, {tafla.Uint16, 0x1_0000}}
 
 	for _, c := range cases {
-		layout := tafla.TableLayout{}.WithOffsetType(c.offsetType).Versioned()
+		layout := tafla.TableLayout{}.WithOffsetType(c.offsetType)
 
 		expected := &tafla.BuildError{Kind: tafla.VersionTooLarge, Version: c.version, OffsetType: c.offsetType}
-		expectError(t, second(tafla.NewVersionedTableSizer(1, layout, c.version)), expected)
-		expectError(t, third(tafla.AppendVersionedTable(nil, 1, layout, c.version, 3*uint64(c.offsetType.Size()))), expected)
-		expectError(t, second(tafla.NewVersionedTableBuilder(1, layout, c.version)), expected)
-		if _, err := tafla.NewVersionedTableSizer(1, layout, c.version-1); err != nil {
+		expectError(t, second(tafla.NewTableSizer(1, layout.WithVersion(c.version))), expected)
+		expectError(t, third(tafla.AppendTable(nil, 1, layout.WithVersion(c.version), 3*uint64(c.offsetType.Size()))), expected)
+		expectError(t, second(tafla.NewTableBuilder(1, layout.WithVersion(c.version))), expected)
+		if _, err := tafla.NewTableSizer(1, layout.WithVersion(c.version-1)); err != nil {
 			t.Error(err)
 		}
 	}
@@ -723,37 +729,28 @@ func TestAppendsATableAsLongAsItsOffsetsAddressAndFailsForAStringOneByteLonger(t
 	})
 }
 
-func TestPanicsForALayoutWithoutTheVersionGivenOrANegativeNumberOfFields(t *testing.T) {
-	plain, versioned := tafla.TableLayout{}, tafla.TableLayout{}.Versioned()
+func TestPanicsForANegativeNumberOfFields(t *testing.T) {
+	plain := tafla.TableLayout{}
 
-	expectPanic(t, "a sizer of a versioned layout", func() { _, _ = tafla.NewTableSizer(1, versioned) })
-	expectPanic(t, "a versioned sizer of a layout without a version slot", func() {
-		_, _ = tafla.NewVersionedTableSizer(1, plain, 0)
-	})
 	expectPanic(t, "a sizer of a negative number of fields", func() { _, _ = tafla.NewTableSizer(-1, plain) })
-
-	expectPanic(t, "a table of a versioned layout", func() { _, _, _ = tafla.AppendTable(nil, 1, versioned, 8) })
-	expectPanic(t, "a versioned table of a layout without a version slot", func() {
-		_, _, _ = tafla.AppendVersionedTable(nil, 1, plain, 0, 4)
-	})
 	expectPanic(t, "a table of a negative number of fields", func() { _, _, _ = tafla.AppendTable(nil, -1, plain, 0) })
 }
 
 func TestPanicsForATableShorterThanItsHeader(t *testing.T) {
-	plain, versioned := tafla.TableLayout{}, tafla.TableLayout{}.Sized().Versioned()
+	plain, versioned := tafla.TableLayout{}, tafla.TableLayout{}.Sized().WithVersion(1)
 
 	// 3 offsets of 4 bytes, and then the length and the version
 	if whole, _, err := tafla.AppendTable(nil, 3, plain, 12); len(whole) != 12 || err != nil {
 		t.Errorf("appended %d bytes, %v", len(whole), err)
 	}
-	if whole, _, err := tafla.AppendVersionedTable(nil, 3, versioned, 1, 20); len(whole) != 20 || err != nil {
+	if whole, _, err := tafla.AppendTable(nil, 3, versioned, 20); len(whole) != 20 || err != nil {
 		t.Errorf("appended %d bytes, %v", len(whole), err)
 	}
 
 	expectPanic(t, "a table without its header", func() { _, _, _ = tafla.AppendTable(nil, 3, plain, 0) })
 	expectPanic(t, "a table a byte short of its header", func() { _, _, _ = tafla.AppendTable(nil, 3, plain, 11) })
 	expectPanic(t, "a versioned table short of its header", func() {
-		_, _, _ = tafla.AppendVersionedTable(nil, 3, versioned, 1, 8)
+		_, _, _ = tafla.AppendTable(nil, 3, versioned, 8)
 	})
 }
 

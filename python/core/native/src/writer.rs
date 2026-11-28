@@ -4,7 +4,8 @@ use std::mem::MaybeUninit;
 use std::ptr::{self, NonNull};
 
 use pyo3::exceptions::{
-    PyBufferError, PyIndexError, PyMemoryError, PyStopIteration, PyUnicodeEncodeError, PyValueError,
+    PyBufferError, PyIndexError, PyMemoryError, PyStopIteration, PyTypeError, PyUnicodeEncodeError,
+    PyValueError,
 };
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PySlice, PyString, PyTuple, PyType};
@@ -12,7 +13,7 @@ use pyo3::{IntoPyObjectExt, ffi};
 
 use crate::fixed_fields::{Description, FixedFields, Format, Plan};
 use crate::layout::{Layout, Shape, shape_of};
-use crate::python::{Int, objects, small, utf8, with_buffer, with_bytes};
+use crate::python::{Int, objects, utf8, with_buffer, with_bytes};
 use crate::values::{self, Kind};
 use crate::{elements, little_endian_host};
 
@@ -332,7 +333,7 @@ pub struct TableWriter {
 }
 
 impl TableWriter {
-    fn create(shape: Shape, length: usize, version: Option<&Int<'_>>) -> PyResult<Self> {
+    fn create(shape: Shape, length: usize) -> PyResult<Self> {
         let mut writer = Self {
             data: Bytes::zeroed(length)?,
             shape,
@@ -340,12 +341,15 @@ impl TableWriter {
             slots: Mark::at(shape.header_size()),
         };
 
-        if let Some(version) = version {
+        if let Some(version) = shape.version {
             let slot = Int::from(if shape.sized { shape.size() } else { 0 });
+            let version = Int::from(version as usize);
             // Only a negative number of fields leaves no room for it, and
             // struct raises its error
-            if writer.pack_slot(&slot, version).is_err() {
-                return Err(Python::attach(|py| writer.struct_error(py, &slot, version)));
+            if writer.pack_slot(&slot, &version).is_err() {
+                return Err(Python::attach(|py| {
+                    writer.struct_error(py, &slot, &version)
+                }));
             }
         }
 
@@ -689,11 +693,12 @@ impl TableWriter {
     /// capacity where they follow the array's padding and count, before
     /// either is written, rather than into an `array` that's copied again.
     /// Returns `false`, having written nothing, for elements that it doesn't
-    /// convert, so that `with_elements()` converts them, and raises what the
-    /// pure-Python runtime raises. So it does for a table whose start is the
-    /// caller's own object, from `end_table()`: its arithmetic may run the
-    /// caller's code, which nothing may while the sequence is read, and
-    /// which the pure-Python runtime runs after it has converted the elements.
+    /// convert, so that `with_elements()` converts them, or `bool_bytes()`
+    /// for the code `?`, and raises what the pure-Python runtime raises. So
+    /// it does for a table whose start is the caller's own object, from
+    /// `end_table()`: its arithmetic may run the caller's code, which nothing
+    /// may while the sequence is read, and which the pure-Python runtime runs
+    /// after it has converted the elements.
     fn set_sequence(
         &mut self,
         py: Python<'_>,
@@ -825,6 +830,59 @@ impl TableWriter {
         self.set_offset(py, index)?;
         self.set_count(&length, &length)?;
         self.data.extend_from_slice(encoded)
+    }
+
+    /// Writes a vector of the strings whose UTF-8 is `strings`, of
+    /// `byte_length` bytes in all, as the pure-Python runtime writes it: its
+    /// count and ends, which raise before anything is written for an end
+    /// that the offset type can't hold, then its offset, and then the count,
+    /// the ends and the strings, appended at once
+    fn set_strings_at(
+        &mut self,
+        py: Python<'_>,
+        index: &Int<'_>,
+        strings: &[&[u8]],
+        byte_length: usize,
+    ) -> PyResult<()> {
+        let size = self.size();
+        let count = strings.len();
+        // The count, then the end of each string. Saturating, since only a
+        // vector longer than memory overflows, which doesn't fit either.
+        let head = count.saturating_add(1).saturating_mul(size);
+        let length = head.saturating_add(byte_length);
+
+        // The ends grow to the last, which is the vector's length, and the
+        // count is less than the first, so the last fits if any end does
+        if count > 0 && length > self.shape.max_length() {
+            let error = self.too_long(Int::from(self.len()).add(length)?.display()?);
+            error.set_cause(py, Some(self.count_error(py, &Int::from(length))));
+            return Err(error);
+        }
+
+        self.set_offset(py, index)?;
+
+        let start = self.len();
+        let Some(spare) = self.data.spare(start, length) else {
+            return Err(if self.data.exports > 0 {
+                frozen()
+            } else {
+                memory_error()
+            });
+        };
+        write_into(spare, 0, &slot(count)[..size]);
+        let mut end = head;
+        let mut at = size;
+        for string in strings {
+            end += string.len();
+            write_into(spare, at, &slot(end)[..size]);
+            at += size;
+        }
+        for string in strings {
+            write_into(spare, at, string);
+            at += string.len();
+        }
+        // SAFETY: the count, the ends and the strings fill the capacity
+        unsafe { self.data.extend_written(length) }
     }
 
     fn set_struct_at(
@@ -1033,33 +1091,21 @@ impl TableWriter {
 
 /// The bytes of a message of only the fields of `fixed`, in the layout of
 /// `shape`, packed into new bytes at once, or `None` when a value doesn't
-/// fit, the version isn't as the layout needs or the message is longer than
-/// it addresses, for the writer's calls to raise for
+/// fit or the message is longer than it addresses, for the writer's calls to
+/// raise for
 fn pack_message<'py>(
     fixed: &FixedFields,
     shape: Shape,
     values: &Bound<'py, PyTuple>,
     string: Option<&Bound<'py, PyString>>,
-    version: Option<&Bound<'py, PyAny>>,
 ) -> PyResult<Option<Bound<'py, PyBytes>>> {
     let py = values.py();
     let size = shape.size();
     let plan = fixed.plan(size)?;
-    if values.len() != plan.values.len() || !plan.fits || shape.versioned != version.is_some() {
+    if values.len() != plan.values.len() || !plan.fits {
         return Ok(None);
     }
-    // Any version but an int that fits is the writer's to raise for
-    let version = match version {
-        None => None,
-        Some(version) => match small(version)
-            .ok()
-            .flatten()
-            .and_then(|version| usize::try_from(version).ok())
-        {
-            Some(version) if version <= shape.max_length() => Some(version),
-            _ => return Ok(None),
-        },
-    };
+    let version = shape.version.map(|version| version as usize);
     let encoded = match (plan.string_length, string) {
         (Some(_), Some(string)) => match utf8(string) {
             Ok(encoded) => encoded,
@@ -1118,6 +1164,37 @@ const fn slot(value: usize) -> [u8; 4] {
     debug_assert!(value <= u32::MAX as usize);
     #[allow(clippy::cast_possible_truncation)]
     (value as u32).to_le_bytes()
+}
+
+/// The error of a `str` given as a vector of strings, as the pure-Python
+/// runtime words it
+const STR_VECTOR_MESSAGE: &str =
+    "Can't write a str as a vector of strings, which would be a string of each of its characters";
+
+/// Raises the pure-Python runtime's `ValueError` for items whose `len()` is
+/// `length`, but which iterating gave `count` of
+fn check_items(length: usize, count: usize) -> PyResult<()> {
+    if length != count {
+        return Err(PyValueError::new_err(format!(
+            "The items' len() is {length}, but iterating them gave {count}"
+        )));
+    }
+    Ok(())
+}
+
+/// Writes `bytes` into the capacity `spare` at `at`, where they fit
+#[inline]
+fn write_into(spare: &mut [MaybeUninit<u8>], at: usize, bytes: &[u8]) {
+    let destination = &mut spare[at..at + bytes.len()];
+    // SAFETY: the destination is as long as the bytes, and u8 has no
+    // invalid values
+    unsafe {
+        ptr::copy_nonoverlapping(
+            bytes.as_ptr(),
+            destination.as_mut_ptr().cast::<u8>(),
+            bytes.len(),
+        );
+    }
 }
 
 /// The order of a C-contiguous buffer, as `PyBuffer_IsContiguous()` takes it
@@ -1186,28 +1263,9 @@ fn alignment(alignment: &Bound<'_, PyAny>) -> PyResult<usize> {
 }
 
 /// The byte length of the header of a table of `fields` fields in `shape`,
-/// whose writer puts `version` in the header, as the pure-Python runtime's
-/// `header_length()` checks it
-fn header_length(shape: Shape, fields: &Int<'_>, version: Option<&Int<'_>>) -> PyResult<usize> {
+/// as the pure-Python runtime's `header_length()` checks it
+fn header_length(shape: Shape, fields: &Int<'_>) -> PyResult<usize> {
     let name = shape.offset_type.name();
-    if shape.versioned != version.is_some() {
-        return Err(pyo3::exceptions::PyTypeError::new_err(if shape.versioned {
-            "A versioned layout needs a version"
-        } else {
-            "The layout has no version slot"
-        }));
-    }
-
-    if let Some(version) = version
-        && version
-            .index()
-            .is_none_or(|version| version > shape.max_length())
-    {
-        return Err(PyValueError::new_err(format!(
-            "Version {} doesn't fit in a {name} slot",
-            version.display()?
-        )));
-    }
 
     let length = fields.mul(shape.size())?.add(shape.header_size())?;
     if Int::from(shape.max_length()).lt(length.clone())? {
@@ -1288,46 +1346,33 @@ array_setters!(
 #[pymethods]
 impl TableWriter {
     /// ``fields`` is the number of fields of the table, and ``layout`` its
-    /// header and offset type, which its readers must use too. ``version`` is
-    /// written to the header, and required when the layout is versioned.
+    /// header and offset type, which its readers must use too, with the
+    /// version to write to the header when it has one.
     ///
-    /// Raises ``TypeError`` if ``version`` is given for a layout without a
-    /// version slot, or missing for one with it. Raises ``ValueError`` if
-    /// ``version`` doesn't fit in the layout's offset type, or the header alone
-    /// is longer than the layout addresses.
+    /// Raises ``ValueError`` if the header alone is longer than the layout
+    /// addresses.
     #[new]
-    #[pyo3(signature = (fields, layout = None, version = None))]
-    fn new(
-        fields: &Bound<'_, PyAny>,
-        layout: Option<Layout>,
-        version: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<Self> {
+    #[pyo3(signature = (fields, layout = None))]
+    fn new(fields: &Bound<'_, PyAny>, layout: Option<Layout>) -> PyResult<Self> {
         let shape = shape_of(layout.as_ref());
-        let version = version.map(Int::new).transpose()?;
-        let length = header_length(shape, &Int::new(fields)?, version.as_ref())?;
+        let length = header_length(shape, &Int::new(fields)?)?;
 
-        Self::create(shape, length, version.as_ref())
+        Self::create(shape, length)
     }
 
     /// Returns a writer as the constructor does, for arguments that
     /// ``TableBuilder``'s constructor checked already, without checking them
     /// again.
     #[classmethod]
-    #[pyo3(signature = (fields, layout, version))]
-    fn _checked(
-        _cls: &Bound<'_, PyType>,
-        fields: usize,
-        layout: Layout,
-        version: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<Self> {
+    #[pyo3(signature = (fields, layout))]
+    fn _checked(_cls: &Bound<'_, PyType>, fields: usize, layout: Layout) -> PyResult<Self> {
         let shape = layout.shape();
         let length = fields
             .checked_mul(shape.size())
             .and_then(|slots| slots.checked_add(shape.header_size()))
             .ok_or_else(memory_error)?;
-        let version = version.map(Int::new).transpose()?;
 
-        Self::create(shape, length, version.as_ref())
+        Self::create(shape, length)
     }
 
     /// Returns a view of the table's bytes, without copying them. While
@@ -1445,34 +1490,32 @@ impl TableWriter {
     /// message's, in the layout that it was created with, from their
     /// ``values`` as ``set_fields()`` takes them, and ``string`` when they
     /// end with one, and returns its bytes, in one call. They're the bytes
-    /// that ``TableWriter(fields, layout, version)``, ``set_fields()`` and
-    /// ``bytes()`` write, and it raises as they do.
+    /// that ``TableWriter(fields, layout)``, ``set_fields()`` and ``bytes()``
+    /// write, and it raises as they do.
     ///
     /// Raises ``TypeError`` if ``fields`` has no layout, as a nested table's
     /// doesn't.
     ///
     /// Generated code calls it to write a message of only such fields.
     #[staticmethod]
-    #[pyo3(signature = (fields, values, string = None, version = None))]
+    #[pyo3(signature = (fields, values, string = None))]
     fn write_fields<'py>(
         fields: &Bound<'py, FixedFields>,
         values: &Bound<'py, PyAny>,
         string: Option<&Bound<'py, PyString>>,
-        version: Option<&Bound<'py, PyAny>>,
     ) -> PyResult<Bound<'py, PyBytes>> {
         let py = fields.py();
         let fixed = fields.get();
         let shape = fixed.shape()?;
         let tuple = Self::fixed_values(values)?;
-        if let Some(bytes) = pack_message(fixed, shape, &tuple, string, version)? {
+        if let Some(bytes) = pack_message(fixed, shape, &tuple, string)? {
             return Ok(bytes);
         }
 
         // The writer's calls, which raise for what doesn't fit
-        let version = version.map(Int::new).transpose()?;
         let fields_count = Int::from(fixed.description().fields);
-        let length = header_length(shape, &fields_count, version.as_ref())?;
-        let writer = Bound::new(py, Self::create(shape, length, version.as_ref())?)?;
+        let length = header_length(shape, &fields_count)?;
+        let writer = Bound::new(py, Self::create(shape, length)?)?;
         writer.borrow_mut().set_fields(fields, &tuple, string)?;
         let view = Self::bytes(&writer)?;
         unsafe {
@@ -1499,6 +1542,35 @@ impl TableWriter {
         self.write_item(fields.get(), &values, values.len(), string)
     }
 
+    /// Writes an array of bools as a ``uint8`` array: 1 for each value
+    /// that's true, as ``bool()`` takes it, and 0 for each that's false. A
+    /// value whose truth can't be taken raises its error, before anything
+    /// is written.
+    fn set_bool_array(
+        &mut self,
+        py: Python<'_>,
+        index: &Bound<'_, PyAny>,
+        values: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
+        // An exact list or tuple of bools by a loop, straight into the bytes:
+        // writing 1,000 took 0.85 µs, writer included, where bool_bytes()'s
+        // Struct, whose bytes set_uint8_array() then copied, took 4.2 µs, in
+        // CPython 3.15
+        let index = Int::new(index)?;
+        if self.set_sequence(py, &index, '?', 1, values)? {
+            return Ok(());
+        }
+
+        // Any other values, whose truth may run Python code, as the
+        // pure-Python runtime converts them
+        let elements = objects(py)?.bool_bytes.bind(py).call1((values,))?;
+        with_bytes(&elements, |elements| {
+            let count = Int::from(elements.len());
+            self.start_array(py, &index, &count, &count, 1)?;
+            self.data.extend_from_slice(elements)
+        })
+    }
+
     /// Writes ``string`` as UTF-8. Raises ``UnicodeEncodeError``, a
     /// ``ValueError``, if it has a lone surrogate, which UTF-8 can't encode.
     fn set_string(
@@ -1522,6 +1594,69 @@ impl TableWriter {
     ) -> PyResult<()> {
         let index = Int::new(index)?;
         with_bytes(encoded, |bytes| self.set_string_at(py, &index, bytes))
+    }
+
+    /// Writes a vector of strings: its count, the end of each string from
+    /// the vector's position, and then each string as UTF-8, one after
+    /// another, which lets readers find any string without reading the
+    /// others.
+    ///
+    /// Raises ``UnicodeEncodeError``, a ``ValueError``, if a string has a
+    /// lone surrogate, which UTF-8 can't encode, ``TypeError`` for a
+    /// ``str``, which is a sequence of its characters, and ``ValueError`` if
+    /// iterating ``strings`` gives more or fewer than their ``len()``, each
+    /// having written nothing.
+    fn set_string_vector(
+        &mut self,
+        py: Python<'_>,
+        index: &Bound<'_, PyAny>,
+        strings: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
+        if strings.is_instance_of::<PyString>() {
+            return Err(PyTypeError::new_err(STR_VECTOR_MESSAGE));
+        }
+        let index = Int::new(index)?;
+
+        // Each string is checked and encoded in order, which raises the
+        // error of the first that can't be, as the pure-Python runtime's
+        // encoding does. CPython keeps the UTF-8 of a string outside ASCII
+        // with it, so that it's encoded once.
+        let mut items = Vec::new();
+        let mut byte_length = 0_usize;
+        for item in strings.try_iter()? {
+            let string = item?.cast_into::<PyString>()?;
+            byte_length = byte_length.saturating_add(utf8(&string)?.len());
+            items.push(string);
+        }
+        check_items(strings.len()?, items.len())?;
+
+        let encoded = items.iter().map(utf8).collect::<PyResult<Vec<_>>>()?;
+        self.set_strings_at(py, &index, &encoded, byte_length)
+    }
+
+    /// Writes a vector of strings that are encoded as UTF-8 already, as
+    /// ``set_string_vector()`` writes it. ``TableBuilder`` encodes strings
+    /// outside ASCII when they're set, to count their bytes, and writes them
+    /// with it, as ``_set_encoded_string()`` writes a string.
+    fn _set_encoded_string_vector(
+        &mut self,
+        py: Python<'_>,
+        index: &Bound<'_, PyAny>,
+        strings: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
+        let index = Int::new(index)?;
+
+        let mut items = Vec::new();
+        let mut byte_length = 0_usize;
+        for item in strings.try_iter()? {
+            let bytes = item?.cast_into::<PyBytes>()?;
+            byte_length = byte_length.saturating_add(bytes.as_bytes().len());
+            items.push(bytes);
+        }
+        check_items(strings.len()?, items.len())?;
+
+        let encoded: Vec<&[u8]> = items.iter().map(PyBytesMethods::as_bytes).collect();
+        self.set_strings_at(py, &index, &encoded, byte_length)
     }
 
     /// Writes a struct field from its bytes: its scalars, little-endian, one
@@ -1633,7 +1768,7 @@ impl TableWriter {
     /// ``write_table()`` for each item and ``set_item_end()`` write it. Each
     /// item is a table's values as ``write_table()`` takes them, followed by
     /// its string when ``fields`` ends with one: the tuple that
-    /// ``ByteBuffer.get_fields()`` returns.
+    /// ``TableReader.get_fields()`` returns.
     ///
     /// Raises ``ValueError`` if iterating ``items`` gives more or fewer than
     /// their ``len()``, after which the table is undefined.

@@ -12,10 +12,10 @@ use super::writer::{
 };
 use super::{GeneratedFile, Options};
 use crate::model::{
-    Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema,
+    Definition, Enum, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema,
     strongly_connected_components,
 };
-use crate::naming::camel_case;
+use crate::naming::{camel_case, pascal_case};
 
 /// The runtime's module, unless [`Options::runtime`] names another
 const RUNTIME: &str = "tafla";
@@ -115,6 +115,11 @@ pub fn generate(
     writer.blank();
     generator.imports(&mut writer, runtime);
 
+    for enumeration in &schema.enums {
+        writer.blank();
+        generator.enumeration(&mut writer, enumeration);
+    }
+
     for class in class_order(schema) {
         writer.blank();
         match class {
@@ -141,9 +146,16 @@ pub fn generate(
 
     let extension = if typed { "ts" } else { "js" };
     vec![GeneratedFile {
-        path: format!("{}.{extension}", camel_case(stem)),
+        path: format!("{}.{extension}", module_name(stem)),
         contents: writer.finish(),
     }]
+}
+
+/// The name of a schema's module, its file name in kebab-case, as TypeScript
+/// and JavaScript name modules: with a `-` for each `_`, and its other
+/// characters as they are, such as `point-cloud` of `point_cloud.v1.tafla`
+fn module_name(stem: &str) -> String {
+    stem.replace('_', "-")
 }
 
 /// A class of the generated module
@@ -469,46 +481,52 @@ impl Generator<'_> {
         let readers = self.read_functions();
         let writers = self.write_functions(&wholes);
 
-        // (name, whether it's only a type here)
-        let mut names = Vec::new();
-        if has_table {
-            names.push(("ByteBuffer", !has_message));
-        }
-        if versioned {
-            names.push(("DecodeError", false));
-        }
-        names.extend(readers.iter().map(|reader| (reader.as_str(), false)));
-        if has_struct {
-            names.push(("StructWriter", false));
-        }
-        if has_message {
-            names.push(("TableLayout", false));
-        }
-        if has_sized || has_nested {
-            names.push(("TableSizer", !has_sized));
-        }
-        if has_whole || has_nested {
-            names.push(("TableWriter", !has_whole));
-        }
+        // The names are listed in the order that the TypeScript project's
+        // oxlint configuration checks: functions, then classes, then types,
+        // each in natural order, such as `writeUint8` before `writeUint16`
+        let mut values: Vec<String> = readers;
         if has_whole_string {
-            names.push(("utf8Length", false));
+            values.push("utf8Length".to_owned());
         }
         if has_runs {
-            names.push(("viewOf", false));
+            values.push("viewOf".to_owned());
         }
-        names.extend(writers.iter().map(|writer| (writer.as_str(), false)));
+        values.extend(writers);
         if has_whole_string {
-            names.push(("writeUtf8", false));
+            values.push("writeUtf8".to_owned());
         }
 
-        let mut values = Vec::new();
-        let mut types = Vec::new();
-        for (name, type_only) in names {
-            match (type_only, self.typed) {
-                (false, _) => values.push(name.to_owned()),
-                (true, true) => values.push(format!("type {name}")),
-                (true, false) => types.push(name),
-            }
+        // (class, whether it's only a type here)
+        let mut classes = Vec::new();
+        if versioned {
+            classes.push(("DecodeError", false));
+        }
+        if self.has_string_vectors() {
+            classes.push(("StringVector", false));
+        }
+        if has_struct {
+            classes.push(("StructWriter", false));
+        }
+        if has_message {
+            classes.push(("TableLayout", false));
+        }
+        if has_table {
+            classes.push(("TableReader", !has_message));
+        }
+        if has_sized || has_nested {
+            classes.push(("TableSizer", !has_sized));
+        }
+        if has_whole || has_nested {
+            classes.push(("TableWriter", !has_whole));
+        }
+
+        let (types, classes): (Vec<_>, Vec<_>) =
+            classes.into_iter().partition(|&(_, type_only)| type_only);
+        values.extend(classes.into_iter().map(|(name, _)| name.to_owned()));
+        let mut types: Vec<&str> = types.into_iter().map(|(name, _)| name).collect();
+        // TypeScript imports types with the values, and JavaScript in JSDoc
+        if self.typed {
+            values.extend(types.drain(..).map(|name| format!("type {name}")));
         }
 
         if !types.is_empty() {
@@ -536,6 +554,16 @@ impl Generator<'_> {
             }
             writer.close(format!("}} from '{runtime}';"));
         }
+    }
+
+    /// Whether a table of the schema holds a vector of strings, whose
+    /// getter returns the runtime's `StringVector`
+    fn has_string_vectors(&self) -> bool {
+        self.schema
+            .definitions
+            .iter()
+            .flat_map(|definition| &definition.fields)
+            .any(|field| field.field_type == FieldType::StringVector)
     }
 
     /// The functions that read the scalars of structs, such as
@@ -604,11 +632,11 @@ impl Generator<'_> {
         writer.statement(
             &STYLE,
             &format!("{}#LAYOUT = ", self.static_readonly()),
-            &layout_expression(layout),
+            &layout_expression(layout, name),
             ";",
         );
         writer.blank();
-        self.private_field(writer, "buffer", "ByteBuffer");
+        self.private_field(writer, "reader", "TableReader");
         writer.blank();
 
         let mut tags = vec!["@param {Uint8Array} bytes".to_owned()];
@@ -622,16 +650,16 @@ impl Generator<'_> {
         ));
         writer.statement(
             &STYLE,
-            "this.#buffer = ",
+            "this._reader = ",
             &call(
-                "new ByteBuffer",
+                "new TableReader",
                 vec![text("bytes"), text(format!("{name}.#LAYOUT"))],
             ),
             ";",
         );
         if layout.version.is_some() {
             writer.blank();
-            writer.line("const version = this.#buffer.getVersion();");
+            writer.line("const version = this._reader.getVersion();");
             writer.open(format!("if (version !== {name}.FORMAT_VERSION) {{"));
             let message = format!(
                 "`Expected format version ${{{name}.FORMAT_VERSION}} of {name}, got ${{version}}`"
@@ -726,18 +754,15 @@ impl Generator<'_> {
         }
 
         if let Some(whole) = self.whole_message(definition, layout) {
-            self.whole_message_writes(writer, definition, layout, &whole, output);
+            self.whole_message_writes(writer, definition, &whole, output);
             writer.close("}");
             return;
         }
 
-        let mut arguments = vec![
+        let arguments = vec![
             text(definition.fields.len().to_string()),
             text(format!("{name}.#LAYOUT")),
         ];
-        if layout.version.is_some() {
-            arguments.push(text(format!("{name}.FORMAT_VERSION")));
-        }
         writer.statement(
             &STYLE,
             "const sizer = ",
@@ -812,7 +837,6 @@ impl Generator<'_> {
         &self,
         writer: &mut CodeWriter,
         definition: &Definition,
-        layout: Layout,
         whole: &WholeMessage,
         output: Output,
     ) {
@@ -838,17 +862,16 @@ impl Generator<'_> {
             text(definition.fields.len().to_string()),
             text(format!("{name}.#LAYOUT")),
         ];
-        let make = if layout.version.is_some() {
-            arguments.push(text(format!("{name}.FORMAT_VERSION")));
-            "TableWriter.versionedTableBytes"
-        } else {
-            "TableWriter.tableBytes"
-        };
         arguments.push(text(length));
         if let Output::Into = output {
             arguments.push(text("bytes"));
         }
-        writer.statement(&STYLE, "const table = ", &call(make, arguments), ";");
+        writer.statement(
+            &STYLE,
+            "const table = ",
+            &call("TableWriter.tableBytes", arguments),
+            ";",
+        );
         writer.blank();
 
         for (index, &position) in whole.positions.iter().enumerate() {
@@ -860,6 +883,7 @@ impl Generator<'_> {
                 slot,
                 whole.width,
                 &Slot::Constant(position),
+                output,
             );
         }
         writer.blank();
@@ -884,6 +908,7 @@ impl Generator<'_> {
                         position,
                         whole.width,
                         &Slot::Local(&length),
+                        output,
                     );
                 }
                 _ => {
@@ -976,7 +1001,7 @@ impl Generator<'_> {
             writer.line(format!("{}SIZE = {size};", self.static_readonly()));
             writer.blank();
         }
-        self.private_field(writer, "buffer", "ByteBuffer");
+        self.private_field(writer, "reader", "TableReader");
         self.private_field(writer, "position", "number");
         writer.blank();
 
@@ -984,17 +1009,17 @@ impl Generator<'_> {
             writer,
             &["Reads the table at `position`, as its parent's getter finds it".to_owned()],
             &[
-                "@param {ByteBuffer} buffer".to_owned(),
+                "@param {TableReader} reader".to_owned(),
                 "@param {number} position".to_owned(),
             ],
         );
         writer.open(format!(
-            "constructor(buffer{}, position{}) {{",
-            self.annotation("ByteBuffer"),
+            "constructor(reader{}, position{}) {{",
+            self.annotation("TableReader"),
             self.annotation("number")
         ));
-        writer.line("this.#buffer = buffer;");
-        writer.line("this.#position = position;");
+        writer.line("this._reader = reader;");
+        writer.line("this._position = position;");
         writer.close("}");
         writer.blank();
 
@@ -1036,13 +1061,14 @@ impl Generator<'_> {
         if matches!(definition.kind, Kind::Message(_)) {
             return_object(writer, &self.table_reads(definition, TableAt::Root));
         } else {
-            writer.line(format!("return {name}.read(this.#buffer, this.#position);"));
+            writer.line(format!("return {name}.read(this._reader, this._position);"));
         }
         writer.close("}");
     }
 
     /// A nested table's static `read()`, which reads every field at once
-    /// without creating its reader, for its parent's `fields()` and a view's
+    /// without creating an instance of it, for its parent's `fields()` and a
+    /// view's
     fn static_read(&self, writer: &mut CodeWriter, definition: &Definition) {
         let name = &definition.name;
 
@@ -1050,10 +1076,10 @@ impl Generator<'_> {
             writer,
             &[
                 "Reads every field of the table at `position`, as `fields()` does,".to_owned(),
-                "without creating its reader".to_owned(),
+                format!("without creating {}", article(name)),
             ],
             &[
-                "@param {ByteBuffer} buffer".to_owned(),
+                "@param {TableReader} reader".to_owned(),
                 "@param {number} position".to_owned(),
                 format!("@returns {{{name}Fields}}"),
             ],
@@ -1062,7 +1088,7 @@ impl Generator<'_> {
             writer,
             "static read",
             &[
-                ("buffer", "ByteBuffer".to_owned()),
+                ("reader", "TableReader".to_owned()),
                 ("position", "number".to_owned()),
             ],
             &format!("{name}Fields"),
@@ -1074,9 +1100,9 @@ impl Generator<'_> {
     /// The reads of every field of a table, in order, each of which reads a
     /// nested table, vector or array of structs whole
     fn table_reads<'d>(&self, definition: &'d Definition, at: TableAt) -> Vec<Read<'d>> {
-        let buffer = match at {
-            TableAt::Root => "this.#buffer",
-            TableAt::Position => "buffer",
+        let reader = match at {
+            TableAt::Root => "this._reader",
+            TableAt::Position => "reader",
         };
 
         definition
@@ -1086,38 +1112,45 @@ impl Generator<'_> {
             .map(|(index, field)| {
                 let offset = match at {
                     TableAt::Root => call(
-                        format!("{buffer}.rootOffset"),
+                        format!("{reader}.rootOffset"),
                         vec![text(index.to_string())],
                     ),
                     TableAt::Position => call(
-                        format!("{buffer}.fieldOffset"),
+                        format!("{reader}.fieldOffset"),
                         vec![text("position"), text(index.to_string())],
                     ),
                 };
                 let mut suffix = "";
                 let read = match field.field_type {
                     FieldType::Scalar(scalar) => call(
-                        format!("{buffer}.get{}", scalar_method(scalar)),
+                        format!("{reader}.get{}", scalar_method(scalar)),
                         vec![offset],
                     ),
+                    // A bool for each byte, true where it isn't 0
+                    FieldType::Array(Scalar::Bool) => {
+                        call(format!("{reader}.getBoolArray"), vec![offset])
+                    }
+                    FieldType::StringVector => {
+                        call(format!("{reader}.getStringVector"), vec![offset])
+                    }
                     FieldType::Array(scalar) => call(
-                        format!("{buffer}.get{}Array", scalar_method(scalar)),
+                        format!("{reader}.get{}Array", scalar_method(scalar)),
                         vec![offset],
                     ),
-                    FieldType::String => call(format!("{buffer}.getString"), vec![offset]),
+                    FieldType::String => call(format!("{reader}.getString"), vec![offset]),
                     FieldType::Struct(index) => call(
                         format!("{}.read", self.schema.definition(index).name),
-                        vec![text(format!("{buffer}.bytes()")), offset],
+                        vec![text(format!("{reader}.bytes()")), offset],
                     ),
                     FieldType::Table(index) => call(
                         format!("{}.read", self.schema.definition(index).name),
-                        vec![text(buffer), offset],
+                        vec![text(reader), offset],
                     ),
                     // The view's fields(), which reads every item
                     FieldType::StructArray(_) | FieldType::Vector(_) => {
                         suffix = ".fields()";
-                        let view = value_type(field.field_type, self.schema);
-                        call(format!("new {view}"), vec![text(buffer), offset])
+                        let view = value_type(field, self.schema);
+                        call(format!("new {view}"), vec![text(reader), offset])
                     }
                 };
                 Read {
@@ -1317,6 +1350,7 @@ impl Generator<'_> {
                 slot,
                 NESTED_OFFSET_SIZE,
                 &Slot::Constant(position),
+                Output::Into,
             );
         }
         writer.blank();
@@ -1528,7 +1562,7 @@ impl Generator<'_> {
             self.private_field(
                 writer,
                 &identifier(&field.name),
-                &value_type(field.field_type, self.schema),
+                &value_type(field, self.schema),
             );
         }
         writer.blank();
@@ -1553,14 +1587,14 @@ impl Generator<'_> {
             self.annotation("Uint8Array")
         ));
         // The runtime's read functions, which check each read, skip making a
-        // ByteBuffer and its DataView, which took five times as long
+        // TableReader and its DataView, which took five times as long
         for Read {
             field,
             expression: read,
             ..
         } in self.struct_reads(definition, StructRead::Reader, "bytes", "offset")
         {
-            let target = format!("this.#{} = ", identifier(&field.name));
+            let target = format!("this._{} = ", identifier(&field.name));
             match field.field_type {
                 FieldType::Scalar(Scalar::Bool) => assign_bool(writer, &target, &read, ";"),
                 _ => writer.statement(&STYLE, &target, &read, ";"),
@@ -1743,13 +1777,13 @@ impl Generator<'_> {
             self.getter_doc(
                 writer,
                 &schema_docs(&field.docs),
-                &value_type(field.field_type, self.schema),
+                &value_type(field, self.schema),
             );
             writer.open(format!(
                 "{field_name}(){} {{",
-                self.annotation(&value_type(field.field_type, self.schema))
+                self.annotation(&value_type(field, self.schema))
             ));
-            writer.line(format!("return this.#{field_name};"));
+            writer.line(format!("return this._{field_name};"));
             writer.close("}");
         }
         writer.close("}");
@@ -1810,7 +1844,7 @@ impl Generator<'_> {
             "A vector of `{table}`s, which reads each item when it's asked for"
         )]));
         writer.open(format!("export class {table}Vector {{"));
-        self.private_field(writer, "buffer", "ByteBuffer");
+        self.private_field(writer, "reader", "TableReader");
         self.private_field(writer, "position", "number");
         self.private_field(writer, "length", "number");
         writer.blank();
@@ -1819,7 +1853,7 @@ impl Generator<'_> {
             writer,
             &["Views the vector at `position`, as its parent's getter finds it".to_owned()],
             &[
-                "@param {ByteBuffer} buffer".to_owned(),
+                "@param {TableReader} reader".to_owned(),
                 "@param {number} position".to_owned(),
                 "@throws {DecodeError} If the vector's count or the ends of its items lie"
                     .to_owned(),
@@ -1827,13 +1861,13 @@ impl Generator<'_> {
             ],
         );
         writer.open(format!(
-            "constructor(buffer{}, position{}) {{",
-            self.annotation("ByteBuffer"),
+            "constructor(reader{}, position{}) {{",
+            self.annotation("TableReader"),
             self.annotation("number")
         ));
-        writer.line("this.#buffer = buffer;");
-        writer.line("this.#position = position;");
-        writer.line("this.#length = buffer.getVectorLength(position);");
+        writer.line("this._reader = reader;");
+        writer.line("this._position = position;");
+        writer.line("this._length = reader.getVectorLength(position);");
         writer.close("}");
         writer.blank();
 
@@ -1858,13 +1892,13 @@ impl Generator<'_> {
         // The count that the constructor checked, rather than reading and
         // checking it for each item, as getVectorOffset() would
         let offset = call(
-            "this.#buffer.getVectorItemOffset",
-            vec![text("this.#position"), text("this.#length"), text("index")],
+            "this._reader.getVectorItemOffset",
+            vec![text("this._position"), text("this._length"), text("index")],
         );
         writer.statement(
             &STYLE,
             "return ",
-            &call(format!("new {table}"), vec![text("this.#buffer"), offset]),
+            &call(format!("new {table}"), vec![text("this._reader"), offset]),
             ";",
         );
         writer.close("}");
@@ -1886,15 +1920,17 @@ impl Generator<'_> {
             &STYLE,
             "const offsets = ",
             &call(
-                "this.#buffer.getVectorOffsets",
-                vec![text("this.#position")],
+                "this._reader.getVectorOffsets",
+                vec![text("this._position")],
             ),
             ";",
         );
-        writer.line(format!(
-            "const items = {};",
-            self.new_array(table, "offsets.length")
-        ));
+        writer.statement(
+            &STYLE,
+            "const items = ",
+            &self.new_array(table, "offsets.length"),
+            ";",
+        );
         writer.blank();
         writer.open("for (let i = 0; i < offsets.length; i++) {");
         writer.statement(
@@ -1902,7 +1938,7 @@ impl Generator<'_> {
             "items[i] = ",
             &call(
                 format!("{table}.read"),
-                vec![text("this.#buffer"), text("offsets[i]")],
+                vec![text("this._reader"), text("offsets[i]")],
             ),
             ";",
         );
@@ -1930,11 +1966,17 @@ impl Generator<'_> {
     }
 
     /// A new array of `length` items of a type, whose type TypeScript gives
-    fn new_array(&self, item: &str, length: &str) -> String {
+    fn new_array(&self, item: &str, length: &str) -> Expr {
         if self.typed {
-            format!("new Array<{item}Fields>({length})")
+            text(format!("new Array<{item}Fields>({length})"))
         } else {
-            format!("new Array({length})")
+            // A JSDoc cast types the array, which would otherwise be `any[]`.
+            // Its expression takes the parentheses that the cast needs, and
+            // breaks within them as a call's lone argument does.
+            call(
+                format!("/** @type {{{item}Fields[]}} */ "),
+                vec![text(format!("new Array({length})"))],
+            )
         }
     }
 
@@ -1962,27 +2004,27 @@ impl Generator<'_> {
             writer,
             &["Views the array at `position`, as its parent's getter finds it".to_owned()],
             &[
-                "@param {ByteBuffer} buffer".to_owned(),
+                "@param {TableReader} reader".to_owned(),
                 "@param {number} position".to_owned(),
                 "@throws {DecodeError} If the array lies outside the bytes.".to_owned(),
             ],
         );
         writer.open(format!(
-            "constructor(buffer{}, position{}) {{",
-            self.annotation("ByteBuffer"),
+            "constructor(reader{}, position{}) {{",
+            self.annotation("TableReader"),
             self.annotation("number")
         ));
         writer.statement(
             &STYLE,
-            "this.#bytes = ",
+            "this._bytes = ",
             &call(
-                "buffer.getStructArray",
+                "reader.getStructArray",
                 vec![text("position"), text(format!("{structure}.SIZE"))],
             ),
             ";",
         );
         writer.line(format!(
-            "this.#length = this.#bytes.length / {structure}.SIZE;"
+            "this._length = this._bytes.length / {structure}.SIZE;"
         ));
         writer.close("}");
         writer.blank();
@@ -2009,20 +2051,20 @@ impl Generator<'_> {
             "return ",
             &call(
                 format!("new {structure}"),
-                vec![text("this.#bytes"), text(&offset)],
+                vec![text("this._bytes"), text(&offset)],
             ),
             ";",
         );
         writer.close("}");
 
-        let reads = self.struct_reads(definition, StructRead::Reader, "this.#bytes", &offset);
+        let reads = self.struct_reads(definition, StructRead::Reader, "this._bytes", &offset);
         for Read {
             field,
             expression: read,
             ..
         } in reads
         {
-            let return_type = value_type(field.field_type, self.schema);
+            let return_type = value_type(field, self.schema);
             writer.blank();
             self.struct_getter_doc(writer, field, &return_type);
             writer.open(format!(
@@ -2050,12 +2092,14 @@ impl Generator<'_> {
 
         self.view_fields(writer, structure, &[]);
         // The struct's reads in the loop, from the bytes in a local, rather
-        // than its read() of this.#bytes, which took a quarter longer
-        writer.line("const bytes = this.#bytes;");
-        writer.line(format!(
-            "const items = {};",
-            self.new_array(structure, "this.#length")
-        ));
+        // than its read() of this._bytes, which took a quarter longer
+        writer.line("const bytes = this._bytes;");
+        writer.statement(
+            &STYLE,
+            "const items = ",
+            &self.new_array(structure, "this._length"),
+            ";",
+        );
         writer.blank();
         writer.open("for (let i = 0; i < items.length; i++) {");
         writer.line(format!(
@@ -2074,7 +2118,7 @@ impl Generator<'_> {
     fn view_length(&self, writer: &mut CodeWriter, summary: &str) {
         self.getter_doc(writer, &[summary.to_owned()], "number");
         writer.open(format!("length(){} {{", self.annotation("number")));
-        writer.line("return this.#length;");
+        writer.line("return this._length;");
         writer.close("}");
     }
 
@@ -2091,7 +2135,7 @@ impl Generator<'_> {
                 writer.line(format!(
                     "{}: {};",
                     identifier(&field.name),
-                    input_type(field.field_type, self.schema)
+                    input_type(field, self.schema)
                 ));
             }
             writer.close("}");
@@ -2105,12 +2149,50 @@ impl Generator<'_> {
                 let description = schema_docs(&field.docs).join(" ");
                 let property = format!(
                     "@property {{{}}} {} {description}",
-                    input_type(field.field_type, self.schema),
+                    input_type(field, self.schema),
                     identifier(&field.name)
                 );
                 lines.push(property.trim_end().to_owned());
             }
             writer.lines(&doc_comment(&lines));
+        }
+    }
+
+    /// An enum: an object of its values by their names in `PascalCase`, and
+    /// a type of the same name, an alias of its integer type, since a field
+    /// of the enum holds any integer of that type. The object is frozen, so
+    /// that its values are constants, of literal types.
+    fn enumeration(&self, writer: &mut CodeWriter, enumeration: &Enum) {
+        let name = &enumeration.name;
+        let underlying = enumeration.underlying;
+        let is_big = scalar_type(underlying) == "bigint";
+
+        writer.lines(&doc_comment(&schema_docs(&enumeration.docs)));
+        writer.open(format!("export const {name} = globalThis.Object.freeze({{"));
+        for (index, value) in enumeration.values.iter().enumerate() {
+            let last = index + 1 == enumeration.values.len();
+            writer.lines(&doc_comment(&schema_docs(&value.docs)));
+            writer.line(format!(
+                "{}: {}{}{}",
+                pascal_case(&value.name),
+                value.value,
+                if is_big { "n" } else { "" },
+                if last { "" } else { "," }
+            ));
+        }
+        writer.close("});");
+
+        let summary = format!(
+            "A value of {{@link {name}}}: one that it names, or any other `{}`",
+            underlying.name()
+        );
+        writer.blank();
+        if self.typed {
+            writer.lines(&doc_comment(&[summary]));
+            writer.line(format!("export type {name} = {};", scalar_type(underlying)));
+        } else {
+            let typedef = format!("@typedef {{{}}} {name}", scalar_type(underlying));
+            writer.lines(&doc_comment(&[summary, String::new(), typedef]));
         }
     }
 
@@ -2120,11 +2202,16 @@ impl Generator<'_> {
             let value = format!("fields.{}", identifier(&field.name));
             let (method, arguments) = match field.field_type {
                 FieldType::Scalar(scalar) => (format!("add{}", scalar_method(scalar)), vec![]),
+                FieldType::Array(Scalar::Bool) => (
+                    "addBoolArray".to_owned(),
+                    vec![text(format!("{value}.length"))],
+                ),
                 FieldType::Array(scalar) => (
                     format!("add{}Array", scalar_method(scalar)),
                     vec![text(format!("{value}.length"))],
                 ),
                 FieldType::String => ("addString".to_owned(), vec![text(value)]),
+                FieldType::StringVector => ("addStringVector".to_owned(), vec![text(value)]),
                 FieldType::Struct(index) => {
                     let structure = &self.schema.definition(index).name;
                     (
@@ -2186,11 +2273,17 @@ impl Generator<'_> {
                     format!("set{}", scalar_method(scalar)),
                     vec![position, stored_value(scalar, &value)],
                 ),
+                FieldType::Array(Scalar::Bool) => {
+                    ("setBoolArray".to_owned(), vec![position, text(value)])
+                }
                 FieldType::Array(scalar) => (
                     format!("set{}Array", scalar_method(scalar)),
                     vec![position, text(value)],
                 ),
                 FieldType::String => ("setString".to_owned(), vec![position, text(value)]),
+                FieldType::StringVector => {
+                    ("setStringVector".to_owned(), vec![position, text(value)])
+                }
                 FieldType::Struct(struct_index) => {
                     let structure = &self.schema.definition(struct_index).name;
                     (
@@ -2274,17 +2367,24 @@ impl Generator<'_> {
     fn getters(&self, writer: &mut CodeWriter, definition: &Definition, root: bool) {
         for (index, field) in definition.fields.iter().enumerate() {
             let offset = if root {
-                call("this.#buffer.rootOffset", vec![text(index.to_string())])
+                call("this._reader.rootOffset", vec![text(index.to_string())])
             } else {
                 call(
-                    "this.#buffer.fieldOffset",
-                    vec![text("this.#position"), text(index.to_string())],
+                    "this._reader.fieldOffset",
+                    vec![text("this._position"), text(index.to_string())],
                 )
             };
-            let return_type = value_type(field.field_type, self.schema);
+            let return_type = value_type(field, self.schema);
+            let mut docs = schema_docs(&field.docs);
+            if field.field_type == FieldType::Array(Scalar::Bool) {
+                if !docs.is_empty() {
+                    docs.push(String::new());
+                }
+                docs.push("A byte for each bool, which is true where it isn't 0".to_owned());
+            }
 
             writer.blank();
-            self.getter_doc(writer, &schema_docs(&field.docs), &return_type);
+            self.getter_doc(writer, &docs, &return_type);
             writer.open(format!(
                 "{}(){} {{",
                 identifier(&field.name),
@@ -2294,7 +2394,7 @@ impl Generator<'_> {
             match field.field_type {
                 FieldType::Scalar(scalar) => {
                     let get = call(
-                        format!("this.#buffer.get{}", scalar_method(scalar)),
+                        format!("this._reader.get{}", scalar_method(scalar)),
                         vec![offset],
                     );
                     if scalar == Scalar::Bool {
@@ -2305,7 +2405,7 @@ impl Generator<'_> {
                 }
                 FieldType::Array(scalar) => {
                     let get = call(
-                        format!("this.#buffer.get{}Array", scalar_method(scalar)),
+                        format!("this._reader.get{}Array", scalar_method(scalar)),
                         vec![offset],
                     );
                     writer.statement(&STYLE, "return ", &get, ";");
@@ -2314,28 +2414,33 @@ impl Generator<'_> {
                     writer.statement(
                         &STYLE,
                         "return ",
-                        &call("this.#buffer.getString", vec![offset]),
+                        &call("this._reader.getString", vec![offset]),
                         ";",
                     );
+                }
+                // A view, which reads each string when it's asked for
+                FieldType::StringVector => {
+                    let read = call("new StringVector", vec![text("this._reader"), offset]);
+                    writer.statement(&STYLE, "return ", &read, ";");
                 }
                 FieldType::Struct(index) => {
                     let structure = &self.schema.definition(index).name;
                     let read = call(
                         format!("new {structure}"),
-                        vec![text("this.#buffer.bytes()"), offset],
+                        vec![text("this._reader.bytes()"), offset],
                     );
                     writer.statement(&STYLE, "return ", &read, ";");
                 }
                 FieldType::Table(table) => {
                     let table = &self.schema.definition(table).name;
-                    let read = call(format!("new {table}"), vec![text("this.#buffer"), offset]);
+                    let read = call(format!("new {table}"), vec![text("this._reader"), offset]);
                     writer.statement(&STYLE, "return ", &read, ";");
                 }
                 FieldType::StructArray(_) | FieldType::Vector(_) => {
                     // A view, which reads each item when it's asked for
                     let read = call(
                         format!("new {return_type}"),
-                        vec![text("this.#buffer"), offset],
+                        vec![text("this._reader"), offset],
                     );
                     writer.statement(&STYLE, "return ", &read, ";");
                 }
@@ -2410,7 +2515,7 @@ impl Generator<'_> {
             &STYLE,
             "return ",
             &call(
-                "new ByteBuffer",
+                "new TableReader",
                 vec![text("bytes"), text(format!("{name}.#LAYOUT"))],
             ),
             ".getVersion();",
@@ -2438,12 +2543,16 @@ impl Generator<'_> {
         writer.lines(&doc_comment(&lines));
     }
 
+    /// Declares a field that the constructor assigns, without defining it.
+    /// A `#name` field, or any field that the class defines, is first
+    /// `undefined` and then assigned, so V8 holds it as mutable and of any
+    /// type, and reads through it took up to 17% longer. TypeScript's
+    /// `private declare` emits nothing, and JavaScript declares nothing: its
+    /// types, which its doc comments give, follow from the constructor's
+    /// assignment.
     fn private_field(&self, writer: &mut CodeWriter, name: &str, field_type: &str) {
         if self.typed {
-            writer.line(format!("readonly #{name}: {field_type};"));
-        } else {
-            writer.line(format!("/** @type {{{field_type}}} */"));
-            writer.line(format!("#{name};"));
+            writer.line(format!("declare private readonly _{name}: {field_type};"));
         }
     }
 
@@ -2456,7 +2565,7 @@ impl Generator<'_> {
     }
 
     /// Opens a method of `parameters`, each a name and its type, broken over
-    /// lines when it's too long, as Biome breaks it
+    /// lines when it's too long, as oxfmt breaks it
     fn signature(
         &self,
         writer: &mut CodeWriter,
@@ -2544,13 +2653,15 @@ fn identifier(name: &str) -> String {
     }
 }
 
-fn layout_expression(layout: Layout) -> Expr {
+/// The layout of message `name`, whose version is the class's
+/// `FORMAT_VERSION`
+fn layout_expression(layout: Layout, name: &str) -> Expr {
     let mut entries = Vec::new();
     if layout.sized {
         entries.push(("sized".to_owned(), "true".to_owned()));
     }
     if layout.version.is_some() {
-        entries.push(("versioned".to_owned(), "true".to_owned()));
+        entries.push(("version".to_owned(), format!("{name}.FORMAT_VERSION")));
     }
     if layout.offset_type != OffsetType::Uint32 {
         entries.push((
@@ -2611,6 +2722,11 @@ enum Slot<'a> {
 /// its range, which made writing a record of 60 bytes take 0.120 µs rather
 /// than 0.100 µs in Node 27. The slots lie within the bytes, which the table's
 /// writes of its fields check.
+///
+/// New bytes, `Output::New`, are zero, so a constant's zero bytes are left
+/// out of them: a record's offsets of 4 bytes were 12 of its 20 stores, and
+/// 96 of the 317 bytes of bytecode of its `serialize()`, which V8 counts
+/// against the bytecode that it inlines into the function that calls it.
 fn slot_stores(
     writer: &mut CodeWriter,
     bytes: &str,
@@ -2618,6 +2734,7 @@ fn slot_stores(
     slot: usize,
     width: usize,
     value: &Slot,
+    output: Output,
 ) {
     for byte in 0..width {
         let position = match base {
@@ -2625,7 +2742,13 @@ fn slot_stores(
             None => (slot + byte).to_string(),
         };
         let stored = match value {
-            Slot::Constant(constant) => ((constant >> (8 * byte)) & 0xff).to_string(),
+            Slot::Constant(constant) => {
+                let stored = (constant >> (8 * byte)) & 0xff;
+                if stored == 0 && matches!(output, Output::New) {
+                    continue;
+                }
+                stored.to_string()
+            }
             Slot::Local(local) if byte == 0 => (*local).to_owned(),
             Slot::Local(local) => format!("{local} >>> {}", 8 * byte),
         };
@@ -2658,7 +2781,7 @@ fn stored_value(scalar: Scalar, value: &str) -> Expr {
 }
 
 /// Returns the bool that `read` reads from its byte, true when it isn't 0, in
-/// parentheses when it doesn't fit on a line, as Biome breaks a comparison
+/// parentheses when it doesn't fit on a line, as oxfmt breaks a comparison
 fn return_bool(writer: &mut CodeWriter, read: &Expr) {
     let line = format!("return {} !== 0;", read.flat());
     if writer.fits(&STYLE, &line) {
@@ -2671,7 +2794,7 @@ fn return_bool(writer: &mut CodeWriter, read: &Expr) {
 }
 
 /// Returns an object of each field's value that `reads` reads, a bool's
-/// compared with 0, broken over a line for each, as Biome keeps an object
+/// compared with 0, broken over a line for each, as oxfmt keeps an object
 /// that's broken after its brace
 fn return_object(writer: &mut CodeWriter, reads: &[Read]) {
     write_object(writer, "return ", reads);
@@ -2695,7 +2818,7 @@ fn write_object(writer: &mut CodeWriter, target: &str, reads: &[Read]) {
 }
 
 /// Assigns the bool that `read` reads from its byte to `target`, broken after
-/// the `=` or `:` when it doesn't fit on a line, as Biome breaks a comparison,
+/// the `=` or `:` when it doesn't fit on a line, as oxfmt breaks a comparison,
 /// and ends it with `suffix`
 fn assign_bool(writer: &mut CodeWriter, target: &str, read: &Expr, suffix: &str) {
     let line = format!("{target}{} !== 0{suffix}", read.flat());
@@ -2709,12 +2832,16 @@ fn assign_bool(writer: &mut CodeWriter, target: &str, read: &Expr, suffix: &str)
     }
 }
 
-/// The type that a getter returns
-fn value_type(field_type: FieldType, schema: &Schema) -> String {
-    match field_type {
-        FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
+/// The type that a getter returns. An array of enums is the typed array of
+/// their integer type, which has no type of its elements to name the enum.
+fn value_type(field: &Field, schema: &Schema) -> String {
+    match field.field_type {
+        FieldType::Scalar(scalar) => element_type(field, scalar, schema).to_owned(),
+        // The bytes of an array of bools, read in place
         FieldType::Array(scalar) => typed_array(scalar).to_owned(),
         FieldType::String => "string".to_owned(),
+        // A view of the strings, which reads each one when it's asked for
+        FieldType::StringVector => "StringVector".to_owned(),
         FieldType::Struct(index) | FieldType::Table(index) => schema.definition(index).name.clone(),
         // A view of the items, which reads each one when it's asked for
         FieldType::Vector(index) => format!("{}Vector", schema.definition(index).name),
@@ -2723,13 +2850,17 @@ fn value_type(field_type: FieldType, schema: &Schema) -> String {
 }
 
 /// The type that a field's setter takes
-fn input_type(field_type: FieldType, schema: &Schema) -> String {
-    match field_type {
-        FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
+fn input_type(field: &Field, schema: &Schema) -> String {
+    match field.field_type {
+        FieldType::Scalar(scalar) => element_type(field, scalar, schema).to_owned(),
+        // Bools, which the writer writes as bytes of 1 and 0
+        FieldType::Array(Scalar::Bool) => "readonly boolean[]".to_owned(),
+        // An array rather than any array-like, which a string is too
+        FieldType::StringVector => "readonly string[]".to_owned(),
         FieldType::Array(scalar) => {
             format!(
                 "ArrayLike<{}> | {}",
-                scalar_type(scalar),
+                element_type(field, scalar, schema),
                 typed_array(scalar)
             )
         }
@@ -2743,6 +2874,15 @@ fn input_type(field_type: FieldType, schema: &Schema) -> String {
     }
 }
 
+/// The type of a scalar field or of an array's elements: the field's enum,
+/// which is an alias of its integer type, or the scalar's type
+fn element_type<'a>(field: &Field, scalar: Scalar, schema: &'a Schema) -> &'a str {
+    match field.enumeration {
+        Some(index) => &schema.enumeration(index).name,
+        None => scalar_type(scalar),
+    }
+}
+
 const fn scalar_type(scalar: Scalar) -> &'static str {
     match scalar {
         Scalar::Bool => "boolean",
@@ -2753,9 +2893,9 @@ const fn scalar_type(scalar: Scalar) -> &'static str {
 
 const fn typed_array(scalar: Scalar) -> &'static str {
     match scalar {
-        Scalar::Bool => panic!("the checker rejects arrays of bools"),
         Scalar::Int8 => "Int8Array",
-        Scalar::Uint8 => "Uint8Array",
+        // A byte for each bool
+        Scalar::Bool | Scalar::Uint8 => "Uint8Array",
         Scalar::Int16 => "Int16Array",
         Scalar::Uint16 => "Uint16Array",
         Scalar::Int32 => "Int32Array",

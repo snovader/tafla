@@ -1,10 +1,10 @@
 # tafla for Go
 
 `github.com/snovader/tafla/go` is tafla's runtime for Go, the package `tafla`.
-It writes and reads binary tables of scalars, strings, arrays, structs and
-nested tables in tafla's format, which the TypeScript, Python, Java and Rust
+It writes and reads binary tables of scalars, strings, vectors of strings,
+arrays, structs and nested tables in tafla's format, which the TypeScript, Python, Java and Rust
 runtimes write and read too. `TableBuilder` writes a table at its exact size,
-copying arrays in bulk, and `ByteBuffer` reads fields back by offset, sharing
+copying arrays in bulk, and `TableReader` reads fields back by offset, sharing
 arrays, strings and structs with the bytes. Every read checks that it stays
 within the bytes it was given. It depends only on Go's standard library.
 
@@ -22,30 +22,30 @@ go get github.com/snovader/tafla/go@latest
 import tafla "github.com/snovader/tafla/go"
 
 // A format's header, shared by its writer and its readers
-var layout = tafla.TableLayout{}.Sized().Versioned()
-
 const formatVersion = 1
+
+var layout = tafla.TableLayout{}.Sized().WithVersion(formatVersion)
 
 series, err := tafla.NewTableBuilder(2, tafla.TableLayout{})
 err = series.SetUint32Array([]uint32{0, 86_400}) // mustn't change until the table is written
 err = series.SetFloat32Array([]float32{21.75, 18.5})
 
-builder, err := tafla.NewVersionedTableBuilder(3, layout, formatVersion)
+builder, err := tafla.NewTableBuilder(3, layout)
 err = builder.SetFloat64(59.3293)
 err = builder.SetString("Europe/Stockholm")
 err = builder.SetTable(series) // its bytes copied in
 bytes, err := builder.Bytes()
 
-buffer := tafla.NewByteBuffer(bytes, layout)
-version, err := buffer.Version()
+reader := tafla.NewTableReader(bytes, layout)
+version, err := reader.Version()
 if version != formatVersion {
 	return tafla.NewUnsupportedVersionError(version, formatVersion)
 }
-position, err := buffer.RootOffset(1)
-timeZone, err := buffer.GetString(position) // "Europe/Stockholm", sharing the bytes
-table, err := buffer.RootOffset(2)
-position, err = buffer.FieldOffset(table, 1)
-values, err := buffer.GetFloat32Array(position) // an ArrayView[float32]
+position, err := reader.RootOffset(1)
+timeZone, err := reader.GetString(position) // "Europe/Stockholm", sharing the bytes
+table, err := reader.RootOffset(2)
+position, err = reader.FieldOffset(table, 1)
+values, err := reader.GetFloat32Array(position) // an ArrayView[float32]
 values.Slice()                                  // []float32{21.75, 18.5}, in place
 ```
 
@@ -66,7 +66,7 @@ All values are little-endian. A table is its header, one offset per field
 and then the fields in the order they were set:
 
 - The header holds the table's byte length when the layout is `Sized()`,
-  and then its version when it's `Versioned()`.
+  and then the version that `WithVersion()` gave it.
 - Header slots, offsets, counts and vector item ends are all of the layout's
   offset type, `tafla.Uint8`, `tafla.Uint16` or `tafla.Uint32`, whose offset
   size is 1, 2 or 4 bytes. It limits the table to 255 bytes, 64 KiB or
@@ -81,11 +81,20 @@ and then the fields in the order they were set:
   start, and arrays of structs to the size of their largest scalar.
   `SetTable()` aligns a nested table to the largest alignment of its arrays
   when given its builder, and to 4 bytes by default when given bytes.
+- An array of bools is a `uint8` array of 1 and 0, which `SetBoolArray()`
+  writes from bools and `GetBoolArray()` reads into new bools, true where a
+  byte isn't 0. `GetUint8Array()` reads its bytes in place.
 - A vector starts with its item count, then the end of each item, counted
   from the vector's start, and then the items, so `Vector.Get()` finds any
   item from two ends without reading the others. An item without a header and
   with its parent's offset type is read in place, from the bytes that
   `Vector.GetInPlace()` returns, which run on to the end of its parent's.
+- A vector of strings is laid out as a vector is, with its strings' UTF-8 as
+  its items, one after another without padding.
+  `TableReader.GetStringVector()` returns a `StringVector`, whose `Get()`
+  finds any string from two ends without reading the others, and whose
+  `Strings()` reads every string into a `[]string`. Each string must be
+  valid UTF-8 on its own.
 
 The runtime writes the same bytes as the other runtimes for the same fields,
 and reads their tables: `conformance_test.go` reads and rebuilds the
@@ -99,11 +108,12 @@ with the code that tafla-gen generates.
   setter writes the field's offset and bytes into a buffer of 128 bytes
   within the builder, and then into one on the heap, which doubles as it
   grows, and `Bytes()` copies the table into new bytes of its exact length.
-  Arrays, strings, arrays of structs and `TableBytes` of 64 bytes or more
-  are kept until `Bytes()` copies them in, rather than copied when they're
-  set, so their elements must not change until the table is written. A
-  table's length is counted when each field is set, so a value that changed
-  length couldn't be written, but a slice's length can't change.
+  Arrays, strings, the strings of a vector of strings, arrays of structs and
+  `TableBytes` of 64 bytes or more are kept until `Bytes()` copies them in,
+  rather than copied when they're set, so their elements must not change
+  until the table is written. A table's length is counted when each field
+  is set, so a value that changed length couldn't be written, but a slice's
+  length can't change.
 - **Nest builders rather than bytes.** `SetTable()` and `SetVector()` take a
   `*TableBuilder` or `TableBytes`, and copy a builder's bytes into its parent
   when they're set, without the allocation of its own `Bytes()`. Its parent
@@ -122,7 +132,7 @@ with the code that tafla-gen generates.
   builder per item, and 6.1 µs through FlatBuffers. A table nested from a builder or bytes,
   with `SetTable()` and `SetVector()`, is still what a table built
   elsewhere, or reused, needs.
-- **Arrays are read in place.** `ByteBuffer`'s array getters return an
+- **Arrays are read in place.** `TableReader`'s array getters return an
   `ArrayView[T]`, which reads elements from the bytes at any alignment and in
   any host byte order. `AsSlice()` returns them as a slice of the bytes when
   the host is little-endian and the elements are aligned to their type in
@@ -136,7 +146,9 @@ with the code that tafla-gen generates.
 - **Strings share the bytes too.** `GetString()` returns a string of the
   table's bytes rather than a copy, as FlatBuffers' Go runtime does, so the
   bytes must not change while the string is in use, as for `unsafe.String`.
-  `strings.Clone` copies one to keep it past them. Byte arrays, structs and
+  `strings.Clone` copies one to keep it past them. So do the strings that
+  `StringVector.Get()` and `Strings()` return, which take no allocation of
+  their own: `Strings()` allocates the slice alone. Byte arrays, structs and
   vector items are slices of the bytes.
 
 ## Errors and panics
@@ -144,13 +156,17 @@ with the code that tafla-gen generates.
 Every getter returns its value and an `error`, which is a `*DecodeError` when
 the bytes can't be read, and `errors.As` finds it:
 
-- Every read checks its range against the bytes the `ByteBuffer` was given,
+- Every read checks its range against the bytes the `TableReader` was given,
   and fails with `OutOfRange` if it would leave them, which gives the read's
   position and length and the bytes available. Strings must be valid UTF-8,
-  or they fail with `InvalidUTF8`. A vector item that ends before the one
-  before it fails with `ItemEndsBeforeStart`. No bytes make a read panic, nor
-  allocate more than they hold.
-- `ByteBuffer` doesn't compare versions. A reader returns
+  or they fail with `InvalidUTF8`, as each string of a vector of strings
+  does on its own, so an end within a character fails the strings on either
+  side of it. A vector item, or a string of a vector of strings, that ends
+  before the one before it fails with `ItemEndsBeforeStart`.
+  `StringVector.Strings()` returns what `Get()` returns for each string, and
+  the error of the first that fails. No bytes make a read panic, nor
+  allocate out of proportion to what they hold.
+- `TableReader` doesn't compare versions. A reader returns
   `NewUnsupportedVersionError()` when `Version()` isn't one it reads, as the
   example does, so that every decoding failure is a `*DecodeError`.
 - On a 32-bit host, an offset or length past the largest `int`, 2 GiB, fails
@@ -182,13 +198,13 @@ write a table, and leaves the builder as it was:
 Functions panic only for mistakes of the code that calls them, which no bytes
 can cause, as Go's standard library panics for an index out of range:
 
-- an index past an `ArrayView`'s or a `Vector`'s length, or negative,
+- an index past an `ArrayView`'s, a `Vector`'s or a `StringVector`'s length,
+  or negative,
 - a negative field index of `RootOffset()` or `FieldOffset()`, or a negative
   struct size of `GetStruct()` or `GetStructArray()`,
 - an offset type or an alignment that isn't one of the constants,
-- a negative number of fields or of a vector's items, `NewTableBuilder()`
-  of a versioned layout or `NewVersionedTableBuilder()` of one without a
-  version slot, and `Version()` of a layout without one,
+- a negative number of fields or of a vector's items, and a reader's
+  `Version()` of a layout without one,
 - a nil nested table, and
 - a `TableWriter` given other fields than its sizer counted, for a write past
   the table's bytes, rather than writing past them.
@@ -276,7 +292,8 @@ The tests in `tests/` are:
 
 - `conformance_test.go`: reads and rebuilds the conformance suite.
 - `round_trip_test.go`, `format_test.go`, `decode_error_test.go`,
-  `table_builder_test.go`, `builder_failures_test.go` and
+  `string_vector_test.go`, `table_builder_test.go`,
+  `builder_failures_test.go` and
   `table_writer_test.go`: properties of tables
   built from the conformance suite's descriptions, which
   `tests/internal/tables` parses, generates with rapid, builds and reads, as Rust's `tests/common`
@@ -331,9 +348,9 @@ docker run --rm --platform linux/386 -v "$root:$root" -w "$PWD" alpine ./tafla-3
 memory, a read that disagrees with `SPEC.md` or a table that the builder
 writes otherwise than its property says is a finding:
 
-- `FuzzByteBuffer` reads arbitrary bytes with every getter of `ByteBuffer`,
+- `FuzzTableReader` reads arbitrary bytes with every getter of `TableReader`,
   at every position and past the end, in every offset type and header, and
-  reads every array, struct array and vector there. Each read must return
+  reads every array, struct array, vector and vector of strings there. Each read must return
   the bytes that lie where the format puts them, exactly when they lie
   within the input, and the decode error otherwise.
 - `FuzzConformance` mutates the conformance suite's tables and reads them as
@@ -349,7 +366,7 @@ runs each target for a minute on every change, and the weekly Fuzz workflow
 for five minutes, from the corpus that its earlier runs grew.
 
 ```sh
-go test -run '^$' -fuzz FuzzByteBuffer -fuzztime 5m
+go test -run '^$' -fuzz FuzzTableReader -fuzztime 5m
 go test -run '^$' -fuzz FuzzConformance -fuzztime 5m
 go test -run '^$' -fuzz FuzzTableBuilder -fuzztime 5m
 ```

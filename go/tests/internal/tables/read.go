@@ -8,7 +8,7 @@ import (
 	tafla "github.com/snovader/tafla/go"
 )
 
-// Reads tables with ByteBuffer as their descriptions set them out, and
+// Reads tables with TableReader as their descriptions set them out, and
 // returns the descriptions with the values read in place of theirs, so that
 // they equal the descriptions when the bytes hold the described values.
 //
@@ -19,22 +19,26 @@ import (
 // read as a table of its own: a field from its position to the end of its
 // parent, since its length isn't written, and a vector item from the bytes
 // that Vector.Items returns. The scalars of structs are read at their
-// offsets in the bytes that GetStruct and GetStructArray return.
+// offsets in the bytes that GetStruct and GetStructArray return. A vector of
+// strings is read whole with StringVector.Strings, and each of its strings
+// from its ends with StringVector.Get, which must find the same strings, and
+// fail where Strings fails.
 
 // ErrMismatch is the error of bytes that read without a decode error, but
 // otherwise than their description: a sized table whose header holds
 // another length, a vector of another number of items, or one whose items
-// Get finds otherwise than iterating does.
+// Get finds otherwise than iterating does, or whose strings it finds
+// otherwise than reading every string does.
 var ErrMismatch = errors.New("the bytes don't read as described")
 
 // ReadTable reads a table from its own bytes, as the root or a vector item is
 // read: its header, whose size must be the table's byte length when it's
 // sized, and then its fields.
 func ReadTable(bytes []byte, table Table) (Table, error) {
-	reader := reader{tafla.NewByteBuffer(bytes, table.Layout.TableLayout())}
+	r := descriptionReader{tafla.NewTableReader(bytes, table.Layout.TableLayout())}
 
 	if table.Layout.Sized {
-		size, err := reader.buffer.Size()
+		size, err := r.reader.Size()
 		if err != nil {
 			return Table{}, err
 		}
@@ -45,7 +49,7 @@ func ReadTable(bytes []byte, table Table) (Table, error) {
 
 	read := Table{Layout: table.Layout}
 	if table.Layout.Versioned {
-		version, err := reader.buffer.Version()
+		version, err := r.reader.Version()
 		if err != nil {
 			return Table{}, err
 		}
@@ -53,7 +57,7 @@ func ReadTable(bytes []byte, table Table) (Table, error) {
 	}
 
 	for index, field := range table.Fields {
-		value, err := reader.readRootField(index, field)
+		value, err := r.readRootField(index, field)
 		if err != nil {
 			return Table{}, err
 		}
@@ -66,22 +70,22 @@ func ReadTable(bytes []byte, table Table) (Table, error) {
 // ReadRootField reads root field index of a table of layout as field,
 // without reading the header.
 func ReadRootField(bytes []byte, layout Layout, index int, field Field) (Field, error) {
-	reader := reader{tafla.NewByteBuffer(bytes, layout.TableLayout())}
-	return reader.readRootField(index, field)
+	r := descriptionReader{tafla.NewTableReader(bytes, layout.TableLayout())}
+	return r.readRootField(index, field)
 }
 
 // ReadField reads field at position of a table of layout.
 func ReadField(bytes []byte, layout Layout, position int, field Field) (Field, error) {
-	reader := reader{tafla.NewByteBuffer(bytes, layout.TableLayout())}
-	return reader.readField(position, field)
+	r := descriptionReader{tafla.NewTableReader(bytes, layout.TableLayout())}
+	return r.readField(position, field)
 }
 
-type reader struct {
-	buffer tafla.ByteBuffer
+type descriptionReader struct {
+	reader tafla.TableReader
 }
 
-func (r reader) readRootField(index int, field Field) (Field, error) {
-	position, err := r.buffer.RootOffset(index)
+func (r descriptionReader) readRootField(index int, field Field) (Field, error) {
+	position, err := r.reader.RootOffset(index)
 	if err != nil {
 		return nil, err
 	}
@@ -89,79 +93,84 @@ func (r reader) readRootField(index int, field Field) (Field, error) {
 	return r.readField(position, field)
 }
 
-func (r reader) readField(position int, field Field) (Field, error) {
-	buffer := r.buffer
+func (r descriptionReader) readField(position int, field Field) (Field, error) {
+	reader := r.reader
 
 	switch field := field.(type) {
 	case Int8:
-		value, err := buffer.GetInt8(position)
+		value, err := reader.GetInt8(position)
 		return Int8(value), err
 	case Uint8:
-		value, err := buffer.GetUint8(position)
+		value, err := reader.GetUint8(position)
 		return Uint8(value), err
 	case Int16:
-		value, err := buffer.GetInt16(position)
+		value, err := reader.GetInt16(position)
 		return Int16(value), err
 	case Uint16:
-		value, err := buffer.GetUint16(position)
+		value, err := reader.GetUint16(position)
 		return Uint16(value), err
 	case Int32:
-		value, err := buffer.GetInt32(position)
+		value, err := reader.GetInt32(position)
 		return Int32(value), err
 	case Uint32:
-		value, err := buffer.GetUint32(position)
+		value, err := reader.GetUint32(position)
 		return Uint32(value), err
 	case Int64:
-		value, err := buffer.GetInt64(position)
+		value, err := reader.GetInt64(position)
 		return Int64(value), err
 	case Uint64:
-		value, err := buffer.GetUint64(position)
+		value, err := reader.GetUint64(position)
 		return Uint64(value), err
 	case Float32:
-		value, err := buffer.GetFloat32(position)
+		value, err := reader.GetFloat32(position)
 		return Float32(value), err
 	case Float64:
-		value, err := buffer.GetFloat64(position)
+		value, err := reader.GetFloat64(position)
 		return Float64(value), err
 	case Bool:
-		value, err := buffer.GetUint8(position)
+		value, err := reader.GetUint8(position)
 		return Bool(value != 0), err
 	case Int8Array:
-		values, err := buffer.GetInt8Array(position)
+		values, err := reader.GetInt8Array(position)
 		return Int8Array(values.Append(nil)), err
 	case Uint8Array:
-		values, err := buffer.GetUint8Array(position)
+		values, err := reader.GetUint8Array(position)
 		return Uint8Array(bytes.Clone(values)), err
 	case Int16Array:
-		values, err := buffer.GetInt16Array(position)
+		values, err := reader.GetInt16Array(position)
 		return Int16Array(values.Append(nil)), err
 	case Uint16Array:
-		values, err := buffer.GetUint16Array(position)
+		values, err := reader.GetUint16Array(position)
 		return Uint16Array(values.Append(nil)), err
 	case Int32Array:
-		values, err := buffer.GetInt32Array(position)
+		values, err := reader.GetInt32Array(position)
 		return Int32Array(values.Append(nil)), err
 	case Uint32Array:
-		values, err := buffer.GetUint32Array(position)
+		values, err := reader.GetUint32Array(position)
 		return Uint32Array(values.Append(nil)), err
 	case Int64Array:
-		values, err := buffer.GetInt64Array(position)
+		values, err := reader.GetInt64Array(position)
 		return Int64Array(values.Append(nil)), err
 	case Uint64Array:
-		values, err := buffer.GetUint64Array(position)
+		values, err := reader.GetUint64Array(position)
 		return Uint64Array(values.Append(nil)), err
 	case Float32Array:
-		values, err := buffer.GetFloat32Array(position)
+		values, err := reader.GetFloat32Array(position)
 		return Float32Array(values.Append(nil)), err
 	case Float64Array:
-		values, err := buffer.GetFloat64Array(position)
+		values, err := reader.GetFloat64Array(position)
 		return Float64Array(values.Append(nil)), err
+	case BoolArray:
+		values, err := reader.GetBoolArray(position)
+		return BoolArray(values), err
 	case String:
-		value, err := buffer.GetString(position)
+		value, err := reader.GetString(position)
 		return String(value), err
+	case StringVector:
+		return r.readStringVector(position)
 	case Struct:
 		types := StructTypes(field)
-		bytes, err := buffer.GetStruct(position, StructSize(types))
+		bytes, err := reader.GetStruct(position, StructSize(types))
 		if err != nil {
 			return nil, err
 		}
@@ -169,7 +178,7 @@ func (r reader) readField(position int, field Field) (Field, error) {
 		return Struct(scalars), err
 	case StructArray:
 		size := StructSize(field.Types)
-		bytes, err := buffer.GetStructArray(position, size)
+		bytes, err := reader.GetStructArray(position, size)
 		if err != nil {
 			return nil, err
 		}
@@ -196,13 +205,13 @@ func (r reader) readField(position int, field Field) (Field, error) {
 }
 
 // readNested reads a table nested with SetTable
-func (r reader) readNested(position int, table Table) (Table, error) {
+func (r descriptionReader) readNested(position int, table Table) (Table, error) {
 	if r.readsInPlace(table) {
 		return r.readInPlace(position, table)
 	}
 
 	// A position past the end leaves no bytes, which the first read fails for
-	bytes := r.buffer.Bytes()
+	bytes := r.reader.Bytes()
 	return ReadTable(bytes[min(max(position, 0), len(bytes)):], table)
 }
 
@@ -214,8 +223,8 @@ type item struct {
 
 // readVector reads a vector's items, after checking that finding each from
 // its ends alone finds what iterating finds
-func (r reader) readVector(position int, items Vector) (Field, error) {
-	vector, err := r.buffer.GetVector(position)
+func (r descriptionReader) readVector(position int, items Vector) (Field, error) {
+	vector, err := r.reader.GetVector(position)
 	if err != nil {
 		return nil, err
 	}
@@ -259,10 +268,10 @@ func (r reader) readVector(position int, items Vector) (Field, error) {
 		var table Table
 		var err error
 		if r.readsInPlace(nested.Table) {
-			// At its start, in a buffer of its offset type, which is its
+			// At its start, with a reader of its offset type, which is its
 			// parent's
-			buffer := tafla.NewByteBuffer(inPlace[index].bytes, nested.Table.Layout.TableLayout())
-			table, err = reader{buffer}.readInPlace(0, nested.Table)
+			reader := tafla.NewTableReader(inPlace[index].bytes, nested.Table.Layout.TableLayout())
+			table, err = descriptionReader{reader}.readInPlace(0, nested.Table)
 		} else {
 			table, err = ReadTable(iterated[index].bytes, nested.Table)
 		}
@@ -287,19 +296,54 @@ func sameItem(a, b item) bool {
 	return len(a.bytes) == len(b.bytes) && (len(a.bytes) == 0 || &a.bytes[0] == &b.bytes[0])
 }
 
+// readStringVector reads every string of a vector of strings, after checking
+// that finding each from its ends alone finds what reading every string
+// finds, and fails where reading any of them fails, with the error of the
+// first that does
+func (r descriptionReader) readStringVector(position int) (Field, error) {
+	vector, err := r.reader.GetStringVector(position)
+	if err != nil {
+		return nil, err
+	}
+
+	strings, err := vector.Strings()
+	if len(strings) != vector.Len() && err == nil {
+		return nil, fmt.Errorf("%w: a vector of %d strings reads %d", ErrMismatch, vector.Len(), len(strings))
+	}
+
+	var firstErr error
+	for index := range vector.Len() {
+		value, valueErr := vector.Get(index)
+		if valueErr != nil && firstErr == nil {
+			firstErr = valueErr
+		}
+		if valueErr == nil && err == nil && value != strings[index] {
+			return nil, fmt.Errorf("%w: Get finds string %d otherwise than Strings", ErrMismatch, index)
+		}
+	}
+	if !sameItem(item{err: err}, item{err: firstErr}) {
+		return nil, fmt.Errorf("%w: Get finds the strings failing with %v where Strings fails with %v", ErrMismatch, firstErr, err)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return StringVector(strings), nil
+}
+
 // readsInPlace reports whether a nested table is read in place: it has no
 // header, and its parent's offset type
-func (r reader) readsInPlace(table Table) bool {
+func (r descriptionReader) readsInPlace(table Table) bool {
 	layout := table.Layout
-	return !layout.Sized && !layout.Versioned && layout.OffsetType == r.buffer.Layout().OffsetType()
+	return !layout.Sized && !layout.Versioned && layout.OffsetType == r.reader.Layout().OffsetType()
 }
 
 // readInPlace reads the fields of a table nested at position, from offsets
 // counted from its start, within its parent's bytes
-func (r reader) readInPlace(position int, table Table) (Table, error) {
+func (r descriptionReader) readInPlace(position int, table Table) (Table, error) {
 	read := Table{Layout: table.Layout}
 	for index, field := range table.Fields {
-		offset, err := r.buffer.FieldOffset(position, index)
+		offset, err := r.reader.FieldOffset(position, index)
 		if err != nil {
 			return Table{}, err
 		}
@@ -314,14 +358,14 @@ func (r reader) readInPlace(position int, table Table) (Table, error) {
 }
 
 // readStruct reads the scalars of a struct of types at their offsets in its
-// bytes, which a ByteBuffer reads in any layout
+// bytes, which a TableReader reads in any layout
 func readStruct(bytes []byte, types []ScalarType) ([]Field, error) {
-	buffer := tafla.NewByteBuffer(bytes, tafla.TableLayout{})
+	reader := tafla.NewTableReader(bytes, tafla.TableLayout{})
 	scalars := make([]Field, 0, len(types))
 
 	offset := 0
 	for _, scalar := range types {
-		value, err := readScalar(buffer, scalar, offset)
+		value, err := readScalar(reader, scalar, offset)
 		if err != nil {
 			return nil, err
 		}
@@ -332,37 +376,37 @@ func readStruct(bytes []byte, types []ScalarType) ([]Field, error) {
 	return scalars, nil
 }
 
-func readScalar(buffer tafla.ByteBuffer, scalar ScalarType, position int) (Field, error) {
+func readScalar(reader tafla.TableReader, scalar ScalarType, position int) (Field, error) {
 	switch scalar {
 	case Int8Type:
-		value, err := buffer.GetInt8(position)
+		value, err := reader.GetInt8(position)
 		return Int8(value), err
 	case Uint8Type:
-		value, err := buffer.GetUint8(position)
+		value, err := reader.GetUint8(position)
 		return Uint8(value), err
 	case Int16Type:
-		value, err := buffer.GetInt16(position)
+		value, err := reader.GetInt16(position)
 		return Int16(value), err
 	case Uint16Type:
-		value, err := buffer.GetUint16(position)
+		value, err := reader.GetUint16(position)
 		return Uint16(value), err
 	case Int32Type:
-		value, err := buffer.GetInt32(position)
+		value, err := reader.GetInt32(position)
 		return Int32(value), err
 	case Uint32Type:
-		value, err := buffer.GetUint32(position)
+		value, err := reader.GetUint32(position)
 		return Uint32(value), err
 	case Int64Type:
-		value, err := buffer.GetInt64(position)
+		value, err := reader.GetInt64(position)
 		return Int64(value), err
 	case Uint64Type:
-		value, err := buffer.GetUint64(position)
+		value, err := reader.GetUint64(position)
 		return Uint64(value), err
 	case Float32Type:
-		value, err := buffer.GetFloat32(position)
+		value, err := reader.GetFloat32(position)
 		return Float32(value), err
 	default:
-		value, err := buffer.GetFloat64(position)
+		value, err := reader.GetFloat64(position)
 		return Float64(value), err
 	}
 }

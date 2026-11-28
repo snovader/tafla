@@ -57,14 +57,7 @@ func (t Table) appendLaidOut(dst []byte, first int) ([]byte, error) {
 		length += uint64(width + len(value))
 	}
 
-	layout := t.Layout.TableLayout()
-	var whole, table []byte
-	var err error
-	if t.Layout.Versioned {
-		whole, table, err = tafla.AppendVersionedTable(dst, len(t.Fields), layout, t.Version, length)
-	} else {
-		whole, table, err = tafla.AppendTable(dst, len(t.Fields), layout, length)
-	}
+	whole, table, err := tafla.AppendTable(dst, len(t.Fields), t.TableLayout(), length)
 	if err != nil {
 		return nil, err
 	}

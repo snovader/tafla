@@ -11,9 +11,10 @@ use tafla_benchmarks::check;
 use tafla_benchmarks::codec::{DocumentWorkload, Error, Workload};
 use tafla_benchmarks::codecs::LeBytes;
 use tafla_benchmarks::item_access::{self, ItemAccess, ItemBytes};
+use tafla_benchmarks::sized_items;
 use tafla_benchmarks::workloads::{
     self, DOCUMENT_ROWS, Document, DocumentShape, LIST_ITEMS, ListShape, RECORD, RecordShape,
-    SAMPLE, SampleShape, Shape, StructsShape,
+    SAMPLE, SampleShape, Shape, StructsShape, thousands,
 };
 use tafla_benchmarks::{for_each_codec, for_each_item_access};
 
@@ -33,7 +34,7 @@ criterion_group! {
         .measurement_time(Duration::from_secs(1))
         .sample_size(50)
         .nresamples(1000);
-    targets = record, documents, list, structs, item_access, sample
+    targets = record, documents, list, structs, item_access, sized_items, sample
 }
 
 criterion_main!(comparison);
@@ -134,6 +135,21 @@ fn item_access(criterion: &mut Criterion) {
     });
 }
 
+/// Reads the last item of the vector's items written as sized tables, which
+/// `Vector::get()` returns as tables of their own
+fn sized_items(criterion: &mut Criterion) {
+    let list = workloads::list(LIST_ITEMS);
+    let bytes = checked(sized_items::write(&list));
+    checked(sized_items::check(&list, &bytes));
+
+    let vector = format!("vector of {LIST_ITEMS} sized tables");
+    group(
+        criterion,
+        &format!("{vector}: read the last item"),
+        |group| read(group, "tafla", || sized_items::last_item(black_box(&bytes))),
+    );
+}
+
 fn sample(criterion: &mut Criterion) {
     group(criterion, "fixed-size record: serialize", |group| {
         for_each_codec!(|codec| serialize::<SampleShape, _>(group, codec, &SAMPLE));
@@ -191,19 +207,4 @@ fn read(group: &mut Group<'_>, name: &str, read: impl Fn() -> Result<f64, Error>
 /// Stops the benchmarks before timing a codec that failed its check
 fn checked<T>(result: Result<T, Error>) -> T {
     result.unwrap_or_else(|error| panic!("{error}"))
-}
-
-/// Formats `100000` as `100,000`, as the other languages name the groups
-fn thousands(value: usize) -> String {
-    let digits = value.to_string();
-    let mut formatted = String::with_capacity(digits.len() + digits.len() / 3);
-
-    for (i, digit) in digits.chars().enumerate() {
-        if i > 0 && (digits.len() - i).is_multiple_of(3) {
-            formatted.push(',');
-        }
-        formatted.push(digit);
-    }
-
-    formatted
 }

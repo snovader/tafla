@@ -4,6 +4,7 @@
 #ifndef TAFLA_BENCHMARKS_CODECS_FLATBUFFERS_HPP
 #define TAFLA_BENCHMARKS_CODECS_FLATBUFFERS_HPP
 
+#include <array>
 #include <cstdint>
 #include <span>
 #include <vector>
@@ -11,6 +12,7 @@
 #include <flatbuffers/flatbuffers.h>
 
 #include "../codec.hpp"
+#include "strings_generated.h"
 #include "workloads_generated.h"
 
 namespace tafla::benchmarks {
@@ -31,6 +33,10 @@ namespace tafla::benchmarks {
 ///
 /// Fields that a table leaves out read as null, which is an error here, since
 /// every workload has them.
+///
+/// The strings suite's 16 strings are a vector of strings, which the
+/// `Verifier` checks lie within the bytes and end in a terminator, without
+/// checking their UTF-8, as FlatBuffers never does.
 struct FlatBuffers {
     static constexpr std::string_view name = "flatbuffers";
 
@@ -139,6 +145,29 @@ struct FlatBuffers {
     [[nodiscard]] Sample deserialize(SampleShape, std::span<const std::uint8_t> bytes) const {
         const auto* sample = verified<tafla_fbs::Sample>(bytes);
         return {sample->key(), sample->a(), sample->b()};
+    }
+
+    [[nodiscard]] ::flatbuffers::DetachedBuffer serialize(StringsShape, const Strings& input) const {
+        ::flatbuffers::FlatBufferBuilder builder;
+        std::array<::flatbuffers::Offset<::flatbuffers::String>, kStrings> items;
+        for (std::size_t index = 0; index < kStrings; ++index) {
+            items[index] = builder.CreateString(input[index].view());
+        }
+        builder.Finish(tafla_fbs::CreateStrings(builder, builder.CreateVector(items.data(), items.size())));
+        return builder.Release();
+    }
+
+    [[nodiscard]] Strings deserialize(StringsShape, std::span<const std::uint8_t> bytes) const {
+        const auto* items = present(verified<tafla_fbs::Strings>(bytes)->items());
+        if (items->size() != kStrings) {
+            throw CodecError("The FlatBuffers vector doesn't hold 16 strings");
+        }
+
+        Strings strings;
+        for (std::size_t index = 0; index < kStrings; ++index) {
+            strings[index] = Text::borrowed(items->Get(static_cast<::flatbuffers::uoffset_t>(index))->string_view());
+        }
+        return strings;
     }
 
     /// The root of verified bytes, as the generated `Verify*Buffer()` and

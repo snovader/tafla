@@ -65,9 +65,23 @@ impl<'a, T: Element> ArrayView<'a, T> {
 
     /// Returns the elements in place when [`ArrayView::as_slice()`] can, and
     /// otherwise a copy
+    // The copy is a cold function of its own, so that LLVM inlines the
+    // rest. With the copy in it, LLVM called it out of line, and tafla-gen
+    // read a document of 100 rows in 15.3 ns rather than 12.5 ns. It's a
+    // match because `map_or_else()` put the calls of the copy among the
+    // reads, and the document took 12.9 ns rather than 12.3 ns.
+    #[allow(clippy::option_if_let_else)]
     pub fn to_cow(&self) -> Cow<'a, [T]> {
-        self.as_slice()
-            .map_or_else(|| Cow::Owned(self.to_vec()), Cow::Borrowed)
+        match self.as_slice() {
+            Some(elements) => Cow::Borrowed(elements),
+            None => self.copy(),
+        }
+    }
+
+    /// Copies elements that aren't in place, as [`ArrayView::to_vec()`] does
+    #[cold]
+    fn copy(&self) -> Cow<'a, [T]> {
+        Cow::Owned(self.iter().collect())
     }
 
     /// Returns the elements' little-endian bytes, without the length prefix

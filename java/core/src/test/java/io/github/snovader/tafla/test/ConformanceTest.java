@@ -88,7 +88,7 @@ public class ConformanceTest {
     void should_read_every_valid_table(@ForAll("validCases") Case validCase) {
         var table = tableOf(validCase);
 
-        assertEquals(table, TableReader.strict(validCase.bytes(), table.layout()).readTable(table));
+        assertEquals(table, DescriptionReader.strict(validCase.bytes(), table.layout()).readTable(table));
     }
 
     @Property(generation = GenerationMode.EXHAUSTIVE, shrinking = ShrinkingMode.OFF)
@@ -104,7 +104,7 @@ public class ConformanceTest {
     void should_read_every_equivalent_table_as_its_valid_case(@ForAll("equivalentCases") Case equivalentCase) {
         var table = tableOf(validCaseOf(equivalentCase));
 
-        assertEquals(table, TableReader.strict(equivalentCase.bytes(), table.layout()).readTable(table));
+        assertEquals(table, DescriptionReader.strict(equivalentCase.bytes(), table.layout()).readTable(table));
     }
 
     @Property(generation = GenerationMode.EXHAUSTIVE, shrinking = ShrinkingMode.OFF)
@@ -112,7 +112,7 @@ public class ConformanceTest {
         var table = tableOf(validCaseOf(invalidCase));
         var fields = table.fields();
         var field = invalidCase.description().getInt("field");
-        var reader = TableReader.strict(invalidCase.bytes(), table.layout());
+        var reader = DescriptionReader.strict(invalidCase.bytes(), table.layout());
 
         for (int index = 0; index < field; index++) {
             assertEquals(fields.get(index), reader.readRootField(index, fields.get(index)), "field " + index);

@@ -1,6 +1,7 @@
+import type { Packr as TypedPackr } from 'msgpackr';
 // The pack and unpack entry points are plain JS on every runtime, where the
 // package root tries to load a native string extractor on Node
-import { Packr } from 'msgpackr/pack';
+import { Packr as UntypedPackr } from 'msgpackr/pack';
 import type {
     DocumentInput,
     DocumentOutput,
@@ -10,6 +11,10 @@ import type {
     SampleInput
 } from '../workloads.ts';
 import type { Codec } from './codec.ts';
+
+// The entry point's types re-export the root's from '.', which NodeNext doesn't
+// resolve, so they type it as any
+const Packr = UntypedPackr as typeof TypedPackr;
 
 // `moreTypes` packs typed arrays as extensions whose bytes are copied, rather
 // than as arrays of numbers. Unpacking copies them again to align them.
@@ -84,7 +89,7 @@ export const msgpackr: Codec = {
 
 function toTyped<T extends Float32Array | Uint32Array>(
     values: ArrayLike<number>,
-    TypedArray: { new (values: ArrayLike<number>): T }
+    TypedArray: new (values: ArrayLike<number>) => T
 ): T {
     return values instanceof TypedArray ? values : new TypedArray(values);
 }

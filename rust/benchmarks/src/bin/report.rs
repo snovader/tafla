@@ -5,9 +5,16 @@
 //! down.
 //!
 //! `--markdown` prints a table of the fastest samples instead, as README.md
-//! shows them. An argument other than that is Criterion's directory, which is
-//! `$CRITERION_HOME`, or `criterion` in `$CARGO_TARGET_DIR` or the
-//! workspace's `target` by default.
+//! shows them. `--baseline <name>` reads the results that Criterion's
+//! `--save-baseline <name>` saved rather than the last, and with several
+//! names pools their samples, as of rounds that ran the codecs in
+//! alternating order: each benchmark's fastest and median sample over every
+//! round, in the order that the first named round ran them. It's an error
+//! if a benchmark is in some of the named rounds and not in the others, as
+//! after a mistyped name or a round cut short. An argument
+//! other than these is Criterion's directory, which is `$CRITERION_HOME`, or
+//! `criterion` in `$CARGO_TARGET_DIR` or the workspace's `target` by
+//! default.
 
 use std::collections::HashMap;
 use std::env;
@@ -18,6 +25,9 @@ use std::time::SystemTime;
 
 use serde::Deserialize;
 
+/// The results that Criterion keeps of a benchmark's last run
+const LAST_RUN: &str = "new";
+
 /// One benchmark's results
 struct Benchmark {
     group: String,
@@ -26,8 +36,9 @@ struct Benchmark {
     fastest: f64,
     /// The median sample's time per call, in nanoseconds
     median: f64,
-    /// When its samples were written, which orders the benchmarks as they ran
-    modified: SystemTime,
+    /// The first run read that has the benchmark, and when its samples were
+    /// written, which order the benchmarks as they ran
+    order: (usize, SystemTime),
 }
 
 /// The benchmarks of one group, in the order they ran
@@ -52,20 +63,29 @@ struct Samples {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut markdown = false;
+    let mut baselines = Vec::new();
     let mut directory = None;
-    for argument in env::args().skip(1) {
+
+    let mut arguments = env::args().skip(1);
+    while let Some(argument) = arguments.next() {
         if argument == "--markdown" {
             markdown = true;
+        } else if argument == "--baseline" {
+            baselines.push(arguments.next().ok_or("--baseline takes a name")?);
         } else {
             directory = Some(PathBuf::from(argument));
         }
     }
+    if baselines.is_empty() {
+        baselines.push(LAST_RUN.to_string());
+    }
 
     let directory = directory.unwrap_or_else(criterion_directory);
-    let groups = read_groups(&directory)?;
+    let groups = read_groups(&directory, &baselines)?;
     if groups.is_empty() {
         return Err(format!(
-            "No results in {}; run `cargo bench` first",
+            "No results of {} in {}; run `cargo bench` first",
+            baselines.join(", "),
             directory.display()
         )
         .into());
@@ -94,19 +114,19 @@ fn criterion_directory() -> PathBuf {
         .join("criterion")
 }
 
-/// Reads every benchmark's last results, grouped, in the order they ran
-fn read_groups(directory: &Path) -> Result<Vec<Group>, Box<dyn Error>> {
+/// Reads every benchmark's results of the runs that `runs` names, grouped,
+/// in the order they ran
+fn read_groups(directory: &Path, runs: &[String]) -> Result<Vec<Group>, Box<dyn Error>> {
     let mut benchmarks = Vec::new();
     for group in fs::read_dir(directory)? {
         for function in fs::read_dir(group?.path())? {
-            let results = function?.path().join("new");
-            if results.join("sample.json").is_file() {
-                benchmarks.push(read_benchmark(&results)?);
+            if let Some(benchmark) = read_benchmark(&function?.path(), runs)? {
+                benchmarks.push(benchmark);
             }
         }
     }
 
-    benchmarks.sort_by_key(|benchmark| benchmark.modified);
+    benchmarks.sort_by_key(|benchmark| benchmark.order);
 
     let mut groups: Vec<Group> = Vec::new();
     let mut indices = HashMap::new();
@@ -125,31 +145,67 @@ fn read_groups(directory: &Path) -> Result<Vec<Group>, Box<dyn Error>> {
     Ok(groups)
 }
 
-fn read_benchmark(results: &Path) -> Result<Benchmark, Box<dyn Error>> {
-    let id: BenchmarkId = serde_json::from_slice(&fs::read(results.join("benchmark.json"))?)?;
+/// Reads a benchmark's samples of each run that `runs` names, pooled, or
+/// nothing if none of them has the benchmark, as another bench's
+///
+/// # Errors
+///
+/// If some of the runs have the benchmark and others don't, since their
+/// pooled samples would pass for those of every run.
+fn read_benchmark(function: &Path, runs: &[String]) -> Result<Option<Benchmark>, Box<dyn Error>> {
+    let mut first = None;
+    let mut missing = Vec::new();
+    let mut per_call = Vec::new();
 
-    let path = results.join("sample.json");
-    let samples: Samples = serde_json::from_slice(&fs::read(&path)?)?;
-    let mut per_call: Vec<f64> = samples
-        .times
-        .iter()
-        .zip(&samples.iters)
-        .map(|(time, calls)| time / calls)
-        .collect();
+    for (index, run) in runs.iter().enumerate() {
+        let results = function.join(run);
+        let path = results.join("sample.json");
+        if !path.is_file() {
+            missing.push(run.as_str());
+            continue;
+        }
+
+        if first.is_none() {
+            let id: BenchmarkId =
+                serde_json::from_slice(&fs::read(results.join("benchmark.json"))?)?;
+            first = Some((id, (index, fs::metadata(&path)?.modified()?)));
+        }
+
+        let samples: Samples = serde_json::from_slice(&fs::read(&path)?)?;
+        per_call.extend(
+            samples
+                .times
+                .iter()
+                .zip(&samples.iters)
+                .map(|(time, calls)| time / calls),
+        );
+    }
+
+    let Some((id, order)) = first else {
+        return Ok(None);
+    };
+    if !missing.is_empty() {
+        return Err(format!(
+            "{} has no results of {}",
+            function.display(),
+            missing.join(", ")
+        )
+        .into());
+    }
+
     per_call.sort_by(f64::total_cmp);
-
     let (Some(&fastest), Some(&median)) = (per_call.first(), per_call.get(per_call.len() / 2))
     else {
-        return Err(format!("{} has no samples", path.display()).into());
+        return Err(format!("{} has no samples", function.display()).into());
     };
 
-    Ok(Benchmark {
+    Ok(Some(Benchmark {
         group: id.group_id,
         codec: id.function_id.unwrap_or_default(),
         fastest,
         median,
-        modified: fs::metadata(&path)?.modified()?,
-    })
+        order,
+    }))
 }
 
 fn print_groups(groups: &[Group]) {

@@ -1,0 +1,5 @@
+error: the integer is too large
+ --> enum_integer_too_large.tafla:2:11
+  |
+2 |     red = -18446744073709551616;
+  |           ^^^^^^^^^^^^^^^^^^^^^

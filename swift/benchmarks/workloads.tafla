@@ -1,0 +1,63 @@
+// The comparison suites' workloads, whose tables tafla-gen's code writes and
+// reads as the suites' hand-built TableBuilder codecs do. Every suite has a
+// copy of this schema, which rust/gen/tests/benchmarks.rs keeps the same.
+
+/// A small table: two float64s, an int64 and a 16-byte string
+message Record {
+    x: float64;
+    y: float64;
+    id: int64;
+    name: string;
+}
+
+/// A document: a sized, versioned table of two float64s and a string, with a
+/// nested table of an int64 and three columns of the same length
+message Document (sized, version: 1) {
+    x: float64;
+    y: float64;
+    name: string;
+    columns: Columns;
+}
+
+/// A uint32 and two float32 columns, and the value that `keys` count from
+table Columns {
+    base: int64;
+    keys: [uint32];
+    a: [float32];
+    b: [float32];
+}
+
+/// A table holding a vector of item tables
+message ItemList {
+    items: [Item];
+}
+
+/// A float32 and a nested table of two float32s
+table Item {
+    value: float32;
+    pair: Pair;
+}
+
+table Pair {
+    first: float32;
+    second: float32;
+}
+
+/// A table holding the items as an array of structs
+message Triples {
+    items: [Triple];
+}
+
+/// An item's three float32s, 12 bytes aligned to 4 in an array
+struct Triple {
+    value: float32;
+    first: float32;
+    second: float32;
+}
+
+/// A fixed-size record of a uint32 and two float32s
+struct Sample {
+    key: uint32;
+    a: float32;
+    b: float32;
+}

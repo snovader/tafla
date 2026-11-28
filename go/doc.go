@@ -1,9 +1,9 @@
-// Package tafla writes and reads binary tables of scalars, strings, arrays,
-// structs and nested tables, in tafla's format, which the TypeScript, Python,
-// Java and Rust runtimes write and read too.
+// Package tafla writes and reads binary tables of scalars, strings, vectors
+// of strings, arrays, structs and nested tables, in tafla's format, which the
+// TypeScript, Python, Java and Rust runtimes write and read too.
 //
 // [TableBuilder] writes a table at its exact size, copying arrays in bulk,
-// and [ByteBuffer] reads fields back by offset, sharing arrays, strings and
+// and [TableReader] reads fields back by offset, sharing arrays, strings and
 // structs with the bytes. Every read checks that it stays within the bytes
 // it was given, and fails with a [*DecodeError] otherwise, so tables can come
 // from untrusted sources.
@@ -23,7 +23,7 @@
 // and then the fields in the order they were set:
 //
 //   - The header holds the table's byte length when the layout is sized, and
-//     then its version when it's versioned.
+//     then the layout's version when it has one.
 //   - Header slots, offsets, counts and vector item ends are all of the
 //     layout's offset type, [Uint8], [Uint16] or [Uint32], whose offset size
 //     is 1, 2 or 4 bytes. It limits the table to 255 bytes, 64 KiB or 4 GiB.
@@ -35,18 +35,26 @@
 //     are padded so that their elements are aligned to their size from the
 //     table's start, and arrays of structs to the size of their largest
 //     scalar.
+//   - An array of bools is a uint8 array of 1 and 0, which
+//     [TableBuilder.SetBoolArray] writes from bools and
+//     [TableReader.GetBoolArray] reads into new bools, true where a byte
+//     isn't 0. [TableReader.GetUint8Array] reads its bytes in place.
 //   - A vector starts with its item count, then the end of each item, counted
 //     from the vector's start, and then the items, so [Vector.Get] finds any
 //     item from two ends without reading the others.
+//   - A vector of strings is laid out as a vector is, with its strings' UTF-8
+//     as its items, one after another without padding. [StringVector.Get]
+//     finds any string from two ends, and [StringVector.Strings] reads every
+//     string. Each string must be valid UTF-8 on its own.
 //
 // SPEC.md, at the root of the repository, describes the format in full.
 //
 // # Sharing and copying
 //
 // Builders write each field when it's set, but keep long values: a setter of
-// an array, a string or the bytes of structs or of a nested table may keep
-// the slice or string until the table is written, rather than copy it, so
-// their elements must not change in between. A nested builder is copied into
+// an array, a string, a vector of strings or the bytes of structs or of a
+// nested table may keep the slice or strings until the table is written,
+// rather than copy them, so a slice's elements must not change in between. A nested builder is copied into
 // its parent when it's set, and its parent keeps what it kept, unless that's
 // long: then its parent keeps a copy of the builder, and writes its table
 // along with its own.
@@ -60,23 +68,22 @@
 // they're aligned to their type in memory, as TableBuilder aligns them
 // within an aligned table. A slice that Go allocates for a table usually
 // is, though Go doesn't promise it, and a subslice or a slice from
-// elsewhere may not be. A string
+// elsewhere may not be. A string, and each string of a [StringVector],
 // shares the bytes too, which Go's strings otherwise don't, so the bytes
 // must not change while it's in use. Byte arrays, structs and vector items
 // are slices of the bytes.
 //
 // # For generated code
 //
-// [AppendTable], [AppendVersionedTable], [TableSizer.AddFields],
-// [TableSizer.AddTableBytes], [TableWriter.ReserveFields] and
-// [TableWriter.ReserveTableBytes] are for the code that tafla-gen generates,
-// which lays out the fields whose sizes the schema fixes itself,
-// [Uint32FieldOffset] for its getters, which know each field's slot, and
-// [StructsInPlace] for its arrays of structs, which know their structs'
-// layouts in memory. They're
-// exported because generated code lies in its user's package, but they're
-// outside the compatibility promise of the rest of the API, and may change in
-// any release, with the generator.
+// [AppendTable], [TableSizer.AddFields], [TableSizer.AddTableBytes],
+// [TableWriter.ReserveFields] and [TableWriter.ReserveTableBytes] are for
+// the code that tafla-gen generates, which lays out the fields whose sizes
+// the schema fixes itself, [Uint32FieldOffset] for its getters, which know
+// each field's slot, and [StructsInPlace] for its arrays of structs, which
+// know their structs' layouts in memory. They're exported because generated
+// code lies in its user's package, but they're outside the compatibility
+// promise of the rest of the API, and may change in any release, with the
+// generator.
 //
 // # Errors and panics
 //
@@ -86,8 +93,8 @@
 // one too long for its offset type, and leave the builder as it was.
 //
 // Functions panic only for mistakes of the code that calls them, which no
-// bytes can cause: an index past an [ArrayView]'s or a [Vector]'s length, as
-// indexing a slice does, an offset type or alignment that isn't one of the
+// bytes can cause: an index past an [ArrayView]'s, a [Vector]'s or a
+// [StringVector]'s length, as indexing a slice does, an offset type or alignment that isn't one of the
 // constants, a negative number of fields or of a vector's items, a negative
 // field index or struct size, the version of a layout without one, or a nil
 // nested table. A [TableWriter] given other fields than its

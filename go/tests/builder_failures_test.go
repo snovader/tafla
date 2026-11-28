@@ -208,12 +208,7 @@ func (s setter) setAgain(root *tafla.TableBuilder, index int, field tables.Field
 // startTable starts a builder of the table's layout and version, of fields
 // fields
 func startTable(table tables.Table, fields int) (*tafla.TableBuilder, error) {
-	layout := table.Layout.TableLayout()
-	if table.Layout.Versioned {
-		return tafla.NewVersionedTableBuilder(fields, layout, table.Version)
-	}
-
-	return tafla.NewTableBuilder(fields, layout)
+	return tafla.NewTableBuilder(fields, table.TableLayout())
 }
 
 // setter sets fields on a builder or an item, with the tables nested from

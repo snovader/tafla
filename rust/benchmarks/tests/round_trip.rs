@@ -5,6 +5,8 @@ use tafla_benchmarks::check;
 use tafla_benchmarks::codec::{Error, Workload};
 use tafla_benchmarks::codecs::{LeBytes, Tafla, TaflaGen};
 use tafla_benchmarks::item_access::{self, ItemBytes};
+use tafla_benchmarks::sized_items;
+use tafla_benchmarks::string_workloads::{StringsShape, string_workloads};
 use tafla_benchmarks::workloads::{
     self, DOCUMENT_ROWS, DocumentShape, LIST_ITEMS, ListShape, RECORD, RecordShape, SAMPLE,
     SampleShape, Shape, StructsShape,
@@ -60,12 +62,30 @@ fn every_codec_reads_back_the_fixed_size_record() -> Result<(), Error> {
 }
 
 #[test]
+fn every_codec_reads_back_every_shape_of_strings() -> Result<(), Error> {
+    for workload in string_workloads() {
+        let input = workload.input();
+        for_each_codec!(|codec| check::round_trip::<StringsShape, _>(codec, &input)?);
+    }
+
+    Ok(())
+}
+
+#[test]
 fn every_access_sums_the_last_item_and_every_item() -> Result<(), Error> {
     let list = workloads::list(LIST_ITEMS);
     let bytes = ItemBytes::write(&list)?;
     for_each_item_access!(|access, _name| item_access::check(access, &list, &bytes)?);
 
     Ok(())
+}
+
+#[test]
+fn every_sized_item_reads_back_as_a_table_of_its_own() -> Result<(), Error> {
+    let list = workloads::list(LIST_ITEMS);
+    let bytes = sized_items::write(&list)?;
+
+    sized_items::check(&list, &bytes)
 }
 
 #[test]
@@ -78,7 +98,12 @@ fn generated_code_writes_the_builders_tables() -> Result<(), Error> {
     }
     assert_same_bytes::<ListShape>(&list)?;
     assert_same_bytes::<StructsShape>(&list)?;
-    assert_same_bytes::<SampleShape>(&SAMPLE)
+    assert_same_bytes::<SampleShape>(&SAMPLE)?;
+    for workload in string_workloads() {
+        assert_same_bytes::<StringsShape>(&workload.input())?;
+    }
+
+    Ok(())
 }
 
 fn assert_same_bytes<S: Shape>(input: &S::Value<'_>) -> Result<(), Error>
