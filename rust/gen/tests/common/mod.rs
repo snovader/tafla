@@ -217,7 +217,7 @@ pub const BENCHMARK_SCHEMAS: [BenchmarkSchema; 8] = [
 /// The schemas of the strings suites, which are copies of one schema, since
 /// the suites write and read the same table. Each directory holds the
 /// generated code and nothing else.
-pub const STRINGS_SCHEMAS: [BenchmarkSchema; 3] = [
+pub const STRINGS_SCHEMAS: [BenchmarkSchema; 4] = [
     BenchmarkSchema {
         target: "typescript",
         schema: "typescript/benchmarks/strings/strings.tafla",
@@ -229,6 +229,12 @@ pub const STRINGS_SCHEMAS: [BenchmarkSchema; 3] = [
         schema: "java/benchmarks/src/main/tafla/strings.tafla",
         directory: "java/benchmarks/src/main/java",
         package: Some("io.github.snovader.tafla.benchmarks.generated.strings"),
+    },
+    BenchmarkSchema {
+        target: "rust",
+        schema: "rust/benchmarks/strings.tafla",
+        directory: "rust/benchmarks/src/codecs/tafla_gen_strings",
+        package: None,
     },
     BenchmarkSchema {
         target: "cpp",

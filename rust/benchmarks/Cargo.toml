@@ -29,6 +29,10 @@ name = "comparison"
 harness = false
 
 [[bench]]
+name = "strings"
+harness = false
+
+[[bench]]
 name = "lists"
 harness = false
 

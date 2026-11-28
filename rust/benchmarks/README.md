@@ -4,9 +4,10 @@
 with other Rust crates that encode small tables and numeric columns, in
 Criterion benchmarks. It runs the workloads of the TypeScript comparison in
 `typescript/benchmarks/`, with the same values, so that the languages' numbers
-compare. Its suite of [lists of strings](#lists-of-strings) times a vector
-of strings against a vector of tables of one string each. Run the commands
-below from `rust/`.
+compare, and a comparison of how the crates write and read strings, which
+[Strings](#strings) describes. Its suite of
+[lists of strings](#lists-of-strings) times a vector of strings against a
+vector of tables of one string each. Run the commands below from `rust/`.
 
 ## Workloads
 
@@ -221,7 +222,7 @@ report reads from the samples that it saves.
 
 ```sh
 uptime
-cargo bench -p tafla-benchmarks
+cargo bench -p tafla-benchmarks --bench comparison
 cargo run -p tafla-benchmarks --bin report
 cargo run --release -p tafla-benchmarks --bin allocation
 ```
@@ -229,16 +230,18 @@ cargo run --release -p tafla-benchmarks --bin allocation
 The full run takes about 3 minutes, and the allocation counts about a
 second once they're built, which CI runs too. `-p tafla-benchmarks` keeps Cargo from
 running the other crates' benchmark harnesses, which reject Criterion's
-options. Criterion's options follow `--`: a regular expression
+options, and `--bench comparison` from running the strings comparison too.
+Criterion's options follow `--`: a regular expression
 selects benchmarks, and `--save-baseline <name>` and `--baseline <name>`
 compare two versions. `report --markdown` prints the table below.
 
 ```sh
-cargo bench -p tafla-benchmarks -- 'document of 100,000 rows'
+cargo bench -p tafla-benchmarks --bench comparison -- 'document of 100,000 rows'
 ```
 
 A quick run of 10 samples over 50 ms per benchmark, after a 50 ms warm-up,
-checks that every benchmark works in about 12 seconds once it's built. CI runs
+checks that every benchmark works once it's built, in about 12 seconds for
+the comparison and 40 for the strings comparison, which it runs too. CI runs
 it after the round-trip test, with the report and the encoding report. Its
 numbers mean little, and replace the last run's in the report.
 
@@ -373,7 +376,8 @@ Fastest sample in µs per call, and its ratio to tafla's:
 
 The array of 100 structs was added after that run, and timed on the same day
 with the vector of nested tables, in their groups alone:
-`cargo bench -p tafla-benchmarks -- 'structs|nested tables'`. Another session
+`cargo bench -p tafla-benchmarks --bench comparison -- 'structs|nested tables'`.
+Another session
 ran benchmarks meanwhile, which kept the 1-minute load average between 3.2 and
 3.8. The median sample was within 5% of the fastest for 19 of the 20
 benchmarks, and at most 5% above it, and the vector's fastest samples were
@@ -540,6 +544,280 @@ Only tafla-gen's getter of the vector allocates: 2,400 bytes, a `Vec` of the
   `last()` takes as long as `get()` of the view, 2.1 ns, as the compiler
   reads only the last struct. Every way sums the array in 57 to 60 ns. The
   view adds `get(i)` for any other struct.
+
+## Strings
+
+`benches/strings.rs` compares how tafla and the comparison's other crates
+write and read strings, as the TypeScript suite's `yarn bench:strings`,
+Java's `StringsBenchmark` and C++'s `tafla_strings` do. The comparison's
+workloads hold one string, of 16 bytes of ASCII, which reaches one branch of
+tafla's UTF-8 check. Each table here holds 16 distinct strings of one shape
+and nothing else, so that a call spends most of its time on their UTF-8. By
+the length of each string in bytes, they are:
+
+- 16 empty strings, which time what a call takes without any: the table, its
+  offsets and lengths, and the crate's own work
+- ASCII of 8, 16, 64, 256 and 1,024 bytes
+- 8 characters with one of 2 bytes, 16 with two of 2 bytes, 15 with one of 4
+  bytes, and 8, 32 and 256 characters of 3 bytes
+- 64 bytes of characters of 2, 3 and 4 bytes, and about 1,024 bytes of them:
+  32 and 512 characters of 2 bytes, 22 and 342 of 3 bytes, which take 66 and
+  1,026 bytes, and 16 and 256 of 4 bytes
+- 256 and 1,024 bytes of ASCII with a character of 2 bytes first, and with
+  one last
+
+The characters of 2 bytes are Latin-1 letters, those of 3 bytes CJK
+ideographs, and those of 4 bytes emoji. `src/string_workloads.rs` ports the
+TypeScript suite's generator, with its seeds, its alphabets and its lengths
+in characters, so that the shapes that both suites have hold the same bytes,
+and `tests/string_workloads.rs` checks every shape against a hash of the
+bytes that the TypeScript generator made of it. The TypeScript suite's shapes
+of 31 to 33 characters sit on V8's limits, and are left out. The shapes that
+the C++ suite has too, such as 512 characters of 2 bytes, take its seeds, and
+hold its strings, and those of 22, 342 and 1,023 characters are Rust's alone.
+
+tafla's `get_str()` checks a string with `is_ascii()`, and then with
+`str::from_utf8()` if it isn't ASCII. On aarch64, `is_ascii()` tests 8 bytes
+at a time below 64 bytes and blocks of 64 bytes with NEON from 64, and
+`str::from_utf8()` skips ASCII two words at a time where they're aligned and
+checks every other character on its own. simdutf8, with which rkyv's
+bytecheck checks strings, checks blocks of 64 bytes with NEON, and strings
+shorter than 64 bytes with `str::from_utf8()`. So the shapes of 64 and 1,024
+bytes that aren't ASCII part a check character by character from one with
+SIMD, and those with one character of 2 bytes first or last show what a check
+that skips ASCII first costs when the character comes late.
+
+Each crate writes the 16 strings as it would an array of them, except tafla,
+whose string fields the comparison times, rather than a vector of strings,
+which [Lists of strings](#lists-of-strings) times:
+
+- **tafla** writes a table of 16 string fields with a `TableBuilder`'s
+  `set_str()` and reads each with `get_str()`. **tafla-gen**'s code of
+  `strings.tafla`, in `src/codecs/tafla_gen_strings/`, writes the same table
+  from its generated fields, which borrow the strings, with a `TableSizer`
+  and a `TableWriter`, and reads each string with its getter, which calls
+  `get_str()`. `strings.tafla` is a copy of the other strings suites' schema.
+  Both write the same bytes, which the suite checks.
+- **flatbuffers** writes a vector of strings with `create_string()`, with a
+  table written by hand in the shape that flatc generates from
+  `table Strings { items: [string]; }`, and reads it after
+  `flatbuffers::root()` verifies the message, which checks every string with
+  `str::from_utf8()`.
+- **prost** writes a repeated string,
+  `message Strings { repeated string items = 1; }`, with `encode_to_vec()`,
+  from a message that copies the input's strings, and reads it with
+  `decode()`, which copies each string into a `String` that it allocates and
+  checks it with `str::from_utf8()`.
+- **rmp-serde** packs an array of strings with `to_vec()`, and unpacks it
+  with a visitor that borrows each string from the bytes once rmp-serde has
+  checked it with `str::from_utf8()`, since serde's own array of `Cow`s would
+  copy them.
+- **rkyv** archives an array of 16 strings with `to_bytes()`, and reads them
+  in place after `access()` validates the archive, where bytecheck checks
+  every string with simdutf8.
+
+Each read returns the 16 strings in an array of `Cow<str>`s: borrowed from
+the bytes, but prost's, which moves its `String`s out of the message.
+Criterion drops each result within its loop, alike for every codec, and
+nothing reads the strings' characters after a codec returns them. Before
+timing, every codec must read back every string, which `tests/round_trip.rs`
+checks too, and each group times tafla's codec again, as an A/A pair that
+shows the harness's noise between two timings of the same code. The compiler
+merges the pair's write loop with tafla's, and both read loops call one
+`deserialize()`, so the pair doesn't show what a loop's address adds to a
+time.
+
+```sh
+uptime
+cargo bench -p tafla-benchmarks --bench strings -- --save-baseline round-1
+STRINGS_REVERSE=1 cargo bench -p tafla-benchmarks --bench strings -- --save-baseline round-2
+cargo run -p tafla-benchmarks --bin report -- --markdown --baseline round-1 --baseline round-2
+cargo run --release -p tafla-benchmarks --bin allocation -- --strings
+cargo run -p tafla-benchmarks --bin encoding -- --strings
+```
+
+Criterion runs one codec's samples after another's, so a round runs each
+group's codecs in the order that the results list them, or in reverse with
+`STRINGS_REVERSE=1`, so that rounds alternate it. `report --baseline` reads
+the rounds that `--save-baseline` saved and pools their samples, in the
+order that the first round named ran them, and fails if a benchmark is in
+some of the rounds that it names and not in the others. A round takes about
+9 minutes. A
+regular expression selects shapes, such as `-- '× 64 chars'`, and the quick
+run's options above run every benchmark briefly. `allocation --strings`
+counts each call's allocations, and `encoding --strings` prints each crate's
+encoded sizes.
+
+### Limits of the comparison
+
+- The crates check UTF-8 in different ways: tafla with `is_ascii()` and then
+  `str::from_utf8()`, flatbuffers, prost and rmp-serde with
+  `str::from_utf8()` alone, and rkyv with simdutf8. tafla's runtime depends
+  only on the standard library, which simdutf8 isn't part of.
+- They check strings at different times. flatbuffers and rkyv check every
+  string of a message when it's opened, prost and rmp-serde as they parse it,
+  and tafla a string when its getter reads it. Each codec reads every string
+  here, so the times compare, but a reader of some of the strings checks only
+  those with tafla.
+- prost copies each string, as it parses the message, into a `String` that it
+  allocates, and its message's `Vec` of them grows by doubling. A write
+  copies the input's strings into a message first, as a caller that keeps its
+  values would.
+- flatbuffers' builder starts empty and doubles by copying, as in the
+  comparison, and so do rmp-serde's `Vec` and rkyv's `AlignedVec`.
+- tafla's builder records each field in a `Vec` that it allocates, and then
+  writes the table into one of its own. tafla-gen's code counts the table's
+  length first and allocates it alone.
+- rkyv writes a string of up to 8 bytes within its 8-byte slot of the array,
+  rather than after it.
+- Only aarch64 was timed, where `is_ascii()` and simdutf8 use NEON, which
+  every aarch64 processor has. On x86-64, `is_ascii()` uses SSE2, but
+  bytecheck builds simdutf8 without its `std` feature, which detects AVX2 and
+  SSE 4.2 as it runs, so simdutf8 checks with `str::from_utf8()` there unless
+  the build targets a processor that has them.
+
+### Results
+
+Four rounds on 2026-11-27 and 28, on the Apple M2 Pro with 32 GB in macOS
+27.0.1, with rustc 1.100.0 and the workspace's release profile, Criterion
+0.8.2, flatbuffers 25.12.19, prost 0.14.6, rmp-serde 1.3.1, and rkyv 0.8.18
+with bytecheck 0.8.3 and simdutf8 0.1.5. Each round took 9 minutes, and they
+ran each group's codecs in alternating order: forward, reverse, forward,
+reverse. The six shapes that take the C++ suite's seeds, and the two of
+1,023 characters, were timed again on 2026-11-28 with the strings that they
+now hold, in four rounds of their own of 3 minutes each, in the same order.
+The 1-minute load average was between 1.31 and 2.83 at the rounds' starts and
+ends, on the 10 cores, and below 3 as each started. The four
+rounds' fastest samples were within 5% of each other for 288 of the 308
+benchmarks, and within 10.3% for all of them, and the median of the four
+rounds' samples was within 5% of the fastest for 276, and at most 10.9% above
+it. tafla's A/A pair was within 2.5% of tafla's in every benchmark, and
+within 2% in 42 of the 44. Some rows moved between rounds with their A/A
+pair: tafla's read of 16 characters with two of 2 bytes took 231 ns in the
+first two rounds and 217 ns in the last two, which had less load, and its
+A/A pair's did the same. Whether the load moved them or the modes that a
+process takes as [#371](https://github.com/snovader/tafla/issues/371)
+describes, which each round, a process of its own, could fall into, wasn't
+measured.
+
+Fastest sample of the four rounds in µs per call, and its ratio to tafla's,
+with the length of each string in bytes:
+
+| Serialize 16 strings of       | Bytes | tafla |      tafla-gen |   flatbuffers |          prost |     rmp-serde |           rkyv |
+| ----------------------------- | ----: | ----: | -------------: | ------------: | -------------: | ------------: | -------------: |
+| empty                         |     0 | 0.182 | 0.0516 (0.28×) | 0.384 (2.11×) | 0.0854 (0.47×) | 0.105 (0.58×) | 0.0569 (0.31×) |
+| 8 chars of ASCII              |     8 | 0.205 | 0.0706 (0.34×) | 0.446 (2.17×) |  0.367 (1.79×) | 0.235 (1.15×) | 0.0620 (0.30×) |
+| 8 chars, one of 2 bytes       |     9 | 0.200 | 0.0697 (0.35×) | 0.447 (2.23×) |  0.367 (1.83×) | 0.235 (1.17×) |  0.255 (1.27×) |
+| 16 chars of ASCII             |    16 | 0.222 | 0.0867 (0.39×) | 0.441 (1.99×) |  0.376 (1.69×) | 0.270 (1.22×) |  0.267 (1.20×) |
+| 16 chars, two of 2 bytes      |    18 | 0.219 | 0.0860 (0.39×) | 0.443 (2.02×) |  0.399 (1.82×) | 0.267 (1.22×) |  0.229 (1.04×) |
+| 15 chars, one of 4 bytes      |    18 | 0.220 | 0.0847 (0.39×) | 0.444 (2.02×) |  0.398 (1.81×) | 0.265 (1.21×) |  0.229 (1.04×) |
+| 8 chars of 3 bytes            |    24 | 0.223 | 0.0912 (0.41×) | 0.508 (2.27×) |  0.404 (1.81×) | 0.275 (1.23×) |  0.235 (1.05×) |
+| 64 chars of ASCII             |    64 | 0.206 | 0.0777 (0.38×) | 0.603 (2.93×) |  0.394 (1.92×) | 0.292 (1.42×) |  0.285 (1.39×) |
+| 32 chars of 2 bytes           |    64 | 0.203 | 0.0756 (0.37×) | 0.587 (2.89×) |  0.389 (1.92×) | 0.286 (1.41×) |  0.274 (1.35×) |
+| 16 chars of 4 bytes           |    64 | 0.203 | 0.0756 (0.37×) | 0.591 (2.91×) |  0.392 (1.93×) | 0.283 (1.39×) |  0.278 (1.37×) |
+| 22 chars of 3 bytes           |    66 | 0.209 | 0.0769 (0.37×) | 0.603 (2.89×) |  0.404 (1.93×) | 0.291 (1.39×) |  0.253 (1.21×) |
+| 32 chars of 3 bytes           |    96 | 0.207 | 0.0806 (0.39×) | 0.595 (2.88×) |  0.409 (1.98×) | 0.306 (1.48×) |  0.250 (1.21×) |
+| 256 chars of ASCII            |   256 | 0.258 |  0.112 (0.44×) | 0.996 (3.87×) |  0.474 (1.84×) | 0.379 (1.47×) |  0.412 (1.60×) |
+| 255 chars, first of 2 bytes   |   256 | 0.261 |  0.112 (0.43×) | 0.978 (3.75×) |  0.480 (1.84×) | 0.378 (1.45×) |  0.399 (1.53×) |
+| 255 chars, last of 2 bytes    |   256 | 0.257 |  0.113 (0.44×) | 0.975 (3.80×) |  0.482 (1.88×) | 0.373 (1.45×) |  0.400 (1.56×) |
+| 256 chars of 3 bytes          |   768 | 0.358 |  0.199 (0.56×) | 1.534 (4.28×) |  0.785 (2.19×) | 0.613 (1.71×) |  0.582 (1.63×) |
+| 1,024 chars of ASCII          | 1,024 | 0.396 |  0.259 (0.65×) | 2.330 (5.89×) |  0.930 (2.35×) | 0.715 (1.81×) |  0.933 (2.36×) |
+| 1,023 chars, first of 2 bytes | 1,024 | 0.399 |  0.244 (0.61×) | 2.343 (5.87×) |  0.920 (2.30×) | 0.732 (1.83×) |  0.961 (2.41×) |
+| 1,023 chars, last of 2 bytes  | 1,024 | 0.400 |  0.249 (0.62×) | 2.299 (5.75×) |  0.912 (2.28×) | 0.737 (1.84×) |  0.962 (2.41×) |
+| 512 chars of 2 bytes          | 1,024 | 0.393 |  0.247 (0.63×) | 2.299 (5.86×) |  0.912 (2.32×) | 0.721 (1.84×) |  0.961 (2.45×) |
+| 256 chars of 4 bytes          | 1,024 | 0.397 |  0.242 (0.61×) | 2.289 (5.76×) |  0.913 (2.30×) | 0.715 (1.80×) |  0.963 (2.43×) |
+| 342 chars of 3 bytes          | 1,026 | 0.395 |  0.244 (0.62×) | 2.388 (6.04×) |  0.852 (2.15×) | 0.742 (1.88×) |  0.906 (2.29×) |
+
+| Deserialize 16 strings of     | Bytes |  tafla |      tafla-gen |   flatbuffers |         prost |      rmp-serde |           rkyv |
+| ----------------------------- | ----: | -----: | -------------: | ------------: | ------------: | -------------: | -------------: |
+| empty                         |     0 | 0.0391 | 0.0465 (1.19×) | 0.151 (3.85×) | 0.180 (4.60×) | 0.0929 (2.37×) | 0.0506 (1.29×) |
+| 8 chars of ASCII              |     8 | 0.0435 | 0.0439 (1.01×) | 0.217 (4.99×) | 0.579 (13.3×) |  0.151 (3.47×) | 0.0727 (1.67×) |
+| 8 chars, one of 2 bytes       |     9 |  0.148 |  0.156 (1.05×) | 0.223 (1.50×) | 0.615 (4.14×) |  0.178 (1.20×) |  0.172 (1.16×) |
+| 16 chars of ASCII             |    16 | 0.0479 | 0.0488 (1.02×) | 0.251 (5.23×) | 0.552 (11.5×) |  0.182 (3.80×) | 0.0737 (1.54×) |
+| 16 chars, two of 2 bytes      |    18 |  0.217 |  0.244 (1.12×) | 0.295 (1.36×) | 0.748 (3.44×) |  0.270 (1.24×) |  0.261 (1.20×) |
+| 15 chars, one of 4 bytes      |    18 |  0.207 |  0.214 (1.03×) | 0.316 (1.53×) | 0.718 (3.46×) |  0.252 (1.22×) |  0.253 (1.22×) |
+| 8 chars of 3 bytes            |    24 |  0.257 |  0.257 (1.00×) | 0.349 (1.36×) | 0.831 (3.24×) |  0.285 (1.11×) |  0.293 (1.14×) |
+| 64 chars of ASCII             |    64 | 0.0487 | 0.0534 (1.10×) | 0.273 (5.62×) | 0.585 (12.0×) |  0.221 (4.55×) | 0.0698 (1.43×) |
+| 32 chars of 2 bytes           |    64 |  0.563 |  0.550 (0.98×) | 0.644 (1.14×) | 1.097 (1.95×) |  0.590 (1.05×) |  0.158 (0.28×) |
+| 16 chars of 4 bytes           |    64 |  0.490 |  0.505 (1.03×) | 0.584 (1.19×) | 1.000 (2.04×) |  0.531 (1.08×) |  0.158 (0.32×) |
+| 22 chars of 3 bytes           |    66 |  0.685 |  0.688 (1.00×) | 0.844 (1.23×) | 1.288 (1.88×) |  0.751 (1.10×) |  0.261 (0.38×) |
+| 32 chars of 3 bytes           |    96 |  0.935 |  0.938 (1.00×) | 1.095 (1.17×) | 1.544 (1.65×) |  1.024 (1.09×) |  0.257 (0.27×) |
+| 256 chars of ASCII            |   256 | 0.0769 | 0.0737 (0.96×) | 0.328 (4.27×) | 0.881 (11.5×) |  0.266 (3.46×) |  0.102 (1.32×) |
+| 255 chars, first of 2 bytes   |   256 |  0.232 |  0.243 (1.05×) | 0.327 (1.41×) | 0.885 (3.81×) |  0.271 (1.17×) |  0.190 (0.82×) |
+| 255 chars, last of 2 bytes    |   256 |  0.275 |  0.292 (1.06×) | 0.347 (1.27×) | 0.955 (3.48×) |  0.298 (1.08×) |  0.205 (0.75×) |
+| 256 chars of 3 bytes          |   768 |  6.570 |  6.574 (1.00×) | 6.724 (1.02×) | 7.384 (1.12×) |  6.662 (1.01×) |  1.091 (0.17×) |
+| 1,024 chars of ASCII          | 1,024 |  0.168 |  0.162 (0.96×) | 0.615 (3.67×) | 1.335 (7.96×) |  0.543 (3.23×) |  0.180 (1.07×) |
+| 1,023 chars, first of 2 bytes | 1,024 |  0.470 |  0.471 (1.00×) | 0.613 (1.30×) | 1.371 (2.92×) |  0.545 (1.16×) |  0.315 (0.67×) |
+| 1,023 chars, last of 2 bytes  | 1,024 |  0.590 |  0.589 (1.00×) | 0.629 (1.07×) | 1.370 (2.32×) |  0.553 (0.94×) |  0.383 (0.65×) |
+| 512 chars of 2 bytes          | 1,024 |  8.311 |  8.314 (1.00×) | 8.486 (1.02×) | 9.206 (1.11×) |  8.406 (1.01×) |  1.429 (0.17×) |
+| 256 chars of 4 bytes          | 1,024 |  7.068 |  7.081 (1.00×) | 7.165 (1.01×) | 7.847 (1.11×) |  7.127 (1.01×) |  1.429 (0.20×) |
+| 342 chars of 3 bytes          | 1,026 |  8.725 |  8.730 (1.00×) | 8.885 (1.02×) | 9.551 (1.09×) |  8.821 (1.01×) |  1.531 (0.18×) |
+
+Reads:
+
+- rkyv reads strings of 64 bytes or more of characters of 2 to 4 bytes in
+  0.17 to 0.38 of tafla's time, since simdutf8 checks them with NEON: 1.43 to
+  1.53 µs for 16 strings of about 1,024 bytes, against tafla's 7.07 to 8.73
+  µs. What such text adds to a read, over ASCII of the same length, is 6.9 to
+  8.6 µs in tafla and 1.25 to 1.35 µs in rkyv: `str::from_utf8()` checks
+  about 2 GB a second of it, and simdutf8 12 to 13. flatbuffers, prost and
+  rmp-serde check with `str::from_utf8()` too, and take 1.01 to 1.12 times
+  tafla's time for 768 bytes and more of such text. Below 64 bytes simdutf8
+  checks with `str::from_utf8()`, and rkyv takes 1.14 to 1.22 times tafla's
+  time.
+- tafla reads 16 strings of ASCII in 39 to 49 ns up to 64 bytes, and of 1,024
+  bytes in 168 ns, where `is_ascii()` checks more than 100 GB a second.
+  rkyv reads ASCII in 1.07 to 1.67 times tafla's time, and flatbuffers,
+  rmp-serde and prost in 3.2 to 13 times, since `str::from_utf8()` skips
+  ASCII only two words at a time and they have more of their own work: for
+  16 empty strings, tafla takes 39 ns, rkyv 51 ns, rmp-serde 93 ns,
+  flatbuffers' verification 151 ns and prost 180 ns.
+- A character of 2 bytes last in 1,023 bytes of ASCII adds 0.42 µs to tafla's
+  read, where one first adds 0.30 µs: `is_ascii()` reads to the last
+  character, and `str::from_utf8()` then checks the string from its start.
+  rmp-serde, which checks it once, reads that shape in 0.94 of tafla's time.
+  At 256 bytes, one last adds 43 ns more than one first.
+- tafla-gen's getters read in 0.96 to 1.19 of the time that tafla's
+  `get_str()` by hand takes, and more slowly for short strings: 46.5 ns
+  against 39.1 ns for 16 empty strings, and 53.4 ns against 48.7 ns for 64
+  bytes of ASCII. [#366](https://github.com/snovader/tafla/issues/366) tracks
+  it.
+- prost allocates each string, in 19 allocations a read, and takes 1.65 to 13
+  times tafla's time, but 1.09 to 1.12 times for 768 bytes and more of
+  characters of 2 to 4 bytes, where both spend most of the read in
+  `str::from_utf8()`.
+
+Writes:
+
+- tafla-gen writes the table in 0.28 to 0.65 of the time of tafla's builder,
+  in one allocation of the table's exact length. The builder also allocates
+  a `Vec` of 768 bytes for the records of the 16 fields, and takes 182 ns
+  for 16 empty strings against tafla-gen's 52 ns.
+- rkyv writes strings of up to 8 bytes in 57 to 62 ns, within their slots, in
+  one allocation. Longer ones follow the array, in an `AlignedVec` that grows
+  in 5 or 6 allocations, and take 1.04 to 1.63 times tafla's time up to 768
+  bytes and 2.29 to 2.45 times at about 1,024.
+- prost copies each string into its message, in 18 allocations, and takes
+  1.69 to 2.35 times tafla's time, but 0.47 times for empty strings.
+  rmp-serde takes 1.15 to 1.88 times, in 6 allocations, but 0.58 times for
+  empty strings, and flatbuffers 1.99 to 6.04 times, as its builder doubles
+  from empty by copying: 65,576 bytes in 15 allocations for strings of 1,024
+  bytes.
+- What the strings hold doesn't change a write, and a longer string doesn't
+  always take longer: tafla writes 16 strings of 64 bytes in 0.206 µs and of
+  16 bytes in 0.222 µs, and tafla-gen in 78 and 87 ns. This wasn't
+  investigated.
+
+`allocation --strings` counts no allocation in a read but prost's, which
+allocates 3 times for the 16 empty strings and 19 times for the others. A
+write allocates twice in tafla, once in tafla-gen and 8 to 15 times in
+flatbuffers. prost, rmp-serde and rkyv allocate 2, 3 and 1 times for the
+empty strings, and 18, 6 and 5 or 6 times for the others, but for strings of
+8 bytes, which rkyv writes in their slots, in one. `encoding --strings`
+prints 128 bytes from tafla for the 16 empty strings, an offset and a length
+of 4 bytes each for every string, which its characters follow; flatbuffers
+writes 216, prost 32, rmp-serde 19 and rkyv 128. For strings of 1,024 bytes
+the five write 16,512, 16,600, 16,432, 16,435 and 16,512 bytes.
 
 ## Lists of strings
 

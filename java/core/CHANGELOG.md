@@ -74,6 +74,15 @@ repository's first commits, for code built from its source before the release.
   `TableBuilder` rather than 0.65, and of 32 ASCII `char`s 0.23 rather than
   0.42; strings of 63 `char`s whose last took 3 bytes took 0.81 µs rather than
   1.15.
+- `TableSizer` and `TableBuilder` check a string of 32 `char`s or more for lone
+  surrogates in a loop that calls only `charAt()`. The code that tafla-gen
+  generates inlines the sizer once for each string field, and C2 stops
+  inlining once a method's graph is large, which could leave one field's loop
+  calling `length()` and `isSurrogate()` for every `char`. In the strings
+  suite on JDK 27, tafla-gen wrote 16 strings of 32 ASCII `char`s in 0.30 µs
+  rather than 0.42, of 63 in 0.33 rather than 0.56, and of 1,024 in 1.5 rather
+  than 5.3; such slow JVMs were 58 of 72 across its long rows, and none with
+  the change.
 - A layout holds its table's version, `TableLayout.builder().version(1)`,
   rather than only whether the header has a slot for one, and the builder's
   `versioned()` is gone. `TableBuilder` and `TableSizer` take the version
