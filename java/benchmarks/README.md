@@ -61,6 +61,17 @@ of its own, and `ItemAccesses` holds them:
 `StringsBenchmark` writes and reads tables of 16 strings of one shape and
 nothing else, as [Strings](#strings) describes.
 
+`BuilderBenchmark` times only tafla's `TableBuilder`, to compare one version
+of it with another, on tables of shapes that the workloads don't have, which
+`BuilderShapes` holds: tables of arrays shorter and longer than the builder
+copies when they're set, and of more arrays than it keeps in its fields, a
+table of mixed fields, the documents and the vector of nested tables with
+their nested tables written from builders and from those builders' bytes
+rather than in place, a chain of 100 nested builders, and a chain of 1,000
+tables in place, each padded. Before timing, the check that
+the builder writes each shape as `TableWriter` writes it, or as it writes the
+same tables in place, fails the benchmark if it doesn't.
+
 ### What differs from TypeScript
 
 - There are no `number[]` inputs. Java's arrays are typed, and its closest
@@ -94,7 +105,7 @@ nothing else, as [Strings](#strings) describes.
 Each library is used as its documentation shows, and as the TypeScript
 comparison uses its counterpart:
 
-- **tafla** records nested tables in place among their parent builder's
+- **tafla** writes nested tables in place among their parent builder's
   fields, with `setTable(fields, fill)` and `setVector(count, fields, fill)`.
   Arrays of the elements' own Java type are copied in bulk, and the uint32
   keys are narrowed and widened element by element. The array of structs is written into a `byte[]` through a
@@ -208,10 +219,11 @@ uptime
 ./gradlew :benchmarks:jmh
 ```
 
-The full run takes about 2 hours and a half: 33 minutes for the workloads, 90
-for the [strings](#strings), which `--jmhArgs="-e Strings"` leaves out, and
-30 for the [lists of strings](#lists-of-strings), which `-e StringLists`
-leaves out, and `-e String` with the strings.
+The full run takes about 2 hours and 40 minutes: 33 minutes for the
+workloads, 7 for `BuilderBenchmark`, 90 for the [strings](#strings), which
+`--jmhArgs="-e Strings"` leaves out, and 30 for the
+[lists of strings](#lists-of-strings), which `-e StringLists` leaves out, and
+`-e String` with the strings.
 `--jmhArgs` passes JMH's own options, which override those in
 `build.gradle.kts`: a regular expression selects benchmarks, `-e` excludes
 them, and `-p` sets a parameter.

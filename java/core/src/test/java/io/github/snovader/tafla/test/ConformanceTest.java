@@ -97,6 +97,20 @@ public class ConformanceTest {
     }
 
     /**
+     * A builder writes tables in place, as {@link TableWriter} writes them, and from builders and
+     * bytes alike, so each valid table, with every table nested in it made one that it writes in
+     * place, holds the bytes that the writer writes
+     */
+    @Property(generation = GenerationMode.EXHAUSTIVE, shrinking = ShrinkingMode.OFF)
+    void should_write_every_valid_table_with_its_nested_tables_in_place_as_a_table_writer_writes_it(
+        @ForAll("validCases") Case validCase
+    ) {
+        var table = Tables.nestedInPlace(tableOf(validCase));
+
+        assertArrayEquals(Tables.write(table), new InPlaceTables().build(table).bytes());
+    }
+
+    /**
      * Bytes that differ from a valid case's read the values that it describes, header included,
      * since readers accept more than writers write, such as any byte other than 0 as a true bool
      */

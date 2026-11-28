@@ -117,6 +117,45 @@ repository's first commits, for code built from its source before the release.
   document of 100 rows, so that each copy was a call that allocated two
   views. The document took 0.128 µs to write rather than 0.146, and 1,704
   bytes rather than 1,928.
+- `TableBuilder` writes each field, and its offset, when it's set, into bytes
+  that grow, and `bytes()` copies them into the table, rather than recording
+  each field and writing them all in `bytes()`. The API and the bytes are the
+  same. Arrays, strings and tables shorter than 64 bytes are now read when
+  they're set, and longer ones still when `bytes()` runs. A nested builder is
+  read when it's nested, unless its bytes apart from such arrays are 64 or
+  more, when the outermost table's `bytes()` writes it. So arrays still
+  mustn't change before `bytes()`. As the fastest of 3 rounds, the
+  benchmarks' record took 19.6 ns rather than 37.6, the vector of 100 nested
+  tables 1.75 µs rather than 3.80 and 8.0 KB rather than 13.0, and the
+  document of 100 rows 0.111 µs rather than 0.128. These cases are slower,
+  most of them tables of the benchmarks' new `BuilderBenchmark`:
+  - a table of one array of 100 bytes, by 17%, of four, by 68% to 95%, and
+    of eight arrays of 255 or 256 bytes, by 50%;
+  - a table of 1,000 arrays of 255 bytes, by 42%, allocating 6% more;
+  - a chain of 100 builders, each nested in the next with an array of 100
+    bytes, by 2.0 times, allocating 1.8 times as much;
+  - a chain of 1,000 tables written in place, each padded, by 4.6 times,
+    since each table is moved by its padding with the tables in it, so that
+    the time grows with the square of the depth;
+  - a document of 100 rows whose columns are nested as bytes, by 13%, and as
+    a builder, by 3%;
+  - a table nesting a builder of three arrays of 100 bytes, by 27% in most
+    runs, though 24% faster in others;
+  - the array of 100 structs, by 2% to 3%, allocating 144 bytes more for the
+    builder's buffer;
+  - the document of 100,000 rows, by 1% to 2%, less than the 4% by which two
+    copies of the recording builder differed in an earlier run.
+
+  A vector of tables nested from a builder per table took 16% less time but
+  allocated 64 KB rather than 29 KB, mostly the 128-byte buffer that each
+  builder starts with. A vector in place whose fields shorter than 64 bytes
+  make a table of `uint32` offsets too long may need 2 GiB of memory before
+  it's rejected, and throw an `OutOfMemoryError` first, where the recording
+  builder threw an `IllegalArgumentException`.
+- `TableBuilder` rejects a builder nested while a fill writes a table in it
+  with an `IllegalArgumentException`, rather than writing a table that the
+  parent's `bytes()` then failed on. The message of `bytes()` in that state
+  says that a fill writes the table, rather than records it.
 
 ### Removed
 

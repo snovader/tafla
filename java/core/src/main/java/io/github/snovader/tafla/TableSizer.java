@@ -8,7 +8,8 @@ import java.util.*;
  * Counts the bytes of a table, so that a {@link TableWriter} can write it into new bytes of exactly
  * that length, or into the start of bytes that the caller reuses. It's for code that knows a
  * table's fields before it writes them, such as the code that tafla-gen generates, which writes
- * tables without recording their fields as {@link TableBuilder} does.
+ * each table once, into bytes of its length, rather than into bytes that grow and are copied, as
+ * {@link TableBuilder} writes it.
  *
  * <p>The fields are added in order, each with its type's method, which takes what decides its
  * length: nothing for a scalar, the count of an array, the string itself, or the strings of a

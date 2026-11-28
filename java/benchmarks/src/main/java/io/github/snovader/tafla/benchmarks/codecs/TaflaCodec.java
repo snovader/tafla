@@ -8,7 +8,7 @@ import java.nio.ByteOrder;
 import java.util.*;
 
 /**
- * tafla's tables, written by {@link TableBuilder}s that record their nested tables in place. The
+ * tafla's tables, written by {@link TableBuilder}s that write their nested tables in place. The
  * runtime writes tables, and leaves records at fixed offsets to the standard library, as its
  * package documentation says. The fixed-size record is written through little-endian
  * {@link VarHandle}s and read with {@link TableReader}'s getters at fixed positions. An array of
