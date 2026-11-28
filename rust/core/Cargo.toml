@@ -19,6 +19,11 @@ proptest = { version = "1.12.0", default-features = false, features = ["std"] }
 # than to within an ulp
 serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
 
+[lints.rust]
+# `--cfg tafla_segment_stress` keeps every run of a byte or more that the
+# builder writes as a segment, for its tests
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(tafla_segment_stress)"] }
+
 [lints.clippy]
 all = "warn"
 pedantic = "warn"

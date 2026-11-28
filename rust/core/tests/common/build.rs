@@ -1,5 +1,5 @@
 //! Builds tables as their descriptions set them out, with `TableBuilder`,
-//! from nested builders or with the tables nested in them recorded in place
+//! from nested builders or with the tables nested in them written in place
 
 use tafla::{BuildError, InPlaceTable, NestedTable, OffsetType, TableBuilder};
 
@@ -37,7 +37,7 @@ impl Table {
         self.build()?.to_bytes()
     }
 
-    /// Writes the table with `TableBuilder`, recording each table nested
+    /// Writes the table with `TableBuilder`, writing each table nested
     /// from a builder that it writes in place with `set_table_with()`, and
     /// each vector of them, when its items hold as many fields, with
     /// `set_vector_with()`, rather than from their builders. Its bytes and
@@ -57,8 +57,8 @@ impl Table {
 }
 
 /// Defines a method of `Field` that sets the field on a target, a builder or
-/// a table that one records in place, and with `in_place`, the offset type
-/// of the builder's table, records the tables nested in it in place as
+/// a table that one writes in place, and with `in_place`, the offset type
+/// of the builder's table, writes the tables nested in it in place as
 /// [`Table::to_bytes_in_place()`] does
 macro_rules! set_field_on {
     ($(#[$doc:meta])* $name:ident, $lifetime:lifetime, $target:ty) => {
@@ -104,7 +104,7 @@ macro_rules! set_field_on {
                     Self::Table {
                         nested,
                         alignment: None,
-                    } if nested.records_in_place(in_place) => {
+                    } if nested.is_written_in_place(in_place) => {
                         let fields = &nested.table.fields;
                         target.set_table_with(fields.len(), |table| {
                             set_fields(fields, table, in_place)
@@ -117,7 +117,7 @@ macro_rules! set_field_on {
                             None => target.set_table(table),
                         }
                     }
-                    Self::Vector(items) if Nested::all_record_in_place(items, in_place) => {
+                    Self::Vector(items) if Nested::all_written_in_place(items, in_place) => {
                         let fields = items.first().map_or(0, |item| item.table.fields.len());
                         target.set_vector_with(items.len(), fields, |index, item| {
                             set_fields(&items[index].table.fields, item, in_place)
@@ -142,7 +142,7 @@ macro_rules! set_field_on {
 
 set_field_on!(
     /// Sets the field on `builder`, which borrows its value, or owns the
-    /// bytes of structs, and with `in_place`, records the tables nested in
+    /// bytes of structs, and with `in_place`, writes the tables nested in
     /// it in place
     set_on,
     'a,
@@ -150,7 +150,7 @@ set_field_on!(
 );
 
 set_field_on!(
-    /// Sets the field on a table that a builder records in place, as
+    /// Sets the field on a table that a builder writes in place, as
     /// [`Field::set_on()`] sets it on a builder
     set_in_place,
     'a,
@@ -165,7 +165,7 @@ impl Field {
     }
 }
 
-/// Sets `fields` on a table that a builder records in place, recording the
+/// Sets `fields` on a table that a builder writes in place, writing the
 /// tables nested in them in place in a table of `in_place` offsets
 fn set_fields<'a>(
     fields: &'a [Field],
@@ -178,10 +178,10 @@ fn set_fields<'a>(
 }
 
 impl Nested {
-    /// Whether the table is recorded in place in a table of `in_place`
+    /// Whether the table is written in place in a table of `in_place`
     /// offsets: from a builder without a header and of those offsets, which
     /// is a builder that `set_table()` writes in place
-    fn records_in_place(&self, in_place: Option<OffsetType>) -> bool {
+    fn is_written_in_place(&self, in_place: Option<OffsetType>) -> bool {
         let layout = self.table.layout;
         self.from == Source::Builder
             && !layout.sized
@@ -189,13 +189,13 @@ impl Nested {
             && Some(layout.offset_type) == in_place
     }
 
-    /// Whether a vector of `items` is recorded in place: each of them is,
+    /// Whether a vector of `items` is written in place: each of them is,
     /// and they hold as many fields
-    fn all_record_in_place(items: &[Self], in_place: Option<OffsetType>) -> bool {
+    fn all_written_in_place(items: &[Self], in_place: Option<OffsetType>) -> bool {
         let fields = items.first().map(|item| item.table.fields.len());
-        items
-            .iter()
-            .all(|item| item.records_in_place(in_place) && Some(item.table.fields.len()) == fields)
+        items.iter().all(|item| {
+            item.is_written_in_place(in_place) && Some(item.table.fields.len()) == fields
+        })
     }
 
     /// Builds the table to nest, as its builder or its bytes

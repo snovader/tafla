@@ -102,9 +102,9 @@ the allocations and bytes of each benchmark's call.
 Each crate is used as its documentation shows, and as the TypeScript
 comparison uses its counterpart:
 
-- **tafla** records nested tables in place among their parent builder's
+- **tafla** writes nested tables in place among their parent builder's
   fields, with `set_table_with()` and `set_vector_with()`. The builders
-  borrow the columns and write each array in bulk into a table of its exact
+  borrow the columns and copy each array in bulk into a table of its exact
   size. Readers check the document's version, and read columns as
   `ArrayView`s, whose `to_cow()` borrows them. The array of structs is written with `to_le_bytes()` into a `Vec`, which the
   builder takes with `set_struct_array()`, and read from
