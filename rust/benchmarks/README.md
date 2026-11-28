@@ -43,6 +43,14 @@ collecting items of its own, and `item_access.rs` holds them:
 - **tafla-gen A/A** reads with the views again, an A/A pair that shows
   Criterion's noise.
 
+One more group, **vector of 100 sized tables: read the last item**, reads
+the same items written as sized tables, whose headers hold their lengths.
+`Vector::get()` returns such an item as a table of its own, from its start
+to its end, rather than in place, and tafla reads it with `TableReader`'s
+getters by hand; `sized_items.rs` holds it. The workloads' schema has no such
+vector, and tafla-gen's views read only items in place, so tafla-gen and the
+other languages' suites don't time it.
+
 `cargo run -p tafla-benchmarks --bin encoding` prints each crate's encoded
 sizes and what it does with a truncated document, as the TypeScript comparison
 does, and `cargo run --release -p tafla-benchmarks --bin allocation` prints

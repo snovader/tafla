@@ -74,6 +74,12 @@ impl<'a> Vector<'a> {
     /// `Some(Err(_))` with [`DecodeError::ItemEndsBeforeStart`] if the item
     /// ends before the item before it, or [`DecodeError::OutOfRange`] if it
     /// ends past the bytes.
+    // Inlined into its callers, as `get_in_place()` is: called out of line,
+    // it read the vector's offset type from memory and branched on its size
+    // at every call, and the last of 100 sized tables was read in 6.1 ns
+    // rather than 4.1 ns
+    #[allow(clippy::inline_always)]
+    #[inline(always)]
     pub fn get(&self, index: usize) -> Option<Result<&'a [u8], DecodeError>> {
         let bounds = self.bounds(index)?;
 
