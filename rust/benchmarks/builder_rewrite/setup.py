@@ -81,7 +81,7 @@ def main():
         f'[[bin]]\nname = "{name}"\nbench = false\nrequired-features = ["main-builder"]\n\n'
         for name in ["builder_comparison", "builder_allocation"]
     )
-    edit(benchmarks / "Cargo.toml", "[[bench]]", bins + "[[bench]]")
+    edit(benchmarks / "Cargo.toml", '[[bench]]\nname = "comparison"', bins + '[[bench]]\nname = "comparison"')
     edit(
         benchmarks / "Cargo.toml",
         "[dependencies]",
